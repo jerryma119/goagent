@@ -326,20 +326,14 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1048576
     skip_headers = set(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = None
-    opener_lock = threading.Lock()
 
     def address_string(self):
         return '%s:%s' % self.client_address[:2]
 
     def send_response(self, code, message=None):
         self.log_request(code)
-        if message is None:
-            if code in self.responses:
-                message = self.responses[code][0]
-            else:
-                message = 'GoAgent Notify'
-        if self.request_version != 'HTTP/0.9':
-            self.wfile.write('%s %d %s\r\n' % (self.protocol_version, code, message))
+        message = message or self.responses.get(code, ('GoAgent Notify',))[0]
+        self.wfile.write('%s %d %s\r\n' % (self.protocol_version, code, message))
 
     def end_error(self, code, message=None, data=None):
         if not data:
@@ -360,19 +354,15 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 raise
 
-    def _opener(self):
-        '''double-checked locking url opener'''
-        if self.opener is None:
-            with self.opener_lock:
-                if self.opener is None:
-                    if common.PROXY_ENABLE:
-                        proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
-                        proxy_handler = urllib2.ProxyHandler(proxies)
-                    else:
-                        proxy_handler = urllib2.ProxyHandler({})
-                    self.opener = urllib2.build_opener(proxy_handler)
-                    self.opener.addheaders = []
-        return self.opener
+    def build_opener(self):
+        if common.PROXY_ENABLE:
+            proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
+            proxy_handler = urllib2.ProxyHandler(proxies)
+        else:
+            proxy_handler = urllib2.ProxyHandler({})
+        opener = urllib2.build_opener(proxy_handler)
+        opener.addheaders = []
+        return opener
 
     def _fetch(self, url, method, headers, payload):
         errors = []
@@ -394,7 +384,9 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 request.add_header('Content-Type', 'application/octet-stream')
                 if common.PROXY_ENABLE:
                     request.add_header('Host', '%s.appspot.com' % appid)
-                response = self._opener().open(request)
+                if self.opener is None:
+                    self.opener = self.build_opener()
+                response = self.opener.open(request)
                 data = response.read()
                 response.close()
             except urllib2.HTTPError, e:
