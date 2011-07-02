@@ -173,7 +173,7 @@ def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accep
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
-def socket_forward(local, remote, timeout=60, tick=2, maxping=None, maxpong=None):
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None):
     count = timeout // tick
     try:
         while 1:
@@ -183,7 +183,7 @@ def socket_forward(local, remote, timeout=60, tick=2, maxping=None, maxpong=None
                 break
             if ins:
                 for soc in ins:
-                    data = soc.recv(1048576)
+                    data = soc.recv(bufsize)
                     if data:
                         if soc is local:
                             remote.send(data)
@@ -547,76 +547,18 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.connection.send('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
             ssl_sock = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
-        except ssl.SSLError, e:
-            logging.exception('SSLError: %s', e)
+            self._realconnection = self.connection
+            self.connection = ssl_sock
+            self.rfile = self.connection.makefile('rb', self.rbufsize)
+            self.wfile = self.connection.makefile('wb', self.wbufsize)
+            self.raw_requestline = self.rfile.readline()
+            self.parse_request()
+            self.scheme = 'https'
+            self.do_METHOD_GAE()
+            self._realconnection.close()
+        except socket.error, e:
+            logging.exception('do_CONNECT_GAE socket.error: %s', e)
             return
-
-        # rewrite request line, url to abs
-        first_line = ''
-        while True:
-            data = ssl_sock.read()
-            # EOF?
-            if data == '':
-                # bad request
-                ssl_sock.close()
-                self.connection.close()
-                return
-            # newline(\r\n)?
-            first_line += data
-            if '\n' in first_line:
-                first_line, _, data = first_line.partition('\r\n')
-                first_line = first_line.rstrip('\r')
-                break
-        # got path, rewrite
-        method, path, ver = first_line.split()
-        if path.startswith('/'):
-            path = 'https://%s%s' % (host if port=='443' else self.path, path)
-        # connect to local proxy server
-        localhost = {'0.0.0.0':'127.0.0.1','::':'::1'}.get(common.LISTEN_IP, common.LISTEN_IP)
-        sock = socket.socket(LocalProxyServer.address_family, socket.SOCK_STREAM)
-        sock.connect((localhost, common.LISTEN_PORT))
-        sock.send('%s %s %s\r\n%s' % (method, path, ver, data))
-
-        # forward https request
-        ssl_sock.settimeout(5)
-        while True:
-            try:
-                data = ssl_sock.read(8192)
-            except ssl.SSLError, e:
-                if str(e).lower().find('timed out') == -1:
-                    # error
-                    sock.close()
-                    ssl_sock.close()
-                    self.connection.close()
-                    return
-                # timeout
-                break
-            if data != '':
-                sock.send(data)
-            else:
-                # EOF
-                break
-
-        ssl_sock.setblocking(True)
-        # simply forward response
-        while True:
-            data = sock.recv(8192)
-            if data != '':
-                try:
-                    ssl_sock.write(data)
-                except socket.error, (err, _):
-                    if err == 10053 or err == errno.EPIPE:
-                        self.log_message('socket.error: [%s] Software caused connection abort', err)
-                    else:
-                        raise
-            else:
-                # EOF
-                break
-        # clean
-        sock.close()
-        ssl_sock.shutdown(socket.SHUT_WR)
-        ssl_sock.close()
-        self.connection.close()
 
     def do_METHOD(self):
         host = self.headers.get('host')
@@ -628,6 +570,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
             return self.do_METHOD_Direct()
         else:
+            self.scheme = 'http'
             return self.do_METHOD_GAE()
 
     def do_METHOD_Direct(self):
@@ -676,10 +619,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_METHOD_GAE(self):
         host = self.headers.dict.get('host')
         if self.path[0] == '/':
-            if host.endswith(':80'):
-                host = host[:-3]
-            self.path = 'http://%s%s' % (host , self.path)
-
+            self.path = '%s://%s%s' % (self.scheme, host, self.path)
         payload_len = int(self.headers.get('content-length', 0))
         if payload_len > 0:
             payload = self.rfile.read(payload_len)
@@ -709,6 +649,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # Connection closed before proxy return
             if err == errno.EPIPE or err == 10053:
                 return
+        self.connection.shutdown(socket.SHUT_WR)
         self.connection.close()
 
     do_GET = do_METHOD
