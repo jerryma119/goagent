@@ -53,26 +53,15 @@ class Common(object):
 
         self.GOOGLE_PREFER     = self.config.get('google', 'prefer')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
+        self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
         self.GOOGLE_HTTP       = [x.split('|') for x in self.config.get('google', 'http').split('||')]
         self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
-        self.GOOGLE_TIMEOUT    = self.config.getint('google', 'timeout')
-        self.GOOGLE_WINDOW     = self.config.getint('google', 'window')
-        self.GOOGLE_WINDOW_ACK = 0
-        self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
+
 
         self.AUTORANGE_HOSTS    = tuple(self.config.get('autorange', 'hosts').split('|'))
-        self.AUTORANGE_ENDSWITH = tuple(self.config.get('autorange', 'endswith').split('|'))
+        self.AUTORANGE_ENDSWITH = set(self.config.get('autorange', 'endswith').split('|'))
 
         self.HOSTS = dict(self.config.items('hosts'))
-
-    def select_appid(self, url):
-        appid = None
-        if len(self.GAE_APPIDS) == 1:
-            return self.GAE_APPIDS[0]
-        if self.GAE_BINDHOSTS:
-            appid = self.GAE_BINDHOSTS.get(urlparse.urlsplit(url)[1])
-        appid = appid or random.choice(self.GAE_APPIDS)
-        return appid
 
     def info(self):
         info = ''
@@ -92,10 +81,15 @@ if __name__ == '__main__':
 
 class MultiplexConnection(object):
     '''multiplex tcp connection class'''
-    def __init__(self, hostslist, port, timeout, window, proxy=None):
+
+    timeout = 5
+    window = 1
+    window_ack = 0
+
+    def __init__(self, hostslist, port):
         self.socket = None
         self._sockets = set([])
-        self.connect(hostslist, port, timeout, window)
+        self.connect(hostslist, port, MultiplexConnection.timeout, MultiplexConnection.window)
     def connect(self, hostslist, port, timeout, window):
         for i, hosts in enumerate(hostslist):
             if len(hosts) > window:
@@ -115,20 +109,19 @@ class MultiplexConnection(object):
                 self.socket = outs[0]
                 self.socket.setblocking(1)
                 self._sockets.remove(self.socket)
-                if common.GOOGLE_WINDOW > 1:
-                    common.GOOGLE_WINDOW_ACK += 1
-                    if common.GOOGLE_WINDOW_ACK > 10:
-                        common.GOOGLE_WINDOW -= 1
-                        common.GOOGLE_WINDOW_ACK = 0
-                        logging.info('MultiplexConnection Connect OK 10 times, switch new window=%d', common.GOOGLE_WINDOW)
+                if window > 1:
+                    MultiplexConnection.window_ack += 1
+                    if MultiplexConnection.window_ack > 16:
+                        MultiplexConnection.window = window - 1
+                        MultiplexConnection.window_ack = 0
+                        logging.info('MultiplexConnection CONNECT port=443 OK 10 times, switch new window=%d', MultiplexConnection.window)
                 break
             else:
-                logging.warning('MultiplexConnection Cannot hosts %r:%r, switch new window=%d', hosts, port, window)
+                logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
-            window = min(int(round(window*1.5)), 64)
-            common.GOOGLE_WINDOW = window
-            common.GOOGLE_WINDOW_ACK = 0
-            logging.warning(r'MultiplexConnection Cannot Connect to hostslist %s:%s, switch new window=%d' % (hostslist, port, window))
+            MultiplexConnection.window = min(int(round(window*1.5)), 64)
+            MultiplexConnection.window_ack = 0
+            logging.warning(r'MultiplexConnection Cannot Connect to hostslist %s:%s, switch new window=%d', hostslist, port, MultiplexConnection.window)
             raise RuntimeError(r'MultiplexConnection Cannot Connect to hostslist %s:%s' % (hostslist, port))
     def close(self):
         for soc in self._sockets:
@@ -137,8 +130,7 @@ class MultiplexConnection(object):
             except:
                 pass
 
-_socket_create_connection = socket.create_connection
-def socket_create_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+def socket_create_connection(address, timeout=None, source_address=None):
     host, port = address
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
     if host.endswith(common.GOOGLE_SITES):
@@ -146,7 +138,7 @@ def socket_create_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, so
         try:
             hostslist = common.GOOGLE_HTTP if port == 80 else common.GOOGLE_HTTPS
             logging.debug("socket_create_connection connect hostslist: (%r, %r)", hostslist, port)
-            conn = MultiplexConnection(hostslist, port, common.GOOGLE_TIMEOUT, common.GOOGLE_WINDOW)
+            conn = MultiplexConnection(hostslist, port)
             conn.close()
             soc = conn.socket
             soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
@@ -157,8 +149,23 @@ def socket_create_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, so
         if not soc:
             raise socket.error, msg
     else:
-        host = common.HOSTS.get(host) or socket.gethostbyname(host)
-        return _socket_create_connection((host, port), timeout)
+        msg = "getaddrinfo returns an empty list"
+        host = common.HOSTS.get(host) or host
+        for res in socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket.socket(af, socktype, proto)
+                if timeout is not None:
+                    sock.settimeout(timeout)
+                if source_address is not None:
+                    sock.bind(source_address)
+                sock.connect(sa)
+                return sock
+            except socket.error, msg:
+                if sock is not None:
+                    sock.close()
+        raise error, msg
 socket.create_connection = socket_create_connection
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
@@ -176,7 +183,7 @@ def socket_forward(local, remote, timeout=60, tick=2, maxping=None, maxpong=None
                 break
             if ins:
                 for soc in ins:
-                    data = soc.recv(8192)
+                    data = soc.recv(1048576)
                     if data:
                         if soc is local:
                             remote.send(data)
@@ -284,7 +291,8 @@ class RootCA(object):
             crtFile = os.path.join(basedir, 'CA.crt')
             return (keyFile, crtFile)
         if not os.path.isfile(keyFile):
-            with RootCA.CALock:
+            try:
+                RootCA.CALock.acquire()
                 if not os.path.isfile(keyFile):
                     logging.info('RootCA getCertificate for %r', host)
                     serialFile = os.path.join(basedir, 'CA.srl')
@@ -294,6 +302,8 @@ class RootCA(object):
                     RootCA.writeFile(keyFile, key)
                     RootCA.writeFile(crtFile, crt)
                     RootCA.writeFile(serialFile, str(SERIAL))
+            finally:
+                RootCA.CALock.release()
         return (keyFile, crtFile)
 
     @staticmethod
@@ -373,7 +383,12 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         params = gae_encode_data(params)
         for i in range(1, 4):
             try:
-                appid = common.select_appid(url)
+                appid = None
+                if len(common.GAE_APPIDS) == 1:
+                    appid = common.GAE_APPIDS[0]
+                elif self.GAE_BINDHOSTS:
+                    appid = common.GAE_BINDHOSTS.get(urlparse.urlsplit(url)[1])
+                appid = appid or random.choice(common.GAE_APPIDS)
                 logging.debug('GaeProxyHandler fetch %r appid=%r', url, appid)
                 if not common.PROXY_ENABLE:
                     fetchserver = '%s://%s.appspot.com%s' % (common.GOOGLE_PREFER, appid, common.GAE_PATH)
@@ -400,8 +415,8 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if e.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
                     # it seems that google.cn is reseted, switch to https
                     if e.reason[0] == 10054:
-                        common.GOOGLE_WINDOW_ACK = 0
-                        common.GOOGLE_WINDOW = min(int(round(common.GOOGLE_WINDOW*1.5)), 64)
+                        MultiplexConnection.window_ack = 0
+                        MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), 64)
                         common.GOOGLE_PREFER = 'https'
                         sys.stdout.write(common.info())
                 errors.append(str(e))
@@ -672,7 +687,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             payload = ''
 
         headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.dict.iteritems() if k not in self.skip_headers)
-        if host.endswith(common.AUTORANGE_HOSTS) or self.path.endswith(common.AUTORANGE_ENDSWITH):
+        if host.endswith(common.AUTORANGE_HOSTS) or self.path.rpartition('.')[2] in common.AUTORANGE_ENDSWITH:
             headers += 'Range: bytes=0-%d\r\n' % self.part_size
 
         retval, data = self._fetch(self.path, self.command, headers, payload)
