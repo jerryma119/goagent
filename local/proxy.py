@@ -553,7 +553,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile = self.connection.makefile('wb', self.wbufsize)
             self.raw_requestline = self.rfile.readline()
             self.parse_request()
-            self.scheme = 'https'
+            self.urlscheme = 'https'
             self.do_METHOD_GAE()
             self._realconnection.close()
         except socket.error, e:
@@ -570,7 +570,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
             return self.do_METHOD_Direct()
         else:
-            self.scheme = 'http'
+            self.urlscheme = 'http'
             return self.do_METHOD_GAE()
 
     def do_METHOD_Direct(self):
@@ -619,7 +619,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_METHOD_GAE(self):
         host = self.headers.dict.get('host')
         if self.path[0] == '/':
-            self.path = '%s://%s%s' % (self.scheme, host, self.path)
+            self.path = '%s://%s%s' % (self.urlscheme, host, self.path)
         payload_len = int(self.headers.get('content-length', 0))
         if payload_len > 0:
             payload = self.rfile.read(payload_len)
