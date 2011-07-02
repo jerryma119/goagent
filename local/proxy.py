@@ -386,7 +386,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 appid = None
                 if len(common.GAE_APPIDS) == 1:
                     appid = common.GAE_APPIDS[0]
-                elif self.GAE_BINDHOSTS:
+                elif common.GAE_BINDHOSTS:
                     appid = common.GAE_BINDHOSTS.get(urlparse.urlsplit(url)[1])
                 appid = appid or random.choice(common.GAE_APPIDS)
                 logging.debug('GaeProxyHandler fetch %r appid=%r', url, appid)
