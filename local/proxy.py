@@ -41,7 +41,7 @@ class Common(object):
         self.GAE_PASSWORD   = self.config.get('gae', 'password').strip()
         self.GAE_DEBUG      = self.config.get('gae', 'debug')
         self.GAE_PATH       = self.config.get('gae', 'path')
-        self.GAE_BINDHOSTS  = dict((host, self.GAE_APPIDS[0]) for host in self.config.get('gae', 'bindhosts').split('|')) if self.config.has_option('gae', 'bindhosts') else {}
+        self.GAE_BINDHOSTS  = tuple(self.config.get('gae', 'bindhosts').split('|')) if self.config.has_option('gae', 'bindhosts') else ()
         self.GAE_CERTS      = self.config.get('gae', 'certs').split('|')
 
         self.PROXY_ENABLE   = self.config.getint('proxy', 'enable')
@@ -72,7 +72,7 @@ class Common(object):
         info += 'Local Proxy    : %s://%s:%s\n' % (self.PROXY_TYPE, self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'GAE Mode       : %s\n' % self.GOOGLE_PREFER
         info += 'GAE APPID      : %s\n' % '|'.join(self.GAE_APPIDS)
-        info += 'GAE BindHost   : %s\n' % '|'.join('%s=%s' % (k, v) for k, v in self.GAE_BINDHOSTS.items()) if self.GAE_BINDHOSTS else ''
+        info += 'GAE BindHost   : %s\n' % '|'.join(self.GAE_BINDHOSTS)
         info += '--------------------------------------------\n'
         return info
 
@@ -383,12 +383,12 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         params = gae_encode_data(params)
         for i in range(1, 4):
             try:
-                appid = None
                 if len(common.GAE_APPIDS) == 1:
                     appid = common.GAE_APPIDS[0]
-                elif common.GAE_BINDHOSTS:
-                    appid = common.GAE_BINDHOSTS.get(urlparse.urlsplit(url)[1])
-                appid = appid or random.choice(common.GAE_APPIDS)
+                elif common.GAE_BINDHOSTS and urlparse.urlsplit(url)[1].endswith(common.GAE_BINDHOSTS):
+                    appid = common.GAE_APPIDS[0]
+                else:
+                    appid = random.choice(common.GAE_APPIDS)
                 logging.debug('GaeProxyHandler fetch %r appid=%r', url, appid)
                 if not common.PROXY_ENABLE:
                     fetchserver = '%s://%s.appspot.com%s' % (common.GOOGLE_PREFER, appid, common.GAE_PATH)
@@ -556,6 +556,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.parse_request()
             if self.path[0] == '/':
                 self.path = 'https://%s%s' % (self._realpath, self.path)
+                #self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
             self.do_METHOD_GAE()
             self._realconnection.close()
         except socket.error, e:
