@@ -548,12 +548,14 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             ssl_sock = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
             self._realconnection = self.connection
+            self._realpath = self.path
             self.connection = ssl_sock
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
             self.raw_requestline = self.rfile.readline()
             self.parse_request()
-            self.urlscheme = 'https'
+            if self.path[0] == '/':
+                self.path = 'https://%s%s' % (self._realpath, self.path)
             self.do_METHOD_GAE()
             self._realconnection.close()
         except socket.error, e:
@@ -570,7 +572,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
             return self.do_METHOD_Direct()
         else:
-            self.urlscheme = 'http'
             return self.do_METHOD_GAE()
 
     def do_METHOD_Direct(self):
@@ -619,7 +620,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_METHOD_GAE(self):
         host = self.headers.dict.get('host')
         if self.path[0] == '/':
-            self.path = '%s://%s%s' % (self.urlscheme, host, self.path)
+            self.path = 'http://%s%s' % (host, self.path)
         payload_len = int(self.headers.get('content-length', 0))
         if payload_len > 0:
             payload = self.rfile.read(payload_len)
