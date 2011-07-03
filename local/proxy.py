@@ -7,9 +7,9 @@ __version__ = 'beta'
 __author__ =  'phus.lu@gmail.com'
 
 import sys, os, re, time
-import errno, zlib, struct, binascii
+import errno, zlib, struct, binascii, base64
 import logging
-import httplib, urllib2, urlparse, socket, select
+import httplib, urllib, urllib2, urlparse, socket, select
 import BaseHTTPServer, SocketServer
 import random
 import ConfigParser
@@ -54,9 +54,7 @@ class Common(object):
         self.GOOGLE_PREFER     = self.config.get('google', 'prefer')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
-        self.GOOGLE_HTTP       = [x.split('|') for x in self.config.get('google', 'http').split('||')]
-        self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
-
+        self.GOOGLE_HOSTS      = [x.split('|') for x in self.config.get('google', 'hosts').split('||')]
 
         self.AUTORANGE_HOSTS    = tuple(self.config.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_ENDSWITH = set(self.config.get('autorange', 'endswith').split('|'))
@@ -72,7 +70,7 @@ class Common(object):
         info += 'Local Proxy    : %s://%s:%s\n' % (self.PROXY_TYPE, self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'GAE Mode       : %s\n' % self.GOOGLE_PREFER
         info += 'GAE APPID      : %s\n' % '|'.join(self.GAE_APPIDS)
-        info += 'GAE BindHost   : %s\n' % '|'.join(self.GAE_BINDHOSTS)
+        info += 'GAE BindHost   : %s\n' % '|'.join(self.GAE_BINDHOSTS) if self.GAE_BINDHOSTS else ''
         info += '--------------------------------------------\n'
         return info
 
@@ -83,7 +81,7 @@ class MultiplexConnection(object):
     '''multiplex tcp connection class'''
 
     timeout = 5
-    window = 1
+    window = 4
     window_ack = 0
 
     def __init__(self, hostslist, port):
@@ -136,12 +134,12 @@ def socket_create_connection(address, timeout=None, source_address=None):
     if host.endswith(common.GOOGLE_SITES):
         msg = 'socket_create_connection returns an empty list'
         try:
-            hostslist = common.GOOGLE_HTTP if port == 80 else common.GOOGLE_HTTPS
+            hostslist = common.GOOGLE_HOSTS
             logging.debug("socket_create_connection connect hostslist: (%r, %r)", hostslist, port)
             conn = MultiplexConnection(hostslist, port)
             conn.close()
             soc = conn.socket
-            soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+            #soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
             return soc
         except socket.error, msg:
             logging.error('socket_create_connection connect fail: (%r, %r)', hostslist, port)
@@ -156,7 +154,7 @@ def socket_create_connection(address, timeout=None, source_address=None):
             sock = None
             try:
                 sock = socket.socket(af, socktype, proto)
-                if timeout is not None:
+                if isinstance(timeout, (int, float)):
                     sock.settimeout(timeout)
                 if source_address is not None:
                     sock.bind(source_address)
@@ -165,7 +163,7 @@ def socket_create_connection(address, timeout=None, source_address=None):
             except socket.error, msg:
                 if sock is not None:
                     sock.close()
-        raise error, msg
+        raise socket.error, msg
 socket.create_connection = socket_create_connection
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
@@ -332,10 +330,20 @@ def gae_encode_data(dic):
 def gae_decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
 
+def build_opener():
+    if common.PROXY_ENABLE:
+        proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
+        proxy_handler = urllib2.ProxyHandler(proxies)
+    else:
+        proxy_handler = urllib2.ProxyHandler({})
+    opener = urllib2.build_opener(proxy_handler)
+    opener.addheaders = []
+    return opener
+
 class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1048576
     skip_headers = set(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
-    opener = None
+    opener = build_opener()
 
     def address_string(self):
         return '%s:%s' % self.client_address[:2]
@@ -364,16 +372,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 raise
 
-    def build_opener(self):
-        if common.PROXY_ENABLE:
-            proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
-            proxy_handler = urllib2.ProxyHandler(proxies)
-        else:
-            proxy_handler = urllib2.ProxyHandler({})
-        opener = urllib2.build_opener(proxy_handler)
-        opener.addheaders = []
-        return opener
-
     def _fetch(self, url, method, headers, payload):
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
@@ -393,14 +391,12 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not common.PROXY_ENABLE:
                     fetchserver = '%s://%s.appspot.com%s' % (common.GOOGLE_PREFER, appid, common.GAE_PATH)
                 else:
-                    fetchhost = random.choice(common.GOOGLE_HTTP[0] if common.GOOGLE_PREFER == 'http' else common.GOOGLE_HTTPS[0])
+                    fetchhost = random.choice(common.GOOGLE_HOSTS[0])
                     fetchserver = '%s://%s%s' % (common.GOOGLE_PREFER, fetchhost, common.GAE_PATH)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', 'application/octet-stream')
                 if common.PROXY_ENABLE:
                     request.add_header('Host', '%s.appspot.com' % appid)
-                if self.opener is None:
-                    self.opener = self.build_opener()
                 response = self.opener.open(request)
                 data = response.read()
                 response.close()
@@ -423,6 +419,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 continue
             except Exception, e:
                 errors.append(repr(e))
+                logging.exception('_fetch Exception %s', e)
                 continue
 
             try:
@@ -516,14 +513,16 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not common.PROXY_ENABLE:
                 soc = socket.create_connection((host, int(port)))
                 self.log_request(200)
-                self.wfile.write('%s 200 Connection established\r\nProxy-agent: %s\r\n\r\n' % (self.protocol_version, self.version_string()))
+                self.wfile.write('%s 200 Tunnel established\r\n\r\n' % self.protocol_version)
             else:
                 soc = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host.endswith(common.GOOGLE_SITES):
-                    ip = random.choice(common.GOOGLE_HTTPS[0])
+                    ip = random.choice(common.GOOGLE_HOSTS[0])
                 else:
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n\r\n' % (self.command, ip, port, self.protocol_version)
+                if common.PROXY_USERNAME:
+                    data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
                 soc.send(data)
             socket_forward(self.connection, soc, maxping=8)
         except:
@@ -571,9 +570,9 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_header("Location", self.path.replace('http://', 'https://'))
                 self.end_headers()
                 return
-            return self.do_METHOD_Direct()
-        else:
-            return self.do_METHOD_GAE()
+            if not common.PROXY_ENABLE:
+                return self.do_METHOD_Direct()
+        return self.do_METHOD_GAE()
 
     def do_METHOD_Direct(self):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(self.path, 'http')
@@ -588,18 +587,21 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not common.PROXY_ENABLE:
                 soc = socket.create_connection((host, port))
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
+                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
+                data += '\r\n'
             else:
                 soc = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host.endswith(common.GOOGLE_SITES):
-                    host = random.choice(common.GOOGLE_HTTPS[0])
+                    host = random.choice(common.GOOGLE_HOSTS[0])
                 else:
                     host = common.HOSTS.get(host, host)
-                data = '%s %s:%d %s\r\n'  % (self.command, host, port, self.request_version)
-                data += 'Host: %s\r\n' % host
-                data += 'Proxy-Connection: close\r\n'
-            data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.lower().startswith('proxy-'))
-            data += 'Connection: close\r\n'
-            data += '\r\n'
+                data ='%s %s %s\r\n'  % (self.command, urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, '')), self.request_version)
+                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host' and not k.startswith('proxy-'))
+                data += 'Host: %s\r\n' % netloc
+                if common.PROXY_USERNAME:
+                    data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
+                data += 'Proxy-connection: close\r\n'
+                data += '\r\n'
             content_length = int(self.headers.get('content-length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
