@@ -139,7 +139,7 @@ def socket_create_connection(address, timeout=None, source_address=None):
             conn = MultiplexConnection(hostslist, port)
             conn.close()
             soc = conn.socket
-            #soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+            soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
             return soc
         except socket.error, msg:
             logging.error('socket_create_connection connect fail: (%r, %r)', hostslist, port)
