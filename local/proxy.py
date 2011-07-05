@@ -81,7 +81,9 @@ class MultiplexConnection(object):
     '''multiplex tcp connection class'''
 
     timeout = 5
-    window = 4
+    window = 6
+    window_min = 3
+    window_max = 64
     window_ack = 0
 
     def __init__(self, hostslist, port):
@@ -109,7 +111,7 @@ class MultiplexConnection(object):
                 self._sockets.remove(self.socket)
                 if window > 1:
                     MultiplexConnection.window_ack += 1
-                    if MultiplexConnection.window_ack > 16:
+                    if MultiplexConnection.window_ack > 16 and window > MultiplexConnection.window_min:
                         MultiplexConnection.window = window - 1
                         MultiplexConnection.window_ack = 0
                         logging.info('MultiplexConnection CONNECT port=443 OK 10 times, switch new window=%d', MultiplexConnection.window)
@@ -412,7 +414,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     # it seems that google.cn is reseted, switch to https
                     if e.reason[0] == 10054:
                         MultiplexConnection.window_ack = 0
-                        MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), 64)
+                        MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
                         common.GOOGLE_PREFER = 'https'
                         sys.stdout.write(common.info())
                 errors.append(str(e))
