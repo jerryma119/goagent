@@ -57,9 +57,9 @@ class Common(object):
         self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
         self.GOOGLE_HOSTS      = [x.split('|') for x in self.config.get('google', 'hosts').split('||')]
 
-        self.AUTORANGE_HOSTS    = self.config.get('autorange', 'hosts').split('|')
-        self.AUTORANGE_HOSTS    = dict((x.partition('.')[2], x) for x in self.config.get('autorange', 'hosts').split('|'))
-        self.AUTORANGE_ENDSWITH = set(self.config.get('autorange', 'endswith').split('|'))
+        self.AUTORANGE_HOSTS      = self.config.get('autorange', 'hosts').split('|')
+        self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
+        self.AUTORANGE_ENDSWITH   = set(self.config.get('autorange', 'endswith').split('|'))
 
         self.HOSTS = dict(self.config.items('hosts'))
 
@@ -639,12 +639,12 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.dict.iteritems() if k not in self.skip_headers)
 
-        domain = host.partition('.')[2]
-        if domain in common.AUTORANGE_HOSTS:
-            pattern = common.AUTORANGE_HOSTS[domain]
-            if pattern[0] == '.' or fnmatch.fnmatch(host, pattern):
-                logging.info('autorange pattern=%r match url=%r', pattern, self.path)
-                headers += 'Range: bytes=0-%d\r\n' % self.part_size
+        if host.endswith(common.AUTORANGE_HOSTS_TAIL):
+            for pattern in common.AUTORANGE_HOSTS:
+                if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
+                    logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
+                    headers += 'Range: bytes=0-%d\r\n' % self.part_size
+                    break
 
         retval, data = self._fetch(self.path, self.command, headers, payload)
         try:
