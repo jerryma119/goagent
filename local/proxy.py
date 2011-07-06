@@ -553,7 +553,10 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = ssl_sock
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
-            self.raw_requestline = self.rfile.readline()
+            while 1:
+                self.raw_requestline = self.rfile.readline()
+                if self.raw_requestline:
+                    break
             self.parse_request()
             if self.path[0] == '/':
                 self.path = 'https://%s%s' % (self._realpath, self.path)
