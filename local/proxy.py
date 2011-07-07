@@ -96,13 +96,13 @@ class MultiplexConnection(object):
         for i, hosts in enumerate(hostslist):
             if len(hosts) > window:
                 hosts = random.sample(hosts, window)
-            logging.debug('MultiplexConnection connect (%s, %s)', hosts, port)
+            logging.debug('MultiplexConnection connect %d hosts, port=%s', len(hosts), port)
             socs = []
             for host in hosts:
                 soc_family = socket.AF_INET6 if ':' in host else socket.AF_INET
                 soc = socket.socket(soc_family, socket.SOCK_STREAM)
                 soc.setblocking(0)
-                logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
+                #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
                 err = soc.connect_ex((host, port))
                 self._sockets.add(soc)
                 socs.append(soc)
@@ -139,7 +139,7 @@ def socket_create_connection(address, timeout=None, source_address=None):
         msg = 'socket_create_connection returns an empty list'
         try:
             hostslist = common.GOOGLE_HOSTS
-            logging.debug("socket_create_connection connect hostslist: (%r, %r)", hostslist, port)
+            #logging.debug("socket_create_connection connect hostslist: (%r, %r)", hostslist, port)
             conn = MultiplexConnection(hostslist, port)
             conn.close()
             soc = conn.socket
@@ -577,8 +577,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_header("Location", self.path.replace('http://', 'https://'))
                 self.end_headers()
                 return
-            if not common.PROXY_ENABLE:
-                return self.do_METHOD_Direct()
+            return self.do_METHOD_Direct()
         return self.do_METHOD_GAE()
 
     def do_METHOD_Direct(self):
