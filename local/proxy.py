@@ -54,7 +54,7 @@ class Common(object):
 
         self.GOOGLE_PREFER     = self.config.get('google', 'prefer')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
-        self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
+        self.GOOGLE_FORCEHTTPS = set(self.config.get('google', 'forcehttps').split('|'))
         self.GOOGLE_HOSTS      = [x.split('|') for x in self.config.get('google', 'hosts').split('||')]
 
         self.AUTORANGE_HOSTS      = self.config.get('autorange', 'hosts').split('|')
@@ -571,14 +571,13 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
+        if host in common.GOOGLE_FORCEHTTPS:
+            self.send_response(301)
+            self.send_header("Location", self.path.replace('http://', 'https://'))
+            self.end_headers()
+            return
         if host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
-            if self.path.startswith(common.GOOGLE_FORCEHTTPS):
-                self.send_response(301)
-                self.send_header("Location", self.path.replace('http://', 'https://'))
-                self.end_headers()
-                return
-            if not common.PROXY_ENABLE:
-                return self.do_METHOD_Direct()
+            return self.do_METHOD_Direct()
         return self.do_METHOD_GAE()
 
     def do_METHOD_Direct(self):
