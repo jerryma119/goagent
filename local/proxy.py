@@ -594,6 +594,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 soc = socket.create_connection((host, port))
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
+                data += 'Connection: close\r\n'
                 data += '\r\n'
             else:
                 soc = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
@@ -608,6 +609,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
                 data += 'Proxy-connection: close\r\n'
                 data += '\r\n'
+
             content_length = int(self.headers.get('content-length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
@@ -656,15 +658,16 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('content-range',''))
                 if m and self._RangeFetch(m, data):
                     return
-            self.close_connection = 1
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
             self.connection.send(content)
+            self.close_connection = 1
+            self.connection.shutdown(socket.SHUT_WR)
+            self.connection.close()
         except socket.error, (err, _):
             # Connection closed before proxy return
             if err == errno.EPIPE or err == 10053:
                 return
-        self.connection.shutdown(socket.SHUT_WR)
-        self.connection.close()
+
 
     do_GET = do_METHOD
     do_POST = do_METHOD
