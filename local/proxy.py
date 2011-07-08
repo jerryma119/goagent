@@ -656,8 +656,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('content-range',''))
                 if m and self._RangeFetch(m, data):
                     return
-            if headers.get('connection', '').lower() == 'close':
-                self.close_connection = 1
+            self.close_connection = 1
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
             self.connection.send(content)
         except socket.error, (err, _):
