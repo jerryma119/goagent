@@ -369,7 +369,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def setup(self):
         self.connection = self.request
-        self.connection.settimeout(15)
         self.rfile = self.connection.makefile('rb', self.rbufsize)
         self.wfile = self.connection.makefile('wb', self.wbufsize)
 
