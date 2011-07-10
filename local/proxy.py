@@ -335,7 +335,10 @@ def gae_decode_data(qs):
 
 def build_opener():
     if common.PROXY_ENABLE:
-        proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
+        if common.PROXY_USERNAME:
+            proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
+        else:
+            proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
         proxy_handler = urllib2.ProxyHandler(proxies)
     else:
         proxy_handler = urllib2.ProxyHandler({})
