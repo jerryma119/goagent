@@ -541,7 +541,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
             self.raw_requestline = self.rfile.readline()
-            if self.raw_requestline:
+            if self.raw_requestline == '':
                 return
             self.parse_request()
             if self.path[0] == '/':
