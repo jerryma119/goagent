@@ -111,6 +111,8 @@ class MultiplexConnection(object):
                 self.socket = outs[0]
                 self.socket.setblocking(1)
                 self._sockets.remove(self.socket)
+                if i > 0:
+                    hostslist[i:], hostslist[:i] = hostslist[:i], hostslist[i:]
                 if window > 1:
                     MultiplexConnection.window_ack += 1
                     if MultiplexConnection.window_ack > 16 and window > MultiplexConnection.window_min:
