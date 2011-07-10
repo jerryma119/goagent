@@ -537,6 +537,8 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.connection.sendall('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
             ssl_sock = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
+            self._realrfile = self.rfile
+            self._realwfile = self.wfile
             self._realconnection = self.connection
             self._realpath = self.path
             self.connection = ssl_sock
@@ -548,10 +550,12 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.parse_request()
             if self.path[0] == '/':
                 self.path = 'https://%s%s' % (self._realpath, self.path)
-                #self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
+                self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
             self.do_METHOD_GAE()
             self.connection.shutdown(socket.SHUT_WR)
             self.connection.close()
+            self.rfile = self._realrfile
+            self.wfile = self._realwfile
             self.connection = self._realconnection
         except socket.error, e:
             logging.exception('do_CONNECT_GAE socket.error: %s', e)
