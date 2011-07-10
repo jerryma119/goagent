@@ -362,18 +362,13 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.send_response(code, message)
             self.wfile.write(data)
-        self.connection.close()
+        #self.connection.close()
 
-    def finish(self):
-        try:
-            self.wfile.close()
-            self.rfile.close()
-        except socket.error, (err, _):
-            # Connection closed by browser
-            if err == 10053 or err == errno.EPIPE:
-                self.log_message('socket.error: [%s] "Software caused connection abort"', err)
-            else:
-                raise
+    def setup(self):
+        self.connection = self.request
+        self.connection.settimeout(15)
+        self.rfile = self.connection.makefile('rb', self.rbufsize)
+        self.wfile = self.connection.makefile('wb', self.wbufsize)
 
     def _fetch(self, url, method, headers, payload):
         errors = []
@@ -499,7 +494,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             failed = 0
             self.wfile.write(data['content'])
         logging.info('>>>>>>>>>>>>>>> Range Fetch ended')
-        self.connection.close()
         return True
 
     def do_CONNECT(self):
@@ -533,10 +527,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_error(502, 'GaeProxyHandler.do_CONNECT_Direct Error')
         finally:
             try:
-                self.connection.close()
-            except:
-                pass
-            try:
                 soc.close()
             except:
                 pass
@@ -563,7 +553,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.path = 'https://%s%s' % (self._realpath, self.path)
                 #self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
             self.do_METHOD_GAE()
-            self._realconnection.close()
+            self.connection = self._realconnection
         except socket.error, e:
             logging.exception('do_CONNECT_GAE socket.error: %s', e)
             return
@@ -619,10 +609,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_error(502, 'SimpleProxyHandler.do_GET Error (%s)' % ex)
         finally:
             try:
-                self.connection.close()
-            except:
-                pass
-            try:
                 soc.close()
             except:
                 pass
@@ -660,8 +646,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
             self.connection.send(content)
             self.close_connection = 1
-            self.connection.shutdown(socket.SHUT_WR)
-            self.connection.close()
         except socket.error, (err, _):
             # Connection closed before proxy return
             if err == errno.EPIPE or err == 10053:
