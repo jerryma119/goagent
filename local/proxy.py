@@ -193,6 +193,8 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                         else:
                             local.send(data)
                             count = maxpong or timeout // tick
+                    else:
+                        break
             if count == 0:
                 break
     except Exception, ex:
