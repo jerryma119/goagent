@@ -188,10 +188,10 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                     data = soc.recv(bufsize)
                     if data:
                         if soc is local:
-                            remote.send(data)
+                            remote.sendall(data)
                             count = maxping or timeout // tick
                         else:
-                            local.send(data)
+                            local.sendall(data)
                             count = maxpong or timeout // tick
                     else:
                         break
@@ -516,7 +516,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data = '%s %s:%s %s\r\n\r\n' % (self.command, ip, port, self.protocol_version)
                 if common.PROXY_USERNAME:
                     data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
-                soc.send(data)
+                soc.sendall(data)
             socket_forward(self.connection, soc, maxping=8)
         except:
             logging.exception('GaeProxyHandler.do_CONNECT_Direct Error')
@@ -532,7 +532,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host, _, port = self.path.rpartition(':')
         keyFile, crtFile = RootCA.getCertificate(host)
         self.log_request(200)
-        self.connection.send('%s 200 OK\r\n\r\n' % self.protocol_version)
+        self.connection.sendall('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
             ssl_sock = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
             self._realconnection = self.connection
@@ -540,10 +540,9 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = ssl_sock
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
-            while 1:
-                self.raw_requestline = self.rfile.readline()
-                if self.raw_requestline:
-                    break
+            self.raw_requestline = self.rfile.readline()
+            if self.raw_requestline:
+                return
             self.parse_request()
             if self.path[0] == '/':
                 self.path = 'https://%s%s' % (self._realpath, self.path)
@@ -600,7 +599,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content_length = int(self.headers.get('content-length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
-            soc.send(data)
+            soc.sendall(data)
             socket_forward(self.connection, soc, maxping=10)
         except Exception, ex:
             logging.exception('SimpleProxyHandler.do_GET Error, %s', ex)
@@ -642,13 +641,12 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if m and self._RangeFetch(m, data):
                     return
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
-            self.connection.send(content)
+            self.connection.sendall(content)
             self.close_connection = 1
         except socket.error, (err, _):
             # Connection closed before proxy return
             if err == errno.EPIPE or err == 10053:
                 return
-
 
     do_GET = do_METHOD
     do_POST = do_METHOD
