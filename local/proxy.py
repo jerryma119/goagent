@@ -663,6 +663,8 @@ if __name__ == '__main__':
     RootCA.checkCA()
     if common.GAE_DEBUG != 'INFO':
         logging.root.setLevel(getattr(logging, common.GAE_DEBUG, logging.DEBUG))
+    if common.PROXY_ENABLE:
+        common.GOOGLE_PREFER = 'https'
     sys.stdout.write(common.info())
     if os.name == 'nt' and not common.LISTEN_VISIBLE:
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
