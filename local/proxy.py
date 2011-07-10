@@ -365,12 +365,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.send_response(code, message)
             self.wfile.write(data)
-        #self.connection.close()
-
-    def setup(self):
-        self.connection = self.request
-        self.rfile = self.connection.makefile('rb', self.rbufsize)
-        self.wfile = self.connection.makefile('wb', self.wbufsize)
 
     def _fetch(self, url, method, headers, payload):
         errors = []
