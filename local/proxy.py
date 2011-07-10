@@ -293,8 +293,7 @@ class RootCA(object):
             crtFile = os.path.join(basedir, 'CA.crt')
             return (keyFile, crtFile)
         if not os.path.isfile(keyFile):
-            try:
-                RootCA.CALock.acquire()
+            with RootCA.CALock:
                 if not os.path.isfile(keyFile):
                     logging.info('RootCA getCertificate for %r', host)
                     serialFile = os.path.join(basedir, 'CA.srl')
@@ -304,8 +303,6 @@ class RootCA(object):
                     RootCA.writeFile(keyFile, key)
                     RootCA.writeFile(crtFile, crt)
                     RootCA.writeFile(serialFile, str(SERIAL))
-            finally:
-                RootCA.CALock.release()
         return (keyFile, crtFile)
 
     @staticmethod
