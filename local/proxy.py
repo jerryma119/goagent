@@ -552,8 +552,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.path = 'https://%s%s' % (self._realpath, self.path)
                 self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
             self.do_METHOD_GAE()
-            self.connection.shutdown(socket.SHUT_WR)
-            self.connection.close()
             self.rfile = self._realrfile
             self.wfile = self._realwfile
             self.connection = self._realconnection
@@ -650,6 +648,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
             self.connection.sendall(content)
             self.close_connection = 1
+            self.connection.shutdown(socket.SHUT_WR)
         except socket.error, (err, _):
             # Connection closed before proxy return
             if err == errno.EPIPE or err == 10053:
