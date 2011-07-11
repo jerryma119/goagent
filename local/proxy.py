@@ -111,6 +111,8 @@ class MultiplexConnection(object):
                 self.socket = outs[0]
                 self.socket.setblocking(1)
                 self._sockets.remove(self.socket)
+                if i > 0:
+                    hostslist[i:], hostslist[:i] = hostslist[:i], hostslist[i:]
                 if window > 1:
                     MultiplexConnection.window_ack += 1
                     if MultiplexConnection.window_ack > 16 and window > MultiplexConnection.window_min:
@@ -188,10 +190,10 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                     data = soc.recv(bufsize)
                     if data:
                         if soc is local:
-                            remote.send(data)
+                            remote.sendall(data)
                             count = maxping or timeout // tick
                         else:
-                            local.send(data)
+                            local.sendall(data)
                             count = maxpong or timeout // tick
                     else:
                         break
@@ -335,7 +337,10 @@ def gae_decode_data(qs):
 
 def build_opener():
     if common.PROXY_ENABLE:
-        proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
+        if common.PROXY_USERNAME:
+            proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
+        else:
+            proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
         proxy_handler = urllib2.ProxyHandler(proxies)
     else:
         proxy_handler = urllib2.ProxyHandler({})
@@ -362,13 +367,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.send_response(code, message)
             self.wfile.write(data)
-        #self.connection.close()
-
-    def setup(self):
-        self.connection = self.request
-        self.connection.settimeout(15)
-        self.rfile = self.connection.makefile('rb', self.rbufsize)
-        self.wfile = self.connection.makefile('wb', self.wbufsize)
 
     def _fetch(self, url, method, headers, payload):
         errors = []
@@ -520,7 +518,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data = '%s %s:%s %s\r\n\r\n' % (self.command, ip, port, self.protocol_version)
                 if common.PROXY_USERNAME:
                     data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
-                soc.send(data)
+                soc.sendall(data)
             socket_forward(self.connection, soc, maxping=8)
         except:
             logging.exception('GaeProxyHandler.do_CONNECT_Direct Error')
@@ -536,25 +534,28 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host, _, port = self.path.rpartition(':')
         keyFile, crtFile = RootCA.getCertificate(host)
         self.log_request(200)
-        self.connection.send('%s 200 OK\r\n\r\n' % self.protocol_version)
+        self.connection.sendall('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
             ssl_sock = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
+            self._realrfile = self.rfile
+            self._realwfile = self.wfile
             self._realconnection = self.connection
             self._realpath = self.path
             self.connection = ssl_sock
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
-            while 1:
-                self.raw_requestline = self.rfile.readline()
-                if self.raw_requestline:
-                    break
+            self.raw_requestline = self.rfile.readline()
+            if self.raw_requestline == '':
+                return
             self.parse_request()
             if self.path[0] == '/':
                 self.path = 'https://%s%s' % (self._realpath, self.path)
-                #self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
+                self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
             self.do_METHOD_GAE()
             self.connection.shutdown(socket.SHUT_WR)
             self.connection.close()
+            self.rfile = self._realrfile
+            self.wfile = self._realwfile
             self.connection = self._realconnection
         except socket.error, e:
             logging.exception('do_CONNECT_GAE socket.error: %s', e)
@@ -583,9 +584,9 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.log_request()
             if not common.PROXY_ENABLE:
                 soc = socket.create_connection((host, port))
+                self.headers['connection'] = 'close'
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
-                data += 'Connection: close\r\n'
                 data += '\r\n'
             else:
                 soc = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
@@ -604,7 +605,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content_length = int(self.headers.get('content-length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
-            soc.send(data)
+            soc.sendall(data)
             socket_forward(self.connection, soc, maxping=10)
         except Exception, ex:
             logging.exception('SimpleProxyHandler.do_GET Error, %s', ex)
@@ -646,13 +647,12 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if m and self._RangeFetch(m, data):
                     return
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
-            self.connection.send(content)
+            self.connection.sendall(content)
             self.close_connection = 1
         except socket.error, (err, _):
             # Connection closed before proxy return
             if err == errno.EPIPE or err == 10053:
                 return
-
 
     do_GET = do_METHOD
     do_POST = do_METHOD
@@ -667,6 +667,8 @@ if __name__ == '__main__':
     RootCA.checkCA()
     if common.GAE_DEBUG != 'INFO':
         logging.root.setLevel(getattr(logging, common.GAE_DEBUG, logging.DEBUG))
+    if common.PROXY_ENABLE:
+        common.GOOGLE_PREFER = 'https'
     sys.stdout.write(common.info())
     if os.name == 'nt' and not common.LISTEN_VISIBLE:
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
