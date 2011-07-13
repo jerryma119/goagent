@@ -127,12 +127,14 @@ class MultiplexConnection(object):
             MultiplexConnection.window_ack = 0
             logging.warning(r'MultiplexConnection Cannot Connect to hostslist %s:%s, switch new window=%d', hostslist, port, MultiplexConnection.window)
             raise RuntimeError(r'MultiplexConnection Cannot Connect to hostslist %s:%s' % (hostslist, port))
-    def close(self):
+    def __del__(self):
         for soc in self._sockets:
             try:
-                soc.shutdown(socket.SHUT_RDWR)
+                soc.close()
+                del soc
             except:
                 pass
+        del self._sockets
 
 def socket_create_connection(address, timeout=None, source_address=None):
     host, port = address
@@ -143,7 +145,7 @@ def socket_create_connection(address, timeout=None, source_address=None):
             hostslist = common.GOOGLE_HOSTS
             #logging.debug("socket_create_connection connect hostslist: (%r, %r)", hostslist, port)
             conn = MultiplexConnection(hostslist, port)
-            conn.close()
+            #conn.close()
             soc = conn.socket
             soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
             return soc
@@ -536,12 +538,11 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.log_request(200)
         self.connection.sendall('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
-            ssl_sock = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
+            self._realpath = self.path
             self._realrfile = self.rfile
             self._realwfile = self.wfile
             self._realconnection = self.connection
-            self._realpath = self.path
-            self.connection = ssl_sock
+            self.connection = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
             self.raw_requestline = self.rfile.readline()
