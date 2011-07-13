@@ -553,14 +553,13 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.path = 'https://%s%s' % (self._realpath, self.path)
                 self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
             self.do_METHOD_GAE()
+        except socket.error, e:
+            logging.exception('do_CONNECT_GAE socket.error: %s', e)
+        finally:
             self.connection.shutdown(socket.SHUT_WR)
             self.rfile = self._realrfile
             self.wfile = self._realwfile
             self.connection = self._realconnection
-        except socket.error, e:
-            self.connection.shutdown(socket.SHUT_WR)
-            logging.exception('do_CONNECT_GAE socket.error: %s', e)
-            return
 
     def do_METHOD(self):
         host = self.headers.get('host')
