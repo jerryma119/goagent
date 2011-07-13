@@ -557,6 +557,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile = self._realwfile
             self.connection = self._realconnection
         except socket.error, e:
+            self.connection.shutdown(socket.SHUT_WR)
             logging.exception('do_CONNECT_GAE socket.error: %s', e)
             return
 
