@@ -83,8 +83,8 @@ class MultiplexConnection(object):
     '''multiplex tcp connection class'''
 
     timeout = 5
-    window = 6
-    window_min = 3
+    window = 8
+    window_min = 4
     window_max = 64
     window_ack = 0
 
@@ -123,14 +123,14 @@ class MultiplexConnection(object):
             else:
                 logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
-            MultiplexConnection.window = min(int(round(window*1.5)), 64)
+            MultiplexConnection.window = min(int(round(window*1.5)), self.window_max)
             MultiplexConnection.window_ack = 0
             logging.warning(r'MultiplexConnection Cannot Connect to hostslist %s:%s, switch new window=%d', hostslist, port, MultiplexConnection.window)
             raise RuntimeError(r'MultiplexConnection Cannot Connect to hostslist %s:%s' % (hostslist, port))
     def close(self):
         for soc in self._sockets:
             try:
-                soc.close()
+                soc.shutdown(socket.SHUT_RDWR)
             except:
                 pass
 
@@ -354,7 +354,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     opener = build_opener()
 
     def address_string(self):
-        return '%s:%s' % self.client_address[:2]
+        return '%s:%s' % (self.client_address[0], self.client_address[1])
 
     def send_response(self, code, message=None):
         self.log_request(code)
