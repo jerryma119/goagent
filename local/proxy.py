@@ -115,7 +115,7 @@ class MultiplexConnection(object):
                     hostslist[i:], hostslist[:i] = hostslist[:i], hostslist[i:]
                 if window > 1:
                     MultiplexConnection.window_ack += 1
-                    if MultiplexConnection.window_ack > 16 and window > MultiplexConnection.window_min:
+                    if MultiplexConnection.window_ack > 10 and window > MultiplexConnection.window_min:
                         MultiplexConnection.window = window - 1
                         MultiplexConnection.window_ack = 0
                         logging.info('MultiplexConnection CONNECT port=443 OK 10 times, switch new window=%d', MultiplexConnection.window)
