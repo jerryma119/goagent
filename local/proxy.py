@@ -349,7 +349,10 @@ def build_opener():
     else:
         system_proxy = urllib.getproxies().get('http', '')
         self_proxy = '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT)
-        handlers = [urllib2.ProxyHandler({})] if system_proxy.endswith(self_proxy) else []
+        if system_proxy and system_proxy.endswith(self_proxy):
+            handlers = [urllib2.ProxyHandler({})]
+        else:
+            handlers = []
     opener = urllib2.build_opener(*handlers)
     opener.addheaders = []
     return opener
