@@ -205,7 +205,6 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         logging.warning('socket_forward error=%s', ex)
         raise
     finally:
-        local.shutdown(socket.SHUT_RDWR)
         remote.shutdown(socket.SHUT_RDWR)
 
 class RootCA(object):
@@ -346,10 +345,12 @@ def build_opener():
             proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
         else:
             proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
-        proxy_handler = urllib2.ProxyHandler(proxies)
+        handlers = [urllib2.ProxyHandler(proxies)]
     else:
-        proxy_handler = urllib2.ProxyHandler({})
-    opener = urllib2.build_opener(proxy_handler)
+        system_proxy = urllib.getproxies().get('http', '')
+        self_proxy = '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT)
+        handlers = [urllib2.ProxyHandler({})] if system_proxy.endswith(self_proxy) else []
+    opener = urllib2.build_opener(*handlers)
     opener.addheaders = []
     return opener
 
