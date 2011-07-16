@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = 'beta'
+__version__ = '1.0 rc'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -25,8 +25,8 @@ class MainHandler(webapp.RequestHandler):
 
     FRP_Headers = ('', 'x-google-cache-control', 'via')
     Fetch_Max = 3
-    Fetch_MaxSize = 512*1000
-    Deadline = (15, 30)
+    Fetch_MaxSize = 1024*1024
+    Deadline = (16, 32)
 
     def sendResponse(self, status_code, headers, content='', method='', url=''):
         self.response.headers['Content-Type'] = 'image/gif'  # fake header
@@ -43,7 +43,8 @@ class MainHandler(webapp.RequestHandler):
         if status_code > 500:
             logging.warning('Response: "%s %s" %d %d/%d/%d', method, url, status_code, len(content), len(rdata), len(data))
         else:
-            logging.debug('Response: "%s %s" %d', method, url, status_code)
+            #logging.debug('Response: "%s %s" %d', method, url, status_code)
+            pass
         return self.response.out.write(data)
 
     def sendXmppResponse(self, xmpp_message, status_code, headers, content='', method='', url=''):
