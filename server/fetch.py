@@ -35,9 +35,8 @@ class MainHandler(webapp.RequestHandler):
         headers = gae_encode_data(headers)
         # Build send-data
         rdata = '%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
-        if contentType.startswith(('text', 'application')):
-            data = zlib.compress(rdata)
-            data = '1'+data if len(rdata)>len(data) else '0'+rdata
+        if contentType.startswith('text'):
+            data = '1' + zlib.compress(rdata)
         else:
             data = '0' + rdata
         if status_code > 500:
@@ -183,13 +182,13 @@ class MainHandler(webapp.RequestHandler):
 <html>
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-        <title>GoAgent %(version)s on GAE/已经在工作了</title>
+        <title>GoAgent %(version)s 已经在工作了</title>
     </head>
     <body>
         <table width="800" border="0" align="center">
             <tr><td align="center"><hr></td></tr>
             <tr><td align="center">
-                <b><h1>GoAgent %(version)s on GAE/已经在工作了</h1></b>
+                <b><h1>GoAgent %(version)s 已经在工作了</h1></b>
             </td></tr>
             <tr><td align="center"><hr></td></tr>
 
