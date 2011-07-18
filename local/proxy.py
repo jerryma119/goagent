@@ -62,7 +62,10 @@ class Common(object):
         self.AUTORANGE_ENDSWITH   = set(self.config.get('autorange', 'endswith').split('|'))
 
         self.HOSTS = dict(self.config.items('hosts'))
-        self.HOSTS.update((x.split()[1], x.split()[0]) for x in open(('/etc/hosts', os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts'))[os.name=='nt']) if x.strip() and not x.strip().startswith('#'))
+        try:
+            self.HOSTS.update((x.split()[1], x.split()[0]) for x in open(('/etc/hosts', os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts'))[os.name=='nt']) if x.strip() and not x.strip().startswith('#'))
+        except Exception, e:
+            logging.error('Merge system hosts config failed! error=%r', e)
 
     def info(self):
         info = ''
