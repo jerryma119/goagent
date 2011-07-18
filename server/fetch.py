@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = 'beta'
+__version__ = '1.0 rc'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -25,8 +25,8 @@ class MainHandler(webapp.RequestHandler):
 
     FRP_Headers = ('', 'x-google-cache-control', 'via')
     Fetch_Max = 3
-    Fetch_MaxSize = 512*1000
-    Deadline = (15, 30)
+    Fetch_MaxSize = 1024*1024
+    Deadline = (16, 32)
 
     def sendResponse(self, status_code, headers, content='', method='', url=''):
         self.response.headers['Content-Type'] = 'image/gif'  # fake header
@@ -35,15 +35,15 @@ class MainHandler(webapp.RequestHandler):
         headers = gae_encode_data(headers)
         # Build send-data
         rdata = '%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
-        if contentType.startswith(('text', 'application')):
-            data = zlib.compress(rdata)
-            data = '1'+data if len(rdata)>len(data) else '0'+rdata
+        if contentType.startswith('text'):
+            data = '1' + zlib.compress(rdata)
         else:
             data = '0' + rdata
         if status_code > 500:
             logging.warning('Response: "%s %s" %d %d/%d/%d', method, url, status_code, len(content), len(rdata), len(data))
         else:
-            logging.debug('Response: "%s %s" %d', method, url, status_code)
+            #logging.debug('Response: "%s %s" %d', method, url, status_code)
+            pass
         return self.response.out.write(data)
 
     def sendXmppResponse(self, xmpp_message, status_code, headers, content='', method='', url=''):
@@ -182,13 +182,13 @@ class MainHandler(webapp.RequestHandler):
 <html>
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-        <title>GoAgent %(version)s on GAE/已经在工作了</title>
+        <title>GoAgent %(version)s 已经在工作了</title>
     </head>
     <body>
         <table width="800" border="0" align="center">
             <tr><td align="center"><hr></td></tr>
             <tr><td align="center">
-                <b><h1>GoAgent %(version)s on GAE/已经在工作了</h1></b>
+                <b><h1>GoAgent %(version)s 已经在工作了</h1></b>
             </td></tr>
             <tr><td align="center"><hr></td></tr>
 

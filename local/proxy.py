@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = 'beta'
+__version__ = '1.0 rc'
 __author__ =  'phus.lu@gmail.com'
 
 import sys, os, re, time
@@ -32,7 +32,7 @@ class Common(object):
     def __init__(self):
         '''read proxy.ini config'''
         self.config = ConfigParser.ConfigParser()
-        self.config.read(self.__class__.FILENAME)
+        self.config.read(self.FILENAME)
 
         self.LISTEN_IP      = self.config.get('listen', 'ip')
         self.LISTEN_PORT    = self.config.getint('listen', 'port')
@@ -360,7 +360,7 @@ def build_opener():
     return opener
 
 class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    part_size = 1048576
+    part_size = 1024 * 1024
     skip_headers = set(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = build_opener()
 
