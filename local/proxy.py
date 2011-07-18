@@ -40,7 +40,7 @@ class Common(object):
 
         self.GAE_APPIDS     = self.config.get('gae', 'appid').replace('.appspot.com', '').split('|')
         self.GAE_PASSWORD   = self.config.get('gae', 'password').strip()
-        self.GAE_DEBUG      = self.config.get('gae', 'debug')
+        self.GAE_DEBUGLEVEL = self.config.getint('gae', 'debuglevel')
         self.GAE_PATH       = self.config.get('gae', 'path')
         self.GAE_BINDHOSTS  = tuple(self.config.get('gae', 'bindhosts').split('|')) if self.config.has_option('gae', 'bindhosts') else ()
         self.GAE_CERTS      = self.config.get('gae', 'certs').split('|')
@@ -63,7 +63,8 @@ class Common(object):
 
         self.HOSTS = dict(self.config.items('hosts'))
         try:
-            self.HOSTS.update((x.split()[1], x.split()[0]) for x in open(('/etc/hosts', os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts'))[os.name=='nt']) if x.strip() and not x.strip().startswith('#'))
+            hosts = os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts') if os.name=='nt' else '/etc/hosts'
+            self.HOSTS.update((x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#'))
         except Exception, e:
             logging.error('Merge system hosts config failed! error=%r', e)
 
@@ -72,7 +73,7 @@ class Common(object):
         info += '--------------------------------------------\n'
         info += 'OpenSSL Module : %s\n' % ('Enabled' if OpenSSL else 'Disabled')
         info += 'Listen Address : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
-        info += 'Log Level      : %s\n' % self.GAE_DEBUG
+        info += 'Debug Level    : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
         info += 'Local Proxy    : %s://%s:%s\n' % (self.PROXY_TYPE, self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'GAE Mode       : %s\n' % self.GOOGLE_PREFER
         info += 'GAE APPID      : %s\n' % '|'.join(self.GAE_APPIDS)
@@ -672,8 +673,8 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 
 if __name__ == '__main__':
     RootCA.checkCA()
-    if common.GAE_DEBUG != 'INFO':
-        logging.root.setLevel(getattr(logging, common.GAE_DEBUG, logging.DEBUG))
+    if common.GAE_DEBUGLEVEL:
+        logging.root.setLevel(logging.DEBUG)
     sys.stdout.write(common.info())
     if os.name == 'nt' and not common.LISTEN_VISIBLE:
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
