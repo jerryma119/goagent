@@ -64,9 +64,10 @@ class Common(object):
         self.HOSTS = dict(self.config.items('hosts'))
         try:
             hosts = os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts') if os.name=='nt' else '/etc/hosts'
-            self.HOSTS.update((x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#'))
+            config = [(x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#')]
+            self.HOSTS.update(config)
         except Exception, e:
-            logging.error('Merge system hosts config failed! error=%r', e)
+            logging.warning('Merge system hosts config failed! error=%r', e)
 
     def info(self):
         info = ''
