@@ -424,7 +424,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if e.reason[0] == 10054:
                         MultiplexConnection.window_ack = 0
                         MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
-                        common.GOOGLE_PREFER = 'https'
+                        #common.GOOGLE_PREFER = 'https'
                         sys.stdout.write(common.info())
                 errors.append(str(e))
                 continue
