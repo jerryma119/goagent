@@ -64,7 +64,7 @@ class Common(object):
         self.HOSTS = dict(self.config.items('hosts'))
         try:
             hosts = os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts') if os.name=='nt' else '/etc/hosts'
-            config = [(x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#')]
+            config = [(x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#') and not x.split()[0].startswith(('127.0.0', '::'))]
             self.HOSTS.update(config)
         except Exception, e:
             logging.warning('Merge system hosts config failed! error=%r', e)
@@ -119,7 +119,7 @@ class MultiplexConnection(object):
                 self._sockets.remove(self.socket)
                 if i > 0:
                     hostslist[i:], hostslist[:i] = hostslist[:i], hostslist[i:]
-                if window > 1:
+                if window > MultiplexConnection.window_min:
                     MultiplexConnection.window_ack += 1
                     if MultiplexConnection.window_ack > 10 and window > MultiplexConnection.window_min:
                         MultiplexConnection.window = window - 1
