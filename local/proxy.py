@@ -53,6 +53,7 @@ class Common(object):
         self.PROXY_PASSWROD = self.config.get('proxy', 'password')
 
         self.GOOGLE_PREFER     = self.config.get('google', 'prefer')
+        self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'switch')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
         self.GOOGLE_HOSTS      = [x.split('|') for x in self.config.get('google', 'hosts').split('||')]
@@ -424,8 +425,9 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if e.reason[0] == 10054:
                         MultiplexConnection.window_ack = 0
                         MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
-                        #common.GOOGLE_PREFER = 'https'
-                        sys.stdout.write(common.info())
+                        if common.GOOGLE_AUTOSWITCH:
+                            common.GOOGLE_PREFER = 'https'
+                            sys.stdout.write(common.info())
                 errors.append(str(e))
                 continue
             except Exception, e:
