@@ -53,7 +53,7 @@ class Common(object):
         self.PROXY_PASSWROD = self.config.get('proxy', 'password')
 
         self.GOOGLE_PREFER     = self.config.get('google', 'prefer')
-        self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'switch')
+        self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'autoswitch')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
         self.GOOGLE_HOSTS      = [x.split('|') for x in self.config.get('google', 'hosts').split('||')]
