@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.0 rc'
+__version__ = '1.0'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -125,7 +125,7 @@ class MainHandler(webapp.RequestHandler):
 
         for i in range(MainHandler.Fetch_Max):
             try:
-                response = urlfetch.fetch(url, payload, fetch_method, headers, False, False, deadline)
+                response = urlfetch.fetch(url, payload, fetch_method, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
                 #if method=='GET' and len(response.content)>0x1000000:
                 #    raise urlfetch.ResponseTooLargeError(None)
                 break

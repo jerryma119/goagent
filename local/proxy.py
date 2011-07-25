@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.0 rc'
+__version__ = '1.0'
 __author__ =  'phus.lu@gmail.com'
 
 import sys, os, re, time
@@ -53,9 +53,12 @@ class Common(object):
         self.PROXY_PASSWROD = self.config.get('proxy', 'password')
 
         self.GOOGLE_PREFER     = self.config.get('google', 'prefer')
+        self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'autoswitch')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
-        self.GOOGLE_HOSTS      = [x.split('|') for x in self.config.get('google', 'hosts').split('||')]
+        self.GOOGLE_HTTP       = [x.split('|') for x in self.config.get('google', 'http').split('||')]
+        self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
+        self.GOOGLE_HOSTS      = self.GOOGLE_HTTP if self.GOOGLE_PREFER == 'http' else self.GOOGLE_HTTPS
 
         self.AUTORANGE_HOSTS      = self.config.get('autorange', 'hosts').split('|')
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
@@ -64,7 +67,7 @@ class Common(object):
         self.HOSTS = dict(self.config.items('hosts'))
         try:
             hosts = os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts') if os.name=='nt' else '/etc/hosts'
-            config = [(x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#')]
+            config = [(x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#') and not x.split()[0].startswith(('127.0.0', '::'))]
             self.HOSTS.update(config)
         except Exception, e:
             logging.warning('Merge system hosts config failed! error=%r', e)
@@ -119,7 +122,7 @@ class MultiplexConnection(object):
                 self._sockets.remove(self.socket)
                 if i > 0:
                     hostslist[i:], hostslist[:i] = hostslist[:i], hostslist[i:]
-                if window > 1:
+                if window > MultiplexConnection.window_min:
                     MultiplexConnection.window_ack += 1
                     if MultiplexConnection.window_ack > 10 and window > MultiplexConnection.window_min:
                         MultiplexConnection.window = window - 1
@@ -209,9 +212,8 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                 break
     except Exception, ex:
         logging.warning('socket_forward error=%s', ex)
-        raise
     finally:
-        remote.shutdown(socket.SHUT_RDWR)
+        pass
 
 class RootCA(object):
     '''RootCA module, based on WallProxy 0.4.0'''
@@ -415,6 +417,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # www.google.cn:80 is down, switch to https
                 if e.code == 502 or e.code == 504:
                     common.GOOGLE_PREFER = 'https'
+                    common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
                     sys.stdout.write(common.info())
                 errors.append('%d: %s' % (e.code, httplib.responses.get(e.code, 'Unknown HTTPError')))
                 continue
@@ -424,8 +427,10 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if e.reason[0] == 10054:
                         MultiplexConnection.window_ack = 0
                         MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
-                        common.GOOGLE_PREFER = 'https'
-                        sys.stdout.write(common.info())
+                        if common.GOOGLE_AUTOSWITCH:
+                            common.GOOGLE_PREFER = 'https'
+                            common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
+                            sys.stdout.write(common.info())
                 errors.append(str(e))
                 continue
             except Exception, e:
@@ -537,6 +542,11 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             socket_forward(self.connection, soc, maxping=8)
         except:
             logging.exception('GaeProxyHandler.do_CONNECT_Direct Error')
+        finally:
+            try:
+                soc.close()
+            except:
+                pass
 
     def do_CONNECT_GAE(self):
         # for ssl proxy
@@ -616,8 +626,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             soc.sendall(data)
             socket_forward(self.connection, soc, maxping=10)
         except Exception, ex:
-            logging.exception('SimpleProxyHandler.do_GET Error, %s', ex)
-            self.send_error(502, 'SimpleProxyHandler.do_GET Error (%s)' % ex)
+            logging.exception('GaeProxyHandler.do_GET Error, %s', ex)
         finally:
             try:
                 soc.close()
