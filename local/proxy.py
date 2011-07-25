@@ -64,13 +64,14 @@ class Common(object):
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_ENDSWITH   = set(self.config.get('autorange', 'endswith').split('|'))
 
-        self.HOSTS = dict(self.config.items('hosts'))
-        try:
-            hosts = os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts') if os.name=='nt' else '/etc/hosts'
-            config = [(x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#') and not x.split()[0].startswith(('127.0.0', '::'))]
-            self.HOSTS.update(config)
-        except Exception, e:
-            logging.warning('Merge system hosts config failed! error=%r', e)
+        self.HOSTS = dict((k, v) for k, v in self.config.items('hosts') if not k.startswith('_'))
+        if self.config.getint('hosts', '__merge__'):
+            try:
+                hosts = os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts') if os.name=='nt' else '/etc/hosts'
+                config = [(x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#') and not x.split()[0].startswith(('127.0.0', '::'))]
+                self.HOSTS.update(config)
+            except Exception, e:
+                logging.warning('Merge system hosts config failed! error=%r', e)
 
     def info(self):
         info = ''
