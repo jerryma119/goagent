@@ -214,7 +214,7 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         logging.warning('socket_forward error=%s', ex)
         raise
     finally:
-        remote.shutdown(socket.SHUT_RDWR)
+        pass
 
 class RootCA(object):
     '''RootCA module, based on WallProxy 0.4.0'''
@@ -543,6 +543,11 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             socket_forward(self.connection, soc, maxping=8)
         except:
             logging.exception('GaeProxyHandler.do_CONNECT_Direct Error')
+        finally:
+            try:
+                soc.close()
+            except:
+                pass
 
     def do_CONNECT_GAE(self):
         # for ssl proxy
@@ -622,8 +627,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             soc.sendall(data)
             socket_forward(self.connection, soc, maxping=10)
         except Exception, ex:
-            logging.exception('SimpleProxyHandler.do_GET Error, %s', ex)
-            self.send_error(502, 'SimpleProxyHandler.do_GET Error (%s)' % ex)
+            logging.exception('GaeProxyHandler.do_GET Error, %s', ex)
         finally:
             try:
                 soc.close()
