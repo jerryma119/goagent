@@ -348,6 +348,7 @@ class AppVersionUpload(object):
         self.app_id = re.search(r'(?m)application:\s*(\S+)\s*', self.yaml).group(1)
         if '_' in self.app_id:
             self.app_id = raw_input('AppID: ')
+            self.app_id = self.app_id.replace('.appspot.com', '')
             self.yaml   = re.sub(r'(?m)application:\s*(\S+)', 'application: %s' % self.app_id, self.yaml)
         self.version = re.search(r'(?m)version:\s*(\S+)\s*', self.yaml).group(1)
         print self.yaml
