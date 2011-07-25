@@ -56,7 +56,9 @@ class Common(object):
         self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'autoswitch')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
-        self.GOOGLE_HOSTS      = [x.split('|') for x in self.config.get('google', 'hosts').split('||')]
+        self.GOOGLE_HTTP       = [x.split('|') for x in self.config.get('google', 'http').split('||')]
+        self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
+        self.GOOGLE_HOSTS      = self.GOOGLE_HTTP if self.GOOGLE_PREFER == 'http' else self.GOOGLE_HTTPS
 
         self.AUTORANGE_HOSTS      = self.config.get('autorange', 'hosts').split('|')
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
@@ -416,6 +418,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # www.google.cn:80 is down, switch to https
                 if e.code == 502 or e.code == 504:
                     common.GOOGLE_PREFER = 'https'
+                    common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
                     sys.stdout.write(common.info())
                 errors.append('%d: %s' % (e.code, httplib.responses.get(e.code, 'Unknown HTTPError')))
                 continue
@@ -427,6 +430,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
                         if common.GOOGLE_AUTOSWITCH:
                             common.GOOGLE_PREFER = 'https'
+                            common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
                             sys.stdout.write(common.info())
                 errors.append(str(e))
                 continue
