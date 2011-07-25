@@ -125,7 +125,7 @@ class MainHandler(webapp.RequestHandler):
 
         for i in range(MainHandler.Fetch_Max):
             try:
-                response = urlfetch.fetch(url, payload, fetch_method, headers, deadline=deadline, validate_certificate=False)
+                response = urlfetch.fetch(url, payload, fetch_method, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
                 #if method=='GET' and len(response.content)>0x1000000:
                 #    raise urlfetch.ResponseTooLargeError(None)
                 break
