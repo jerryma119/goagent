@@ -15,8 +15,11 @@ import random
 import ConfigParser
 import fnmatch
 import ssl
-import ctypes
 import threading, Queue
+try:
+    import ctypes
+except ImportError:
+    ctypes = None
 try:
     import OpenSSL
 except ImportError:
@@ -687,7 +690,7 @@ if __name__ == '__main__':
     if common.GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
     sys.stdout.write(common.info())
-    if os.name == 'nt' and not common.LISTEN_VISIBLE:
+    if ctypes and os.name == 'nt' and not common.LISTEN_VISIBLE:
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     SocketServer.TCPServer.address_family = {True:socket.AF_INET6, False:socket.AF_INET}[':' in common.LISTEN_IP]
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GaeProxyHandler)
