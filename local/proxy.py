@@ -361,6 +361,9 @@ def build_opener():
     opener.addheaders = []
     return opener
 
+def proxy_auth_header(username, password):
+    return 'Proxy-Authorization: Basic ' + base64.b64encode('%s:%s'%(urllib.unquote(username), urllib.unquote(password))).strip()
+
 class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
     skip_headers = set(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
@@ -533,7 +536,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n\r\n' % (self.command, ip, port, self.protocol_version)
                 if common.PROXY_USERNAME:
-                    data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
+                    data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 soc.sendall(data)
             socket_forward(self.connection, soc, maxping=8)
         except:
@@ -612,7 +615,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host' and not k.startswith('proxy-'))
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME:
-                    data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
+                    data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += 'Proxy-connection: close\r\n'
                 data += '\r\n'
 
