@@ -309,7 +309,7 @@ class RootCA(object):
         crtFile = os.path.join(basedir, 'certs/%s.crt' % host)
         if os.path.exists(keyFile):
             return (keyFile, crtFile)
-        if not OpenSSL:
+        if OpenSSL is None:
             keyFile = os.path.join(basedir, 'CA.key')
             crtFile = os.path.join(basedir, 'CA.crt')
             return (keyFile, crtFile)
@@ -327,10 +327,7 @@ class RootCA(object):
     def checkCA():
         #Check CA imported
         if os.name == 'nt':
-            basedir = os.path.dirname(__file__)
-            os.environ['PATH'] += os.pathsep + basedir
-            #cmd = r'certmgr.exe -add "%s\CA.crt" -c -s -r localMachine Root >NUL' % basedir
-            cmd = r'certutil.exe -store Root "GoAgent CA" >NUL || certutil.exe -f -addstore root CA.crt'
+            cmd = r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL && certmgr.exe -add CA.cer -c -s -r localMachine TrustedPublisher >NUL'
             if os.system(cmd) != 0:
                 logging.warn('Import GoAgent CA \'CA.crt\' %r failed.', cmd)
         #Check CA file
