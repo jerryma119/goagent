@@ -14,6 +14,7 @@ import BaseHTTPServer, SocketServer
 import random
 import ConfigParser
 import fnmatch
+import hashlib
 import ssl
 import threading, Queue
 try:
@@ -316,13 +317,10 @@ class RootCA(object):
             with RootCA.CALock:
                 if not os.path.isfile(keyFile):
                     logging.info('RootCA getCertificate for %r', host)
-                    serialFile = os.path.join(basedir, 'CA.srl')
-                    SERIAL = RootCA.readFile(serialFile)
-                    SERIAL = int(SERIAL)+1
-                    key, crt = RootCA.makeCert(host, RootCA.CA, SERIAL)
+                    serial = int(hashlib.md5(host).hexdigest(),16)
+                    key, crt = RootCA.makeCert(host, RootCA.CA, serial)
                     RootCA.writeFile(keyFile, key)
                     RootCA.writeFile(crtFile, crt)
-                    RootCA.writeFile(serialFile, str(SERIAL))
         return (keyFile, crtFile)
 
     @staticmethod
