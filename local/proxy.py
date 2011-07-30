@@ -324,15 +324,14 @@ class RootCA(object):
     def checkCA():
         #Check CA imported
         if os.name == 'nt':
-            cmd = r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL && certmgr.exe -add CA.cer -c -s -r localMachine TrustedPublisher >NUL'
+            cmd = r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL'
             if os.system(cmd) != 0:
-                logging.warn('Import GoAgent CA \'CA.cer\' %r failed.', cmd)
-        #Check CA file
-        cakeyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
-        cacrtFile = os.path.join(os.path.dirname(__file__), 'CA.cer')
-        cakey = RootCA.readFile(cakeyFile)
-        cacrt = RootCA.readFile(cacrtFile)
+                logging.warn('Import GoAgent CA failed -- CA.cer')
         if OpenSSL:
+            keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
+            crtFile = os.path.join(os.path.dirname(__file__), 'CA.cer')
+            cakey = RootCA.readFile(keyFile)
+            cacrt = RootCA.readFile(crtFile)
             RootCA.CA = (RootCA.loadPEM(cakey, 0), RootCA.loadPEM(cacrt, 2))
             for host in common.GAE_CERTS:
                 RootCA.getCertificate(host)
