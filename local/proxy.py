@@ -311,7 +311,7 @@ class RootCA(object):
             return (keyFile, crtFile)
         if OpenSSL is None:
             keyFile = os.path.join(basedir, 'CA.key')
-            crtFile = os.path.join(basedir, 'CA.crt')
+            crtFile = os.path.join(basedir, 'CA.cer')
             return (keyFile, crtFile)
         if not os.path.isfile(keyFile):
             with RootCA.CALock:
@@ -329,10 +329,10 @@ class RootCA(object):
         if os.name == 'nt':
             cmd = r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL && certmgr.exe -add CA.cer -c -s -r localMachine TrustedPublisher >NUL'
             if os.system(cmd) != 0:
-                logging.warn('Import GoAgent CA \'CA.crt\' %r failed.', cmd)
+                logging.warn('Import GoAgent CA \'CA.cer\' %r failed.', cmd)
         #Check CA file
         cakeyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
-        cacrtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
+        cacrtFile = os.path.join(os.path.dirname(__file__), 'CA.cer')
         cakey = RootCA.readFile(cakeyFile)
         cacrt = RootCA.readFile(cacrtFile)
         if OpenSSL:
