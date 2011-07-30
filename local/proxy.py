@@ -17,10 +17,7 @@ import fnmatch
 import hashlib
 import ssl
 import threading, Queue
-try:
-    import ctypes
-except ImportError:
-    ctypes = None
+import ctypes
 try:
     import OpenSSL
 except ImportError:
