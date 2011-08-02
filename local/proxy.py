@@ -22,6 +22,10 @@ try:
     import OpenSSL
 except ImportError:
     OpenSSL = None
+try:
+    import ntlm, ntlm.HTTPNtlmAuthHandler
+except:
+    ntlm = None
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
 
@@ -344,11 +348,18 @@ def gae_decode_data(qs):
 
 def build_opener():
     if common.PROXY_ENABLE:
-        if common.PROXY_USERNAME:
-            proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
+        if '\\' not in common.PROXY_USERNAME:
+            if common.PROXY_USERNAME:
+                proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
+            else:
+                proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
+            handlers = [urllib2.ProxyHandler(proxies)]
         else:
-            proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
-        handlers = [urllib2.ProxyHandler(proxies)]
+            '''http://code.google.com/p/python-ntlm/'''
+            passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
+            base_uri = '%s://%s:%s' % (common.PROXY_TYPE, common.PROXY_HOST, common.PROXY_PORT)
+            passman.add_password(None, base_uri, common.PROXY_USERNAME, common.PROXY_PASSWROD)
+            handlers = [ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)]
     else:
         system_proxy = urllib.getproxies().get('http', '')
         self_proxy = '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT)
