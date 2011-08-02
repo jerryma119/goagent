@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.0'
+__version__ = '1.1'
 __author__ =  'phus.lu@gmail.com'
 
 import sys, os, re, time
@@ -14,9 +14,10 @@ import BaseHTTPServer, SocketServer
 import random
 import ConfigParser
 import fnmatch
+import hashlib
 import ssl
-import ctypes
 import threading, Queue
+import ctypes
 try:
     import OpenSSL
 except ImportError:
@@ -305,39 +306,32 @@ class RootCA(object):
         crtFile = os.path.join(basedir, 'certs/%s.crt' % host)
         if os.path.exists(keyFile):
             return (keyFile, crtFile)
-        if not OpenSSL:
+        if OpenSSL is None:
             keyFile = os.path.join(basedir, 'CA.key')
-            crtFile = os.path.join(basedir, 'CA.crt')
+            crtFile = os.path.join(basedir, 'CA.cer')
             return (keyFile, crtFile)
         if not os.path.isfile(keyFile):
             with RootCA.CALock:
                 if not os.path.isfile(keyFile):
                     logging.info('RootCA getCertificate for %r', host)
-                    serialFile = os.path.join(basedir, 'CA.srl')
-                    SERIAL = RootCA.readFile(serialFile)
-                    SERIAL = int(SERIAL)+1
-                    key, crt = RootCA.makeCert(host, RootCA.CA, SERIAL)
+                    serial = int(hashlib.md5(host).hexdigest(),16)
+                    key, crt = RootCA.makeCert(host, RootCA.CA, serial)
                     RootCA.writeFile(keyFile, key)
                     RootCA.writeFile(crtFile, crt)
-                    RootCA.writeFile(serialFile, str(SERIAL))
         return (keyFile, crtFile)
 
     @staticmethod
     def checkCA():
         #Check CA imported
         if os.name == 'nt':
-            basedir = os.path.dirname(__file__)
-            os.environ['PATH'] += os.pathsep + basedir
-            #cmd = r'certmgr.exe -add "%s\CA.crt" -c -s -r localMachine Root >NUL' % basedir
-            cmd = r'certutil.exe -store Root "GoAgent CA" >NUL || certutil.exe -f -addstore root CA.crt'
+            cmd = r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL'
             if os.system(cmd) != 0:
-                logging.warn('Import GoAgent CA \'CA.crt\' %r failed.', cmd)
-        #Check CA file
-        cakeyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
-        cacrtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
-        cakey = RootCA.readFile(cakeyFile)
-        cacrt = RootCA.readFile(cacrtFile)
+                logging.warn('Import GoAgent CA failed -- CA.cer')
         if OpenSSL:
+            keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
+            crtFile = os.path.join(os.path.dirname(__file__), 'CA.cer')
+            cakey = RootCA.readFile(keyFile)
+            cacrt = RootCA.readFile(crtFile)
             RootCA.CA = (RootCA.loadPEM(cakey, 0), RootCA.loadPEM(cacrt, 2))
             for host in common.GAE_CERTS:
                 RootCA.getCertificate(host)
@@ -365,6 +359,9 @@ def build_opener():
     opener = urllib2.build_opener(*handlers)
     opener.addheaders = []
     return opener
+
+def proxy_auth_header(username, password):
+    return 'Proxy-Authorization: Basic ' + base64.b64encode('%s:%s'%(urllib.unquote(username), urllib.unquote(password))).strip()
 
 class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
@@ -538,7 +535,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n\r\n' % (self.command, ip, port, self.protocol_version)
                 if common.PROXY_USERNAME:
-                    data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
+                    data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 soc.sendall(data)
             socket_forward(self.connection, soc, maxping=8)
         except:
@@ -617,7 +614,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host' and not k.startswith('proxy-'))
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME:
-                    data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s'%(urllib.unquote(common.PROXY_USERNAME), urllib.unquote(common.PROXY_PASSWROD))).strip()
+                    data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += 'Proxy-connection: close\r\n'
                 data += '\r\n'
 
@@ -687,7 +684,7 @@ if __name__ == '__main__':
     if common.GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
     sys.stdout.write(common.info())
-    if os.name == 'nt' and not common.LISTEN_VISIBLE:
+    if ctypes and os.name == 'nt' and not common.LISTEN_VISIBLE:
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     SocketServer.TCPServer.address_family = {True:socket.AF_INET6, False:socket.AF_INET}[':' in common.LISTEN_IP]
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GaeProxyHandler)
