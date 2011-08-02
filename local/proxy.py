@@ -24,7 +24,7 @@ except ImportError:
     OpenSSL = None
 try:
     import ntlm, ntlm.HTTPNtlmAuthHandler
-except:
+except ImportError:
     ntlm = None
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
@@ -356,17 +356,15 @@ def build_opener():
             handlers = [urllib2.ProxyHandler(proxies)]
         else:
             '''http://code.google.com/p/python-ntlm/'''
+            if ntlm is None:
+                logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', common.PROXY_HOST, common.PROXY_PORT)
+                sys.exit(-1)
             passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
             base_uri = '%s://%s:%s' % (common.PROXY_TYPE, common.PROXY_HOST, common.PROXY_PORT)
             passman.add_password(None, base_uri, common.PROXY_USERNAME, common.PROXY_PASSWROD)
             handlers = [ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)]
     else:
-        system_proxy = urllib.getproxies().get('http', '')
-        self_proxy = '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT)
-        if system_proxy and system_proxy.endswith(self_proxy):
-            handlers = [urllib2.ProxyHandler({})]
-        else:
-            handlers = []
+        handlers = [urllib2.ProxyHandler({})]
     opener = urllib2.build_opener(*handlers)
     opener.addheaders = []
     return opener
