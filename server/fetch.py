@@ -6,7 +6,7 @@
 __version__ = '1.0'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
-__gaaccount__ = '' # UA-24919754-1
+__conntenthook__ = None
 
 import zlib, logging, time, re, struct, base64, binascii
 from google.appengine.ext import webapp
@@ -35,8 +35,8 @@ class MainHandler(webapp.RequestHandler):
         headers = gae_encode_data(headers)
         # Build send-data
         if contentType.startswith('text'):
-            if __gaaccount__ and contentType.startswith('text/html'):
-                content = content.replace('</head>', '<script type="text/javascript">var _gaq=_gaq||[];_gaq.push(["_setAccount","%s"]);_gaq.push(["_trackPageview"]);  (function(){    var ga=document.createElement("script");ga.type="text/javascript";ga.async=true;    ga.src=("https:"==document.location.protocol?"https://ssl":"http://www")+".google-analytics.com/ga.js";    var s=document.getElementsByTagName("script")[0];s.parentNode.insertBefore(ga,s); })();</script></head>' % __gaaccount__)
+            if __conntenthook__ and contentType.startswith('text/html'):
+                content = re.sub(__conntenthook__[0], __conntenthook__[1], content)
             rdata = '%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
             data = '1' + zlib.compress(rdata)
         else:

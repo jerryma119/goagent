@@ -56,6 +56,7 @@ class Common(object):
         self.PROXY_PORT     = self.config.getint('proxy', 'port')
         self.PROXY_USERNAME = self.config.get('proxy', 'username')
         self.PROXY_PASSWROD = self.config.get('proxy', 'password')
+        self.PROXY_NTLM     = bool(self.config.getint('proxy', 'ntlm')) if self.config.has_option('proxy', 'ntlm') else '\\' in self.PROXY_USERNAME
 
         self.GOOGLE_PREFER     = self.config.get('google', 'prefer')
         self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'autoswitch')
@@ -328,7 +329,7 @@ class RootCA(object):
     def checkCA():
         #Check CA imported
         if os.name == 'nt':
-            if 'GoAgent CA' not in  os.popen(r'certmgr.exe -s -r localMachine root').read():
+            #if 'GoAgent CA' not in  os.popen(r'certmgr.exe -s -r localMachine root').read():
                 if os.system(r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL') != 0:
                     logging.warn('Import GoAgent CA failed -- CA.cer')
         if OpenSSL:
@@ -348,14 +349,7 @@ def gae_decode_data(qs):
 
 def build_opener():
     if common.PROXY_ENABLE:
-        if '\\' not in common.PROXY_USERNAME:
-            if common.PROXY_USERNAME:
-                proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
-            else:
-                proxies = {common.PROXY_TYPE:'%s:%d'%(common.PROXY_HOST, common.PROXY_PORT)}
-            handlers = [urllib2.ProxyHandler(proxies)]
-        else:
-            '''http://code.google.com/p/python-ntlm/'''
+        if common.PROXY_NTLM:
             if ntlm is None:
                 logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', common.PROXY_HOST, common.PROXY_PORT)
                 sys.exit(-1)
@@ -363,10 +357,9 @@ def build_opener():
             base_uri = '%s://%s:%s' % (common.PROXY_TYPE, common.PROXY_HOST, common.PROXY_PORT)
             passman.add_password(None, base_uri, common.PROXY_USERNAME, common.PROXY_PASSWROD)
             handlers = [ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)]
-            #do_CONNECT_DIRECT/do_METHOD_DIRECT cannot pass ntlm, so we should set google_sites empty
-            common.GOOGLE_SITES = ()
-            common.GOOGLE_PREFER = 'https'
-            common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
+        else:
+            proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
+            handlers = [urllib2.ProxyHandler(proxies)]
     else:
         handlers = [urllib2.ProxyHandler({})]
     opener = urllib2.build_opener(*handlers)
@@ -527,7 +520,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
+        if not common.PROXY_NTLM and host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
             return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_GAE()
@@ -592,7 +585,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
-        if host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
+        if not common.PROXY_NTLM and host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
             if self.path.startswith(common.GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header("Location", self.path.replace('http://', 'https://'))
