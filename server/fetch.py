@@ -6,6 +6,7 @@
 __version__ = '1.0'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
+__gaaccount__ = '' # UA-24919754-1
 
 import zlib, logging, time, re, struct, base64, binascii
 from google.appengine.ext import webapp
@@ -31,14 +32,15 @@ class MainHandler(webapp.RequestHandler):
     def sendResponse(self, status_code, headers, content='', method='', url=''):
         self.response.headers['Content-Type'] = 'image/gif'  # fake header
         contentType = headers.get('content-type', '').lower()
-
         headers = gae_encode_data(headers)
         # Build send-data
-        rdata = '%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
         if contentType.startswith('text'):
+            if __gaaccount__ and contentType.startswith('text/html'):
+                content = content.replace('</head>', '<script type="text/javascript">var _gaq=_gaq||[];_gaq.push(["_setAccount","%s"]);_gaq.push(["_trackPageview"]);  (function(){    var ga=document.createElement("script");ga.type="text/javascript";ga.async=true;    ga.src=("https:"==document.location.protocol?"https://ssl":"http://www")+".google-analytics.com/ga.js";    var s=document.getElementsByTagName("script")[0];s.parentNode.insertBefore(ga,s); })();</script></head>' % __gaaccount__)
+            rdata = '%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
             data = '1' + zlib.compress(rdata)
         else:
-            data = '0' + rdata
+            data = '0%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
         if status_code > 500:
             logging.warning('Response: "%s %s" %d %d/%d/%d', method, url, status_code, len(content), len(rdata), len(data))
         else:
