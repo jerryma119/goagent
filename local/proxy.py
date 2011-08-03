@@ -624,7 +624,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     host = common.HOSTS.get(host, host)
                 data ='%s %s %s\r\n'  % (self.command, urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, '')), self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host' and not k.startswith('proxy-'))
+                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME:
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
