@@ -357,6 +357,8 @@ def build_opener():
             base_uri = '%s://%s:%s' % (common.PROXY_TYPE, common.PROXY_HOST, common.PROXY_PORT)
             passman.add_password(None, base_uri, common.PROXY_USERNAME, common.PROXY_PASSWROD)
             handlers = [ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)]
+            # magic: set gooogle_sites empty to pass ntlm
+            common.GOOGLE_SITES = ()
         else:
             proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
             handlers = [urllib2.ProxyHandler(proxies)]
@@ -520,7 +522,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if not common.PROXY_NTLM and host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
+        if host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
             return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_GAE()
@@ -585,7 +587,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
-        if not common.PROXY_NTLM and host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
+        if host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
             if self.path.startswith(common.GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header("Location", self.path.replace('http://', 'https://'))
