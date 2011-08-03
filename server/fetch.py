@@ -3,24 +3,23 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.0'
+__version__ = '1.2'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
-__conntenthook__ = None
+__conntent_hook__ = None
 
-import zlib, logging, time, re, struct, base64, binascii
+import zlib, logging, time, re, struct
+from binascii import b2a_hex, a2b_hex
 from google.appengine.ext import webapp
-from google.appengine.ext import db
 from google.appengine.ext.webapp.util import run_wsgi_app
 from google.appengine.api import urlfetch
-from google.appengine.api import xmpp
 from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 
 def gae_encode_data(dic):
-    return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
+    return '&'.join('%s=%s' % (k, b2a_hex(str(v))) for k, v in dic.iteritems())
 
 def gae_decode_data(qs):
-    return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
+    return dict((k, a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
 
 class MainHandler(webapp.RequestHandler):
 
@@ -35,52 +34,28 @@ class MainHandler(webapp.RequestHandler):
         headers = gae_encode_data(headers)
         # Build send-data
         if contentType.startswith('text'):
-            if __conntenthook__ and contentType.startswith('text/html'):
-                content = re.sub(__conntenthook__[0], __conntenthook__[1], content)
+            if __conntent_hook__ and contentType.startswith('text/html'):
+                content = re.sub(__conntent_hook__[0], __conntent_hook__[1], content)
             rdata = '%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
             data = '1' + zlib.compress(rdata)
         else:
             data = '0%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
-        if status_code > 500:
+        if status_code == 555:
             logging.warning('Response: "%s %s" %d %d/%d/%d', method, url, status_code, len(content), len(rdata), len(data))
         else:
             #logging.debug('Response: "%s %s" %d', method, url, status_code)
             pass
         return self.response.out.write(data)
 
-    def sendXmppResponse(self, xmpp_message, status_code, headers, content='', method='', url=''):
-        self.response.headers['Content-Type'] = 'application/octet-stream'
-        contentType = headers.get('content-type', '').lower()
-
-        headers = gae_encode_data(headers)
-        rdata = '%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
-        data = '2' + base64.b64encode(rdata)
-        if status_code > 500:
-            logging.warning('Response: "%s %s" %d %d/%d/%d', method, url, status_code, len(content), len(rdata), len(data))
-        else:
-            logging.debug('Response: "%s %s" %d', method, url, status_code)
-        maxsize = 2000
-        for i in xrange(0, len(data), maxsize):
-            xmpp_message.reply(data[i:i+maxsize]+'\r\n')
-        xmpp_message.reply('\r\n')
-
     def sendNotify(self, status_code, content, method='', url='', fullContent=False):
         if not fullContent and status_code!=555:
-            content = '<h2>Fetch Server Info</h2><hr noshade="noshade"><p>Code: %d</p>' \
-                      '<p>Message: %s</p>' % (status_code, content)
+            content = '<h2>Fetch Server Info</h2><hr noshade="noshade"><p>Code: %d</p><p>Message: %s</p>' % (status_code, content)
         headers = {'content-type':'text/html', 'content-length':len(content)}
         self.sendResponse(status_code, headers, content, method, url)
 
     def post(self):
-        xmpp_mode = (self.request.path == '/_ah/xmpp/message/chat/')
-        if xmpp_mode:
-            xmpp_message = xmpp.Message(self.request.POST)
-            request = gae_decode_data(xmpp_message.body.replace('&amp;', '&'))
-            logging.debug('MainHandler post get xmpp request %s', request)
-        else:
-            xmpp_message = None
-            request = gae_decode_data(zlib.decompress(self.request.body))
-            #logging.debug('MainHandler post get fetch request %s', request)
+        request = gae_decode_data(zlib.decompress(self.request.body))
+        #logging.debug('MainHandler post get fetch request %s', request)
 
         if __password__ and __password__ != request.get('password', ''):
             return self.sendNotify(403, 'Fobbidon -- wrong password. Please check your proxy.ini and fetch.py.')
@@ -172,10 +147,7 @@ class MainHandler(webapp.RequestHandler):
                     i += 1
             response.headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
         response.headers['connection'] = 'close'
-        if xmpp_mode:
-            return self.sendXmppResponse(xmpp_message, response.status_code, response.headers, response.content, method, url)
-        else:
-            return self.sendResponse(response.status_code, response.headers, response.content, method, url)
+        return self.sendResponse(response.status_code, response.headers, response.content, method, url)
 
     def get(self):
         self.response.headers['Content-Type'] = 'text/html; charset=utf-8'
@@ -214,8 +186,7 @@ class MainHandler(webapp.RequestHandler):
 ''' % dict(version=__version__))
 
 def main():
-    #application = webapp.WSGIApplication([('/_ah/xmpp/message/chat/', MainHandler),('/fetch.py', MainHandler)],debug=True)
-    application = webapp.WSGIApplication([('/fetch.py', MainHandler)], debug=True)
+    application = webapp.WSGIApplication([('/fetch.py', MainHandler)], debug=False)
     run_wsgi_app(application)
 
 if __name__ == '__main__':
