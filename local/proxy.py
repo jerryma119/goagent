@@ -546,9 +546,10 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     ip = random.choice(common.GOOGLE_HOSTS[0])
                 else:
                     ip = random.choice(common.HOSTS.get(host, host)[0])
-                data = '%s %s:%s %s\r\n\r\n' % (self.command, ip, port, self.protocol_version)
+                data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
                 if common.PROXY_USERNAME:
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
+                data += '\r\n'
                 soc.sendall(data)
             socket_forward(self.connection, soc, maxping=8)
         except:
