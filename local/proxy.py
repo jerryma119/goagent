@@ -154,7 +154,7 @@ class MultiplexConnection(object):
 def socket_create_connection(address, timeout=None, source_address=None):
     host, port = address
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host.endswith('.appspot.com') or host.endswith(common.GOOGLE_SITES):
+    if host.endswith(common.GOOGLE_SITES):
         msg = 'socket_create_connection returns an empty list'
         try:
             hostslist = common.GOOGLE_HOSTS
@@ -365,6 +365,8 @@ def build_opener():
             handlers = [ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)]
             #do_CONNECT_DIRECT/do_METHOD_DIRECT cannot pass ntlm, so we should set google_sites empty
             common.GOOGLE_SITES = ()
+            common.GOOGLE_PREFER = 'https'
+            common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
     else:
         handlers = [urllib2.ProxyHandler({})]
     opener = urllib2.build_opener(*handlers)
