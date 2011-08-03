@@ -328,9 +328,9 @@ class RootCA(object):
     def checkCA():
         #Check CA imported
         if os.name == 'nt':
-            cmd = r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL'
-            if os.system(cmd) != 0:
-                logging.warn('Import GoAgent CA failed -- CA.cer')
+            if 'GoAgent CA' not in  os.popen(r'certmgr.exe -s -r localMachine root').read():
+                if os.system(r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL') != 0:
+                    logging.warn('Import GoAgent CA failed -- CA.cer')
         if OpenSSL:
             keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
             crtFile = os.path.join(os.path.dirname(__file__), 'CA.cer')
