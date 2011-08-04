@@ -3,8 +3,8 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.1'
-__author__ =  'phus.lu@gmail.com'
+__version__ = '1.2'
+__author__ =  'phus.lu@gmail.com;hewigovens@gmail.com'
 
 import sys, os, re, time
 import errno, zlib, struct, binascii, base64
@@ -692,8 +692,10 @@ if __name__ == '__main__':
     if common.GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
     sys.stdout.write(common.info())
-    if ctypes and os.name == 'nt' and not common.LISTEN_VISIBLE:
-        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+    if ctypes and os.name == 'nt':
+        if not common.LISTEN_VISIBLE:
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
     SocketServer.TCPServer.address_family = {True:socket.AF_INET6, False:socket.AF_INET}[':' in common.LISTEN_IP]
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GaeProxyHandler)
     httpd.serve_forever()
