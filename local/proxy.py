@@ -349,19 +349,18 @@ def gae_decode_data(qs):
 
 def build_opener():
     if common.PROXY_ENABLE:
+        proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
+        handlers = [urllib2.ProxyHandler(proxies)]
         if common.PROXY_NTLM:
             if ntlm is None:
                 logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', common.PROXY_HOST, common.PROXY_PORT)
                 sys.exit(-1)
             passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
-            base_uri = '%s://%s:%s' % (common.PROXY_TYPE, common.PROXY_HOST, common.PROXY_PORT)
-            passman.add_password(None, base_uri, common.PROXY_USERNAME, common.PROXY_PASSWROD)
-            handlers = [ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)]
+            passman.add_password(None, '%s://%s:%s' % (common.PROXY_TYPE, common.PROXY_HOST, common.PROXY_PORT), common.PROXY_USERNAME, common.PROXY_PASSWROD)
+            auth_NTLM = ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)
+            handlers.append(auth_NTLM)
             # magic: set gooogle_sites empty to pass ntlm
             common.GOOGLE_SITES = ()
-        else:
-            proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
-            handlers = [urllib2.ProxyHandler(proxies)]
     else:
         handlers = [urllib2.ProxyHandler({})]
     opener = urllib2.build_opener(*handlers)
