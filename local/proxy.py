@@ -688,14 +688,14 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     allow_reuse_address = True
 
 if __name__ == '__main__':
-    RootCA.checkCA()
-    if common.GAE_DEBUGLEVEL:
-        logging.root.setLevel(logging.DEBUG)
-    sys.stdout.write(common.info())
     if ctypes and os.name == 'nt':
+        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
-        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
+    if common.GAE_DEBUGLEVEL:
+        logging.root.setLevel(logging.DEBUG)
+    RootCA.checkCA()
+    sys.stdout.write(common.info())
     SocketServer.TCPServer.address_family = {True:socket.AF_INET6, False:socket.AF_INET}[':' in common.LISTEN_IP]
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GaeProxyHandler)
     httpd.serve_forever()
