@@ -345,7 +345,10 @@ class AppVersionUpload(object):
         """
         self.server = server
         self.yaml = open('app.yaml', 'rb').read()
-        self.app_id = re.search(r'(?m)application:\s*(\S+)\s*', self.yaml).group(1)
+        if 'AppID' in os.environ:
+            self.app_id = os.environ['AppID']
+        else:
+            self.app_id = re.search(r'(?m)application:\s*(\S+)\s*', self.yaml).group(1)
         if '_' in self.app_id:
             self.app_id = raw_input('AppID: ')
             self.app_id = self.app_id.replace('.appspot.com', '')
