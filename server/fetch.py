@@ -24,7 +24,7 @@ def gae_decode_data(qs):
 class MainHandler(webapp.RequestHandler):
 
     FRP_Headers = ('', 'x-google-cache-control', 'via')
-    Fetch_Max = 3
+    Fetch_Max = 2
     Fetch_MaxSize = 1024*1024
     Deadline = (16, 32)
 
@@ -100,7 +100,7 @@ class MainHandler(webapp.RequestHandler):
             headers[key] = value
         headers['Connection'] = 'close'
 
-        for i in xrange(int(request.get('fetchmax', MainHandler.Fetch_Max))):
+        for i in xrange(int(request.get('fetchmax', MainHandler.Fetch_Max))+1):
             try:
                 response = urlfetch.fetch(url, payload, fetch_method, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
                 #if method=='GET' and len(response.content)>0x1000000:
