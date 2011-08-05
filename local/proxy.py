@@ -43,7 +43,7 @@ class Common(object):
         self.LISTEN_PORT    = self.config.getint('listen', 'port')
         self.LISTEN_VISIBLE = self.config.getint('listen', 'visible')
 
-        self.GAE_APPIDS     = self.config.get('gae', 'appid').replace('.appspot.com', '').split('|')
+        self.GAE_APPIDS     = tuple(self.config.get('gae', 'appid').replace('.appspot.com', '').split('|'))
         self.GAE_PASSWORD   = self.config.get('gae', 'password').strip()
         self.GAE_DEBUGLEVEL = self.config.getint('gae', 'debuglevel')
         self.GAE_PATH       = self.config.get('gae', 'path')
@@ -65,6 +65,9 @@ class Common(object):
         self.GOOGLE_HTTP       = [x.split('|') for x in self.config.get('google', 'http').split('||')]
         self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
         self.GOOGLE_HOSTS      = self.GOOGLE_HTTP if self.GOOGLE_PREFER == 'http' else self.GOOGLE_HTTPS
+
+        self.FETCHMAX_LOCAL  = self.config.getint('fetchmax', 'local') if self.config.get('fetchmax', 'local') else 3
+        self.FETCHMAX_SERVER = self.config.get('fetchmax', 'server')
 
         self.AUTORANGE_HOSTS      = tuple(self.config.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
@@ -394,8 +397,10 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.debug('GaeProxyHandler fetch params %s', params)
         if common.GAE_PASSWORD:
             params['password'] = common.GAE_PASSWORD
+        if common.FETCHMAX_SERVER:
+            params['fetchmax'] = int(common.FETCHMAX_SERVER)
         params = gae_encode_data(params)
-        for i in range(1, 4):
+        for i in xrange(common.FETCHMAX_LOCAL):
             try:
                 if len(common.GAE_APPIDS) == 1:
                     appid = common.GAE_APPIDS[0]
