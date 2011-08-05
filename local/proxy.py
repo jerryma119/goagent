@@ -66,9 +66,9 @@ class Common(object):
         self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
         self.GOOGLE_HOSTS      = self.GOOGLE_HTTP if self.GOOGLE_PREFER == 'http' else self.GOOGLE_HTTPS
 
-        self.AUTORANGE_HOSTS      = self.config.get('autorange', 'hosts').split('|')
+        self.AUTORANGE_HOSTS      = tuple(self.config.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
-        self.AUTORANGE_ENDSWITH   = set(self.config.get('autorange', 'endswith').split('|'))
+        self.AUTORANGE_ENDSWITH   = frozenset(self.config.get('autorange', 'endswith').split('|'))
 
         self.HOSTS = dict((k, v) for k, v in self.config.items('hosts') if not k.startswith('_'))
         if self.config.getint('hosts', '__merge__'):
@@ -372,7 +372,7 @@ def proxy_auth_header(username, password):
 
 class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
-    skip_headers = set(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
+    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = build_opener()
 
     def address_string(self):
