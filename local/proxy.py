@@ -359,8 +359,6 @@ def build_opener():
             passman.add_password(None, '%s://%s:%s' % (common.PROXY_TYPE, common.PROXY_HOST, common.PROXY_PORT), common.PROXY_USERNAME, common.PROXY_PASSWROD)
             auth_NTLM = ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)
             handlers.append(auth_NTLM)
-            # magic: set gooogle_sites empty to pass ntlm
-            common.GOOGLE_SITES = ()
     else:
         handlers = [urllib2.ProxyHandler({})]
     opener = urllib2.build_opener(*handlers)
@@ -541,7 +539,8 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
-                if common.PROXY_USERNAME:
+                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
+                if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += '\r\n'
                 soc.sendall(data)
