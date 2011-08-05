@@ -100,7 +100,7 @@ class MainHandler(webapp.RequestHandler):
             headers[key] = value
         headers['Connection'] = 'close'
 
-        for i in range(MainHandler.Fetch_Max):
+        for i in xrange(int(request.get('fetchmax', MainHandler.Fetch_Max))):
             try:
                 response = urlfetch.fetch(url, payload, fetch_method, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
                 #if method=='GET' and len(response.content)>0x1000000:
