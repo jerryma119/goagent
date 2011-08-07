@@ -132,7 +132,7 @@ class MultiplexConnection(object):
                     if MultiplexConnection.window_ack > 10 and window > MultiplexConnection.window_min:
                         MultiplexConnection.window = window - 1
                         MultiplexConnection.window_ack = 0
-                        logging.info('MultiplexConnection CONNECT port=443 OK 10 times, switch new window=%d', MultiplexConnection.window)
+                        logging.info('MultiplexConnection CONNECT port=%s OK 10 times, switch new window=%d', port, MultiplexConnection.window)
                 break
             else:
                 logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
@@ -613,10 +613,11 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     host = random.choice(common.GOOGLE_HOSTS[0])
                 else:
                     host = common.HOSTS.get(host, host)
-                data ='%s %s %s\r\n'  % (self.command, urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, '')), self.request_version)
+                url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
+                data ='%s %s %s\r\n'  % (self.command, url, self.request_version)
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
                 data += 'Host: %s\r\n' % netloc
-                if common.PROXY_USERNAME:
+                if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += 'Proxy-connection: close\r\n'
                 data += '\r\n'
