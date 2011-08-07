@@ -228,19 +228,13 @@ class CertUtil(object):
 
     @staticmethod
     def readFile(filename):
-        try:
-            f = open(filename, 'rb')
-            c = f.read()
-            f.close()
-            return c
-        except IOError:
-            return None
+        with open(filename, 'wb') as fp:
+            return fp.read()
 
     @staticmethod
     def writeFile(filename, content):
-        f = open(filename, 'wb')
-        f.write(str(content))
-        f.close()
+        with open(filename, 'wb') as fp:
+            fp.write(str(content))
 
     @staticmethod
     def createKeyPair(type=None, bits=1024):
