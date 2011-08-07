@@ -6,18 +6,13 @@
 __version__ = '1.2'
 __author__ =  'phus.lu@gmail.com;hewigovens@gmail.com'
 
-import sys, os, re, time
-import errno, zlib, struct, binascii, base64
-import logging
-import httplib, urllib, urllib2, urlparse, socket, select
+import sys, os, re, time, errno, binascii, zlib
+import struct, random, hashlib, ctypes
+import fnmatch, base64, logging, ConfigParser
+import threading
+import socket, ssl, select
+import httplib, urllib, urllib2, urlparse
 import BaseHTTPServer, SocketServer
-import random
-import ConfigParser
-import fnmatch
-import hashlib
-import ssl
-import threading, Queue
-import ctypes
 try:
     import OpenSSL
 except ImportError:
@@ -116,16 +111,16 @@ class MultiplexConnection(object):
             if len(hosts) > window:
                 hosts = random.sample(hosts, window)
             logging.debug('MultiplexConnection connect %d hosts, port=%s', len(hosts), port)
-            socs = []
+            socks = []
             for host in hosts:
-                soc_family = socket.AF_INET6 if ':' in host else socket.AF_INET
-                soc = socket.socket(soc_family, socket.SOCK_STREAM)
-                soc.setblocking(0)
+                sock_family = socket.AF_INET6 if ':' in host else socket.AF_INET
+                sock = socket.socket(sock_family, socket.SOCK_STREAM)
+                sock.setblocking(0)
                 #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
-                err = soc.connect_ex((host, port))
-                self._sockets.add(soc)
-                socs.append(soc)
-            (_, outs, _) = select.select([], socs, [], timeout)
+                err = sock.connect_ex((host, port))
+                self._sockets.add(sock)
+                socks.append(sock)
+            (_, outs, _) = select.select([], socks, [], timeout)
             if outs:
                 self.socket = outs[0]
                 self.socket.setblocking(1)
@@ -147,10 +142,10 @@ class MultiplexConnection(object):
             logging.warning(r'MultiplexConnection Cannot Connect to hostslist %s:%s, switch new window=%d', hostslist, port, MultiplexConnection.window)
             raise RuntimeError(r'MultiplexConnection Cannot Connect to hostslist %s:%s' % (hostslist, port))
     def __del__(self):
-        for soc in self._sockets:
+        for sock in self._sockets:
             try:
-                soc.close()
-                del soc
+                sock.close()
+                del sock
             except:
                 pass
         del self._sockets
@@ -165,13 +160,13 @@ def socket_create_connection(address, timeout=None, source_address=None):
             #logging.debug("socket_create_connection connect hostslist: (%r, %r)", hostslist, port)
             conn = MultiplexConnection(hostslist, port)
             #conn.close()
-            soc = conn.socket
-            soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
-            return soc
+            sock = conn.socket
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+            return sock
         except socket.error, msg:
             logging.error('socket_create_connection connect fail: (%r, %r)', hostslist, port)
-            soc = None
-        if not soc:
+            sock = None
+        if not sock:
             raise socket.error, msg
     else:
         msg = "getaddrinfo returns an empty list"
@@ -207,10 +202,10 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
             if errors:
                 break
             if ins:
-                for soc in ins:
-                    data = soc.recv(bufsize)
+                for sock in ins:
+                    data = sock.recv(bufsize)
                     if data:
-                        if soc is local:
+                        if sock is local:
                             remote.sendall(data)
                             count = maxping or timeout // tick
                         else:
@@ -423,7 +418,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response.close()
             except urllib2.HTTPError, e:
                 # www.google.cn:80 is down, switch to https
-                if e.code == 502 or e.code == 504:
+                if e.code in (502, 504):
                     common.GOOGLE_PREFER = 'https'
                     common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
                     sys.stdout.write(common.info())
@@ -534,11 +529,11 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.debug('GaeProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
             if not common.PROXY_ENABLE:
-                soc = socket.create_connection((host, int(port)))
+                sock = socket.create_connection((host, int(port)))
                 self.log_request(200)
                 self.wfile.write('%s 200 Tunnel established\r\n\r\n' % self.protocol_version)
             else:
-                soc = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
+                sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host.endswith(common.GOOGLE_SITES):
                     ip = random.choice(common.GOOGLE_HOSTS[0])
                 else:
@@ -548,13 +543,13 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += '\r\n'
-                soc.sendall(data)
-            socket_forward(self.connection, soc, maxping=8)
+                sock.sendall(data)
+            socket_forward(self.connection, sock, maxping=8)
         except:
             logging.exception('GaeProxyHandler.do_CONNECT_Direct Error')
         finally:
             try:
-                soc.close()
+                sock.close()
             except:
                 pass
 
@@ -611,13 +606,13 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             self.log_request()
             if not common.PROXY_ENABLE:
-                soc = socket.create_connection((host, port))
+                sock = socket.create_connection((host, port))
                 self.headers['connection'] = 'close'
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
                 data += '\r\n'
             else:
-                soc = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
+                sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host.endswith(common.GOOGLE_SITES):
                     host = random.choice(common.GOOGLE_HOSTS[0])
                 else:
@@ -633,13 +628,13 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content_length = int(self.headers.get('content-length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
-            soc.sendall(data)
-            socket_forward(self.connection, soc, maxping=10)
+            sock.sendall(data)
+            socket_forward(self.connection, sock, maxping=10)
         except Exception, ex:
             logging.exception('GaeProxyHandler.do_GET Error, %s', ex)
         finally:
             try:
-                soc.close()
+                sock.close()
             except:
                 pass
 
@@ -679,7 +674,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.close_connection = 1
         except socket.error, (err, _):
             # Connection closed before proxy return
-            if err == errno.EPIPE or err == 10053:
+            if err in (10053, errno.EPIPE):
                 return
 
     do_GET = do_METHOD
@@ -700,6 +695,6 @@ if __name__ == '__main__':
         logging.root.setLevel(logging.DEBUG)
     RootCA.checkCA()
     sys.stdout.write(common.info())
-    SocketServer.TCPServer.address_family = {True:socket.AF_INET6, False:socket.AF_INET}[':' in common.LISTEN_IP]
+    SocketServer.TCPServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GaeProxyHandler)
     httpd.serve_forever()
