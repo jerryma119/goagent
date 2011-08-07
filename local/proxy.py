@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.2'
+__version__ = '1.3'
 __author__ =  'phus.lu@gmail.com;hewigovens@gmail.com'
 
 import sys, os, re, time, errno, binascii, zlib
