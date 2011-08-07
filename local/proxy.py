@@ -11,7 +11,7 @@ import struct, random, hashlib, ctypes
 import fnmatch, base64, logging, ConfigParser
 import threading
 import socket, ssl, select
-import httplib, urllib, urllib2, urlparse
+import httplib, urllib2, urlparse
 import BaseHTTPServer, SocketServer
 try:
     import OpenSSL
@@ -364,7 +364,7 @@ def build_opener():
     return opener
 
 def proxy_auth_header(username, password):
-    return 'Proxy-Authorization: Basic ' + base64.b64encode('%s:%s'%(urllib.unquote(username), urllib.unquote(password))).strip()
+    return 'Proxy-Authorization: Basic %s' + base64.b64encode('%s:%s'%(username, password))
 
 class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
