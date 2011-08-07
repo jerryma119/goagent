@@ -220,8 +220,8 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
     finally:
         pass
 
-class RootCA(object):
-    '''RootCA module, based on WallProxy 0.4.0'''
+class CertUtil(object):
+    '''CertUtil module, based on WallProxy 0.4.0'''
 
     CA = None
     CALock = threading.Lock()
@@ -284,23 +284,23 @@ class RootCA(object):
 
     @staticmethod
     def makeCA():
-        pkey = RootCA.createKeyPair(bits=2048)
+        pkey = CertUtil.createKeyPair(bits=2048)
         subj = {'countryName': 'CN', 'stateOrProvinceName': 'Internet',
                 'localityName': 'Cernet', 'organizationName': 'GoAgent',
                 'organizationalUnitName': 'GoAgent Root', 'commonName': 'GoAgent CA'}
-        req = RootCA.createCertRequest(pkey, **subj)
-        cert = RootCA.createCertificate(req, (pkey, req), 0, (0, 60*60*24*7305))  #20 years
-        return (RootCA.dumpPEM(pkey, 0), RootCA.dumpPEM(cert, 2))
+        req = CertUtil.createCertRequest(pkey, **subj)
+        cert = CertUtil.createCertificate(req, (pkey, req), 0, (0, 60*60*24*7305))  #20 years
+        return (CertUtil.dumpPEM(pkey, 0), CertUtil.dumpPEM(cert, 2))
 
     @staticmethod
     def makeCert(host, (cakey, cacrt), serial):
-        pkey = RootCA.createKeyPair()
+        pkey = CertUtil.createKeyPair()
         subj = {'countryName': 'CN', 'stateOrProvinceName': 'Internet',
                 'localityName': 'Cernet', 'organizationName': host,
                 'organizationalUnitName': 'GoAgent Branch', 'commonName': host}
-        req = RootCA.createCertRequest(pkey, **subj)
-        cert = RootCA.createCertificate(req, (cakey, cacrt), serial, (0, 60*60*24*7305))
-        return (RootCA.dumpPEM(pkey, 0), RootCA.dumpPEM(cert, 2))
+        req = CertUtil.createCertRequest(pkey, **subj)
+        cert = CertUtil.createCertificate(req, (cakey, cacrt), serial, (0, 60*60*24*7305))
+        return (CertUtil.dumpPEM(pkey, 0), CertUtil.dumpPEM(cert, 2))
 
     @staticmethod
     def getCertificate(host):
@@ -314,13 +314,13 @@ class RootCA(object):
             crtFile = os.path.join(basedir, 'CA.cer')
             return (keyFile, crtFile)
         if not os.path.isfile(keyFile):
-            with RootCA.CALock:
+            with CertUtil.CALock:
                 if not os.path.isfile(keyFile):
-                    logging.info('RootCA getCertificate for %r', host)
+                    logging.info('CertUtil getCertificate for %r', host)
                     serial = int(hashlib.md5(host).hexdigest(),16)
-                    key, crt = RootCA.makeCert(host, RootCA.CA, serial)
-                    RootCA.writeFile(keyFile, key)
-                    RootCA.writeFile(crtFile, crt)
+                    key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
+                    CertUtil.writeFile(keyFile, key)
+                    CertUtil.writeFile(crtFile, crt)
         return (keyFile, crtFile)
 
     @staticmethod
@@ -333,11 +333,11 @@ class RootCA(object):
         if OpenSSL:
             keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
             crtFile = os.path.join(os.path.dirname(__file__), 'CA.cer')
-            cakey = RootCA.readFile(keyFile)
-            cacrt = RootCA.readFile(crtFile)
-            RootCA.CA = (RootCA.loadPEM(cakey, 0), RootCA.loadPEM(cacrt, 2))
+            cakey = CertUtil.readFile(keyFile)
+            cacrt = CertUtil.readFile(crtFile)
+            CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
             for host in common.GAE_CERTS:
-                RootCA.getCertificate(host)
+                CertUtil.getCertificate(host)
 
 def gae_encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
@@ -556,7 +556,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_CONNECT_GAE(self):
         # for ssl proxy
         host, _, port = self.path.rpartition(':')
-        keyFile, crtFile = RootCA.getCertificate(host)
+        keyFile, crtFile = CertUtil.getCertificate(host)
         self.log_request(200)
         self.connection.sendall('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
@@ -693,7 +693,7 @@ if __name__ == '__main__':
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     if common.GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
-    RootCA.checkCA()
+    CertUtil.checkCA()
     sys.stdout.write(common.info())
     SocketServer.TCPServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GaeProxyHandler)
