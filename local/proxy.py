@@ -228,8 +228,10 @@ class CertUtil(object):
 
     @staticmethod
     def readFile(filename):
-        with open(filename, 'wb') as fp:
-            return fp.read()
+        content = None
+        with open(filename, 'rb') as fp:
+            content = fp.read()
+        return content
 
     @staticmethod
     def writeFile(filename, content):
