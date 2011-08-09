@@ -580,8 +580,8 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = self._realconnection
 
     def do_METHOD(self):
-        host, _, port = self.headers.get('host', '').partition(':')
-        if host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
+        host = self.headers.get('host')
+        if host.endswith(common.GOOGLE_SITES) or host.partition(':')[0] in common.HOSTS:
             if self.path.startswith(common.GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header("Location", self.path.replace('http://', 'https://'))
