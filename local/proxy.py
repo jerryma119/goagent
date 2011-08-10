@@ -46,7 +46,6 @@ class Common(object):
         self.GAE_CERTS      = self.config.get('gae', 'certs').split('|')
 
         self.PROXY_ENABLE   = self.config.getint('proxy', 'enable')
-        self.PROXY_TYPE     = self.config.get('proxy', 'type') if self.config.has_option('proxy', 'type') else 'http'
         self.PROXY_HOST     = self.config.get('proxy', 'host')
         self.PROXY_PORT     = self.config.getint('proxy', 'port')
         self.PROXY_USERNAME = self.config.get('proxy', 'username')
@@ -83,7 +82,7 @@ class Common(object):
         info += 'OpenSSL Module : %s\n' % ('Enabled' if OpenSSL else 'Disabled')
         info += 'Listen Address : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
         info += 'Debug Level    : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
-        info += 'Local Proxy    : %s://%s:%s\n' % (self.PROXY_TYPE, self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
+        info += 'Local Proxy    : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'GAE Mode       : %s\n' % self.GOOGLE_PREFER
         info += 'GAE APPID      : %s\n' % '|'.join(self.GAE_APPIDS)
         info += 'GAE BindHost   : %s\n' % '|'.join(self.GAE_BINDHOSTS) if self.GAE_BINDHOSTS else ''
@@ -157,7 +156,7 @@ def socket_create_connection(address, timeout=None, source_address=None):
         msg = 'socket_create_connection returns an empty list'
         try:
             hostslist = common.GOOGLE_HOSTS
-            #logging.debug("socket_create_connection connect hostslist: (%r, %r)", hostslist, port)
+            #logging.debug('socket_create_connection connect hostslist: (%r, %r)', hostslist, port)
             conn = MultiplexConnection(hostslist, port)
             #conn.close()
             sock = conn.socket
@@ -169,7 +168,7 @@ def socket_create_connection(address, timeout=None, source_address=None):
         if not sock:
             raise socket.error, msg
     else:
-        msg = "getaddrinfo returns an empty list"
+        msg = 'getaddrinfo returns an empty list'
         host = common.HOSTS.get(host) or host
         for res in socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):
             af, socktype, proto, canonname, sa = res
@@ -343,14 +342,14 @@ def gae_decode_data(qs):
 
 def build_opener():
     if common.PROXY_ENABLE:
-        proxies = {common.PROXY_TYPE:'%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)}
-        handlers = [urllib2.ProxyHandler(proxies)]
+        proxy = '%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
+        handlers = [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
         if common.PROXY_NTLM:
             if ntlm is None:
                 logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', common.PROXY_HOST, common.PROXY_PORT)
                 sys.exit(-1)
             passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
-            passman.add_password(None, '%s://%s:%s' % (common.PROXY_TYPE, common.PROXY_HOST, common.PROXY_PORT), common.PROXY_USERNAME, common.PROXY_PASSWROD)
+            passman.add_password(None, '%s:%s' % (common.PROXY_HOST, common.PROXY_PORT), common.PROXY_USERNAME, common.PROXY_PASSWROD)
             auth_NTLM = ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)
             handlers.append(auth_NTLM)
     else:
@@ -584,7 +583,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if host.endswith(common.GOOGLE_SITES) or host.partition(':')[0] in common.HOSTS:
             if self.path.startswith(common.GOOGLE_FORCEHTTPS):
                 self.send_response(301)
-                self.send_header("Location", self.path.replace('http://', 'https://'))
+                self.send_header('Location', self.path.replace('http://', 'https://'))
                 self.end_headers()
                 return
             return self.do_METHOD_Direct()
