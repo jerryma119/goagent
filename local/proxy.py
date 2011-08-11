@@ -25,14 +25,14 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
 
 class Common(object):
-    '''global config module, based on GappProxy 2.0.0'''
-    FILENAME = sys.argv[1] if len(sys.argv) == 2 and os.path.isfile(os.sys.argv[1]) else os.path.splitext(__file__)[0] + '.ini'
+    '''global config module, similar with GappProxy 2.0.0'''
+
     ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
 
     def __init__(self):
         '''read proxy.ini config'''
         self.config = ConfigParser.ConfigParser()
-        self.config.read(self.FILENAME)
+        self.config.read(os.path.splitext(__file__)[0] + '.ini')
 
         self.LISTEN_IP      = self.config.get('listen', 'ip')
         self.LISTEN_PORT    = self.config.getint('listen', 'port')
@@ -75,6 +75,9 @@ class Common(object):
                 self.HOSTS.update(config)
             except Exception, e:
                 logging.warning('Merge system hosts config failed! error=%r', e)
+
+    def __str__(self):
+        return repr(tuple((x, getattr(self, x)) for x in dir(self) if re.match(r'[A-Z]+_[A-Z]+', x)))
 
     def info(self):
         info = ''
