@@ -37,9 +37,10 @@ import logging
 class common:
     GOOGLE_SITES = tuple('.appspot.com|.google.com|.googleusercontent.com|.googleapis.com|.googlecode.com|.gstatic.com|.google.com.hk'.split('|'))
     GOOGLE_HTTPS = (
-                    '203.208.46.18|203.208.46.171|203.208.46.17|203.208.46.27|203.208.46.28|203.208.46.65|203.208.46.66|203.208.46.103|203.208.46.100|203.208.46.162|203.208.46.171'.split('|'),
-                    '74.125.71.115|74.125.71.116|74.125.71.117|74.125.71.118|74.125.71.120|74.125.71.123|74.125.71.125|74.125.71.136|74.125.71.137|74.125.71.138|74.125.71.139|74.125.71.141|74.125.71.142|74.125.71.143|74.125.71.144|74.125.71.145|74.125.71.146|74.125.71.147|74.125.71.148|74.125.71.149|74.125.71.152|74.125.71.154|74.125.71.155|74.125.71.156|74.125.71.157'.split('|')
-                   )
+                    [x[-1][0] for x in socket.getaddrinfo('www.g.cn', 80)],
+                    [x[-1][0] for x in socket.getaddrinfo('mail.google.com', 80)],
+                    )
+    HOSTS = {}
 
 class MultiplexConnection(object):
     '''multiplex tcp connection class'''
