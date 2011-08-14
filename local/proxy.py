@@ -196,10 +196,12 @@ def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accep
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
 def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None):
-    count = timeout // tick
+    timecount = timeout
     try:
         while 1:
-            count -= 1
+            timecount -= tick
+            if timecount <= 0:
+                break
             (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
             if errors:
                 break
@@ -209,14 +211,12 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                     if data:
                         if sock is local:
                             remote.sendall(data)
-                            count = maxping or timeout // tick
+                            timecount = maxping or timeout
                         else:
                             local.sendall(data)
-                            count = maxpong or timeout // tick
+                            timecount = maxpong or timeout
                     else:
-                        break
-            if count == 0:
-                break
+                        return
     except Exception, ex:
         logging.warning('socket_forward error=%s', ex)
     finally:
@@ -542,7 +542,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += '\r\n'
                 sock.sendall(data)
-            socket_forward(self.connection, sock, maxping=8)
+            socket_forward(self.connection, sock)
         except:
             logging.exception('GaeProxyHandler.do_CONNECT_Direct Error')
         finally:
@@ -628,7 +628,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if content_length > 0:
                 data += self.rfile.read(content_length)
             sock.sendall(data)
-            socket_forward(self.connection, sock, maxping=10)
+            socket_forward(self.connection, sock)
         except Exception, ex:
             logging.exception('GaeProxyHandler.do_GET Error, %s', ex)
         finally:
