@@ -324,10 +324,12 @@ class CertUtil(object):
     @staticmethod
     def checkCA():
         #Check CA imported
-        if os.name == 'nt':
-            #if 'GoAgent CA' not in  os.popen(r'certmgr.exe -s -r localMachine root').read():
-                if os.system(r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL') != 0:
-                    logging.warn('Import GoAgent CA failed -- CA.cer')
+        cmd = {
+                'win32'  : r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL',
+                'darwin' : r'cp /System/Library/Keychains/X509Anchors ~/Library/Keychains/;cert­tool i mycertificate.crt k=X509Anchors >/dev/null',
+              }.get(sys.platform)
+        if cmd and os.system(cmd) != 0:
+            logging.warn('GoAgent install trusted root CA certificate failed -- CA.cer')
         if OpenSSL:
             keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
             crtFile = os.path.join(os.path.dirname(__file__), 'CA.cer')
