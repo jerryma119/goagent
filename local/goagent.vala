@@ -132,7 +132,7 @@ public class Main {
 		public AppStatusIcon() {
 			/* Create tray icon */
 			trayicon = new StatusIcon.from_pixbuf(new Gdk.Pixbuf.from_xpm_data(iconData));
-			trayicon.set_tooltip_text("GoAgent Tray");
+			//trayicon.set_tooltip_text("GoAgent Tray");
 			trayicon.set_visible(true);
 			trayicon.activate.connect(log_clicked);
 			create_menuSystem();
@@ -171,7 +171,8 @@ public class Main {
 				ChildWatch.add (pid, on_async_exit);
 			}
 			catch (Error e) {
-				stderr.printf ("Could not load UI: %s\n", e.message);
+				//stderr.printf ("Could not load UI: %s\n", e.message);
+				//(new Gtk.MessageDialog(this, Gtk.DialogFlags.MODAL, Gtk.MessageType.ERROR,Gtk.ButtonsType.OK,"proxy.py load failed: \n"+e.message)).run();
 			}
 		}
 
