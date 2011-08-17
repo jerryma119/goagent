@@ -37,7 +37,7 @@ import logging
 class common:
     GOOGLE_SITES = tuple('.appspot.com|.google.com|.googleusercontent.com|.googleapis.com|.googlecode.com|.gstatic.com|.google.com.hk'.split('|'))
     GOOGLE_HTTPS = (
-                    [x[-1][0] for x in socket.getaddrinfo('www.g.cn', 80)],
+                    '203.208.46.1|203.208.46.2|203.208.46.3|203.208.46.4|203.208.46.5|203.208.46.6|203.208.46.7|203.208.46.8'.split('|'),
                     [x[-1][0] for x in socket.getaddrinfo('mail.google.com', 80)],
                     )
     HOSTS = {}
