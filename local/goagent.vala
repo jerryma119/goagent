@@ -171,7 +171,7 @@ public class Main {
 				ChildWatch.add (pid, on_async_exit);
 			}
 			catch (Error e) {
-				//stderr.printf ("Could not load UI: %s\n", e.message);
+				stderr.printf ("Could not load UI: %s\n", e.message);
 				//(new Gtk.MessageDialog(this, Gtk.DialogFlags.MODAL, Gtk.MessageType.ERROR,Gtk.ButtonsType.OK,"proxy.py load failed: \n"+e.message)).run();
 			}
 		}
@@ -185,8 +185,17 @@ public class Main {
 			var about = new AboutDialog();
 			about.set_version("1.0");
 			about.set_program_name("GoAgent");
-			about.set_comments("GoAgent 1.0 Stable");
-			about.set_copyright("GoAgent");
+			string comments = "Unkdown Error";
+			try {
+				string[] cmd = {"python", "-c", "import sys,os,ConfigParser;config=ConfigParser.ConfigParser();config.read('proxy.ini');openssl=('Disabled','Enabled')[any(os.path.isdir(x+'/OpenSSL') for x in sys.path)];addr='%s:%s'%(config.get('listen','ip'),config.get('listen','port'));appid=config.get('gae','appid');mode=config.get('google','prefer');status=('Stopped', 'Running')[len([x for x in os.popen('ps -ef').read().splitlines() if x.endswith('python proxy.py')])>=1];sys.stdout.write('\\n'.join(('OpenSSL : '+openssl, 'Listen : '+addr,'Mode : '+mode,'APPID : '+appid, 'Status : ' +status)))"};
+				Process.spawn_sync (".", cmd, null, SpawnFlags.SEARCH_PATH, null, out comments, null, null);
+                        }
+			catch (Error e) {
+				stderr.printf ("Could not load UI: %s\n", e.message);
+                                comments = "GoAgent 1.0 Stable";
+			}
+			about.set_comments(comments);
+			//about.set_copyright("copyright gogent(2011-2012)");
 			about.run();
 			about.hide();;
 		}
@@ -200,4 +209,4 @@ public class Main {
 		Gtk.main();
 		return 0;
 	}
-}
+} 
