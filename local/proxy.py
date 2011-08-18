@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.2'
+__version__ = '1.5'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -696,6 +696,6 @@ if __name__ == '__main__':
         logging.root.setLevel(logging.DEBUG)
     CertUtil.checkCA()
     sys.stdout.write(common.info())
-    SocketServer.TCPServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
+    LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GaeProxyHandler)
     httpd.serve_forever()
