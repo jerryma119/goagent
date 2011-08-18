@@ -38,7 +38,7 @@ class Common(object):
         self.LISTEN_PORT    = self.config.getint('listen', 'port')
         self.LISTEN_VISIBLE = self.config.getint('listen', 'visible')
 
-        self.GAE_APPIDS     = tuple(self.config.get('gae', 'appid').replace('.appspot.com', '').split('|'))
+        self.GAE_APPIDS     = tuple(re.sub(r'\..+?\.com$', '', x) for x in appid.split('|'))
         self.GAE_PASSWORD   = self.config.get('gae', 'password').strip()
         self.GAE_DEBUGLEVEL = self.config.getint('gae', 'debuglevel')
         self.GAE_PATH       = self.config.get('gae', 'path')
