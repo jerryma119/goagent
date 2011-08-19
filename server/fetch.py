@@ -23,7 +23,9 @@ def gae_encode_data(dic):
 def gae_decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
 
-def sendResponse(status_code, headers, content='', method='', url=''):
+def print_response(status_code, headers, content='', method='', url=''):
+    if status_code > 400:
+        logging.warning('Response: "%s %s" %d %d/%d/%d', method, url, status_code, len(content), len(rdata), len(data))
     contentType = headers.get('content-type', '').lower()
     headers = gae_encode_data(headers)
     # Build send-data
@@ -34,52 +36,41 @@ def sendResponse(status_code, headers, content='', method='', url=''):
         data = 'Content-Type: image/gif\r\n\r\n1' + zlib.compress(rdata)
     else:
         data = 'Content-Type: image/gif\r\n\r\n0%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
-    if status_code == 555:
-        logging.warning('Response: "%s %s" %d %d/%d/%d', method, url, status_code, len(content), len(rdata), len(data))
-    else:
-        #logging.debug('Response: "%s %s" %d', method, url, status_code)
-        pass
     sys.stdout.write(data)
 
-def sendNotify(status_code, content, method='', url='', fullContent=False):
+def print_notify(status_code, content, method='', url='', fullContent=False):
     if not fullContent and status_code!=555:
         content = '<h2>Fetch Server Info</h2><hr noshade="noshade"><p>Code: %d</p><p>Message: %s</p>' % (status_code, content)
     headers = {'content-type':'text/html', 'content-length':len(content)}
-    sendResponse(status_code, headers, content, method, url)
+    print_response(status_code, headers, content, method, url)
 
 def post():
     request = gae_decode_data(zlib.decompress(sys.stdin.read()))
     #logging.debug('post() get fetch request %s', request)
 
     if __password__ and __password__ != request.get('password', ''):
-        return sendNotify(403, 'Fobbidon -- wrong password. Please check your proxy.ini and fetch.py.')
+        return print_notify(403, 'Fobbidon -- Wrong password. Please check your proxy.ini and fetch.py.')
 
     method = request.get('method', 'GET')
     fetch_method = getattr(urlfetch, method, '')
     if not fetch_method:
-        return sendNotify(555, 'Invalid Method', method)
+        return print_notify(555, 'Invalid Method', method)
 
     url = request.get('url', '')
     if not url.startswith('http'):
-        return sendNotify(555, 'Unsupported Scheme', method, url)
+        return print_notify(555, 'Unsupported Scheme', method, url)
 
     payload = request.get('payload', '')
     deadline = Deadline[1 if payload else 0]
 
     fetch_range = 'bytes=0-%d' % (Fetch_MaxSize - 1)
-    rangeFetch = False
     headers = {}
     for line in request.get('headers', '').splitlines():
         key, _, value = line.partition(':')
         if not value:
             continue
         key, value = key.strip().lower(), value.strip()
-        #if key in FRS_Headers:
-        #    continue
-        if key == 'rangefetch':
-            rangeFetch = True
-            continue
-        if key =='range' and not rangeFetch:
+        if key =='range':
             m = re.search(r'(\d+)?-(\d+)?', value)
             if m is None:
                 continue
@@ -92,7 +83,7 @@ def post():
                 end = str(Fetch_MaxSize - 1 + int(start))
             fetch_range = ('bytes=%s-%s' % (start, end))
         headers[key] = value
-    headers['Connection'] = 'close'
+    headers['connection'] = 'close'
 
     for i in xrange(int(request.get('fetchmax', Fetch_Max))):
         try:
@@ -107,21 +98,19 @@ def post():
             time.sleep(1)
             deadline = Deadline[1]
         except urlfetch.InvalidURLError, e:
-            return sendNotify(555, 'Invalid URL: %s' % e, method, url)
+            return print_notify(555, 'Invalid URL: %s' % e, method, url)
         except urlfetch.ResponseTooLargeError, e:
             if method == 'GET':
                 deadline = Deadline[1]
-                if not rangeFetch:
-                    headers['Range'] = fetch_range
+                headers['Range'] = fetch_range
             else:
-                return sendNotify(555, 'Response Too Large: %s' % e, method, url)
+                return print_notify(555, 'Response Too Large: %s' % e, method, url)
         except Exception, e:
             if i==0 and method=='GET':
                 deadline = Deadline[1]
-                if not rangeFetch:
-                    headers['Range'] = fetch_range
+                headers['Range'] = fetch_range
     else:
-        return sendNotify(555, 'Urlfetch error: %s' % e, method, url)
+        return print_notify(555, 'Urlfetch error: %s' % e, method, url)
 
     for k in FRP_Headers:
         if k in response.headers:
@@ -141,7 +130,7 @@ def post():
                 i += 1
         response.headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
     response.headers['connection'] = 'close'
-    return sendResponse(response.status_code, response.headers, response.content, method, url)
+    return print_response(response.status_code, response.headers, response.content, method, url)
 
 def get():
     print 'Content-Type: text/html; charset=utf-8'
@@ -172,7 +161,7 @@ def get():
         <tr><td align="center"><hr></td></tr>
 
         <tr><td align="center">
-            <img src="http://code.google.com/appengine/images/appengine-silver-120x30.gif" alt="Powered by Google App Engine" />
+            <img src="https://code.google.com/appengine/images/appengine-silver-120x30.gif" />
         </td></tr>
         <tr><td align="center"><hr></td></tr>
     </table>
