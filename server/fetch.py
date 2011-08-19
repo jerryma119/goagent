@@ -25,7 +25,7 @@ def gae_decode_data(qs):
 
 def print_response(status_code, headers, content='', method='', url=''):
     if status_code > 400:
-        logging.warning('Response: "%s %s" %d %d/%d/%d', method, url, status_code, len(content), len(rdata), len(data))
+        logging.warning('%r Failed: url=%r, status=%r', method, url, status_code)
     contentType = headers.get('content-type', '').lower()
     headers = gae_encode_data(headers)
     # Build send-data
