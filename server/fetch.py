@@ -12,9 +12,8 @@ import sys, os, re, time, struct, zlib, binascii, logging
 from google.appengine.api import urlfetch
 from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 
-FRP_Headers = ('', 'x-google-cache-control', 'via')
-Fetch_Max = 2
-Fetch_MaxSize = 1024*1024
+FetchMax = 2
+FetchMaxSize = 1024*1024
 Deadline = (16, 32)
 
 def gae_encode_data(dic):
@@ -24,9 +23,9 @@ def gae_decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
 
 def print_response(status_code, headers, content='', method='', url=''):
-    if status_code > 400:
+    if status_code >= 500:
         logging.warning('%r Failed: url=%r, status=%r', method, url, status_code)
-    contentType = headers.get('content-type', '').lower()
+    contentType = headers.get('content-type', 'application/octet-stream')
     headers = gae_encode_data(headers)
     # Build send-data
     if contentType.startswith('text'):
@@ -63,7 +62,7 @@ def post():
     payload = request.get('payload', '')
     deadline = Deadline[1 if payload else 0]
 
-    fetch_range = 'bytes=0-%d' % (Fetch_MaxSize - 1)
+    fetch_range = 'bytes=0-%d' % (FetchMaxSize - 1)
     headers = {}
     for line in request.get('headers', '').splitlines():
         key, _, value = line.partition(':')
@@ -77,15 +76,15 @@ def post():
             start, end = m.group(1, 2)
             if not start and not end:
                 continue
-            if not start and int(end) > Fetch_MaxSize:
+            if not start and int(end) > FetchMaxSize:
                 end = '1023'
-            elif not end or int(end)-int(start)+1 > Fetch_MaxSize:
-                end = str(Fetch_MaxSize - 1 + int(start))
+            elif not end or int(end)-int(start)+1 > FetchMaxSize:
+                end = str(FetchMaxSize - 1 + int(start))
             fetch_range = ('bytes=%s-%s' % (start, end))
         headers[key] = value
     headers['connection'] = 'close'
 
-    for i in xrange(int(request.get('fetchmax', Fetch_Max))):
+    for i in xrange(int(request.get('fetchmax', FetchMax))):
         try:
             response = urlfetch.fetch(url, payload, fetch_method, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
             #if method=='GET' and len(response.content)>0x1000000:
@@ -112,11 +111,9 @@ def post():
     else:
         return print_notify(555, 'Urlfetch error: %s' % e, method, url)
 
-    for k in FRP_Headers:
-        if k in response.headers:
-            del response.headers[k]
-    if 'set-cookie' in response.headers:
-        scs = response.headers['set-cookie'].split(', ')
+    headers = dict((k,v) for k, v in response.headers.iteritems() if k[0] != 'x')
+    if 'set-cookie' in headers:
+        scs = headers['set-cookie'].split(', ')
         cookies = []
         i = -1
         for sc in scs:
@@ -128,9 +125,9 @@ def post():
             else:
                 cookies.append(sc)
                 i += 1
-        response.headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
-    response.headers['connection'] = 'close'
-    return print_response(response.status_code, response.headers, response.content, method, url)
+        headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
+    headers['connection'] = 'close'
+    return print_response(response.status_code, headers, response.content, method, url)
 
 def get():
     print 'Content-Type: text/html; charset=utf-8'
