@@ -56,6 +56,7 @@ class Common(object):
         self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'autoswitch')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
+        self.GOOGLE_WITHGAE    = frozenset(self.config.get('google', 'withgae').split('|'))
         self.GOOGLE_HTTP       = [x.split('|') for x in self.config.get('google', 'http').split('||')]
         self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
         self.GOOGLE_HOSTS      = self.GOOGLE_HTTP if self.GOOGLE_PREFER == 'http' else self.GOOGLE_HTTPS
@@ -155,18 +156,16 @@ class MultiplexConnection(object):
 def socket_create_connection(address, timeout=None, source_address=None):
     host, port = address
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host.endswith(common.GOOGLE_SITES):
+    if host.endswith('.appspot.com'):
         msg = 'socket_create_connection returns an empty list'
         try:
-            hostslist = common.GOOGLE_HOSTS
-            #logging.debug('socket_create_connection connect hostslist: (%r, %r)', hostslist, port)
-            conn = MultiplexConnection(hostslist, port)
-            #conn.close()
+            #logging.debug('socket_create_connection connect hostslist: (%r, %r)', common.GOOGLE_HOSTS, port)
+            conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
             sock = conn.socket
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
             return sock
         except socket.error, msg:
-            logging.error('socket_create_connection connect fail: (%r, %r)', hostslist, port)
+            logging.error('socket_create_connection connect fail: (%r, %r)', common.GOOGLE_HOSTS, port)
             sock = None
         if not sock:
             raise socket.error, msg
@@ -519,7 +518,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
+        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE or host in common.HOSTS:
             return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_GAE()
@@ -529,7 +528,11 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.debug('GaeProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
             if not common.PROXY_ENABLE:
-                sock = socket.create_connection((host, int(port)))
+                if host.endswith(common.GOOGLE_SITES):
+                    conn = MultiplexConnection(common.GOOGLE_HOSTS, int(port))
+                    sock = conn.socket
+                else:
+                    sock = socket.create_connection((host, int(port)))
                 self.log_request(200)
                 self.wfile.write('%s 200 Tunnel established\r\n\r\n' % self.protocol_version)
             else:
@@ -585,7 +588,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
-        if host.endswith(common.GOOGLE_SITES) or host.partition(':')[0] in common.HOSTS:
+        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE or host.partition(':')[0] in common.HOSTS:
             if self.path.startswith(common.GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header('Location', self.path.replace('http://', 'https://'))
@@ -606,7 +609,11 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             self.log_request()
             if not common.PROXY_ENABLE:
-                sock = socket.create_connection((host, port))
+                if host.endswith(common.GOOGLE_SITES):
+                    conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
+                    sock = conn.socket
+                else:
+                    sock = socket.create_connection((host, port))
                 self.headers['connection'] = 'close'
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
