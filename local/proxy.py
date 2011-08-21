@@ -56,7 +56,7 @@ class Common(object):
         self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'autoswitch')
         self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
-        self.GOOGLE_WITHGAE    = frozenset(self.config.get('google', 'withgae').split('|'))
+        #self.GOOGLE_WITHGAE    = frozenset(self.config.get('google', 'withgae').split('|'))
         self.GOOGLE_HTTP       = [x.split('|') for x in self.config.get('google', 'http').split('||')]
         self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
         self.GOOGLE_HOSTS      = self.GOOGLE_HTTP if self.GOOGLE_PREFER == 'http' else self.GOOGLE_HTTPS
@@ -153,8 +153,7 @@ class MultiplexConnection(object):
                 pass
         del self._sockets
 
-def socket_create_connection(address, timeout=None, source_address=None):
-    host, port = address
+def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
     if host.endswith('.appspot.com'):
         msg = 'socket_create_connection returns an empty list'
@@ -518,7 +517,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE or host in common.HOSTS:
+        if host.endswith(common.GOOGLE_SITES) or host in common.HOSTS:
             return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_GAE()
@@ -588,7 +587,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE or host.partition(':')[0] in common.HOSTS:
+        if host.endswith(common.GOOGLE_SITES) or host.partition(':')[0] in common.HOSTS:
             if self.path.startswith(common.GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header('Location', self.path.replace('http://', 'https://'))
