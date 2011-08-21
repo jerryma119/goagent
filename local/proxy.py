@@ -153,9 +153,10 @@ class MultiplexConnection(object):
                 pass
         del self._sockets
 
+__GAE_SERVERS = frozenset('%s.appspot.com' % x for x in common.GAE_APPIDS)
 def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host.endswith('.appspot.com'):
+    if host in __GAE_SERVERS:
         msg = 'socket_create_connection returns an empty list'
         try:
             #logging.debug('socket_create_connection connect hostslist: (%r, %r)', common.GOOGLE_HOSTS, port)
