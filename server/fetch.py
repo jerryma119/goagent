@@ -6,7 +6,6 @@
 __version__ = '1.5'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
-__conntent_hook__ = None
 
 import sys, os, re, time, struct, zlib, binascii, logging
 from google.appengine.api import urlfetch
@@ -22,49 +21,43 @@ def gae_encode_data(dic):
 def gae_decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
 
-def print_response(status_code, headers, content='', method='', url=''):
-    if status_code >= 500:
-        logging.warning('%r Failed: url=%r, status=%r', method, url, status_code)
-    contentType = headers.get('content-type', 'application/octet-stream')
-    headers = gae_encode_data(headers)
-    # Build send-data
-    if contentType.startswith('text'):
-        if __conntent_hook__ and contentType.startswith('text/html'):
-            content = re.sub(__conntent_hook__[0], __conntent_hook__[1], content)
-        rdata = '%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
-        data = 'Content-Type: image/gif\r\n\r\n1' + zlib.compress(rdata)
+def print_response(status, headers, content):
+    strheaders = gae_encode_data(headers)
+    if 'text' == headers['content-type'][:4]:
+        data = 'Content-Type: image/gif\r\n\r\n1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
     else:
-        data = 'Content-Type: image/gif\r\n\r\n0%s%s%s' % (struct.pack('>3I', status_code, len(headers), len(content)), headers, content)
+        data = 'Content-Type: image/gif\r\n\r\n0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
     sys.stdout.write(data)
 
-def print_notify(status_code, content, method='', url='', fullContent=False):
-    if not fullContent and status_code!=555:
-        content = '<h2>Fetch Server Info</h2><hr noshade="noshade"><p>Code: %d</p><p>Message: %s</p>' % (status_code, content)
+def print_notify(method, url, status, content):
+    logging.warning('%r Failed: url=%r, status=%r', method, url, status)
+    content = '<h2>Fetch Server Info</h2><hr noshade="noshade"><p>%s %r</p><p>Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
     headers = {'content-type':'text/html', 'content-length':len(content)}
-    print_response(status_code, headers, content, method, url)
+    print_response(status, headers, content)
 
 def post():
     request = gae_decode_data(zlib.decompress(sys.stdin.read()))
     #logging.debug('post() get fetch request %s', request)
 
-    if __password__ and __password__ != request.get('password', ''):
-        return print_notify(403, 'Fobbidon -- Wrong password. Please check your proxy.ini and fetch.py.')
+    method = request['method']
+    url = request['url']
+    payload = request['payload']
 
-    method = request.get('method', 'GET')
+    if __password__ and __password__ != request.get('password', ''):
+        return print_notify(method, url, 403, 'Wrong password.')
+
     fetch_method = getattr(urlfetch, method, '')
     if not fetch_method:
-        return print_notify(555, 'Invalid Method', method)
+        return print_notify(method, url, 501, 'Invalid Method')
 
-    url = request.get('url', '')
-    if not url.startswith('http'):
-        return print_notify(555, 'Unsupported Scheme', method, url)
+    if 'http' != url[:4]:
+        return print_notify(method, url, 501, 'Unsupported Scheme')
 
-    payload = request.get('payload', '')
     deadline = Deadline[1 if payload else 0]
 
     fetch_range = 'bytes=0-%d' % (FetchMaxSize - 1)
     headers = {}
-    for line in request.get('headers', '').splitlines():
+    for line in request['headers'].splitlines():
         key, _, value = line.partition(':')
         if not value:
             continue
@@ -97,19 +90,19 @@ def post():
             time.sleep(1)
             deadline = Deadline[1]
         except urlfetch.InvalidURLError, e:
-            return print_notify(555, 'Invalid URL: %s' % e, method, url)
+            return print_notify(method, url, 501, 'Invalid URL: %s' % e)
         except urlfetch.ResponseTooLargeError, e:
             if method == 'GET':
                 deadline = Deadline[1]
                 headers['Range'] = fetch_range
             else:
-                return print_notify(555, 'Response Too Large: %s' % e, method, url)
+                print_notify(method, url, 500, 'Response Too Large: %s' % e)
         except Exception, e:
             if i==0 and method=='GET':
                 deadline = Deadline[1]
                 headers['Range'] = fetch_range
     else:
-        return print_notify(555, 'Urlfetch error: %s' % e, method, url)
+        print_notify(method, url, 500, 'Urlfetch error: %s' % e)
 
     headers = dict((k,v) for k, v in response.headers.iteritems() if k[0] != 'x')
     if 'set-cookie' in headers:
@@ -127,7 +120,7 @@ def post():
                 i += 1
         headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
     headers['connection'] = 'close'
-    return print_response(response.status_code, headers, response.content, method, url)
+    return print_response(response.status_code, headers, response.content)
 
 def get():
     print 'Content-Type: text/html; charset=utf-8'
