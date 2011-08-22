@@ -23,7 +23,7 @@ def gae_decode_data(qs):
 
 def print_response(status, headers, content):
     strheaders = gae_encode_data(headers)
-    if 'text' == headers['content-type'][:4]:
+    if 'text' == headers.get('content-type', 'text/plain')[:4]:
         data = 'Content-Type: image/gif\r\n\r\n1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
     else:
         data = 'Content-Type: image/gif\r\n\r\n0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
@@ -104,7 +104,7 @@ def post():
     else:
         return print_notify(method, url, 500, 'Urlfetch error: %s' % e)
 
-    headers = dict((k,v) for k, v in response.headers.iteritems() if k[0] != 'x')
+    headers = dict((k.lower(),v) for k, v in response.headers.iteritems() if k[0] != 'x')
     if 'set-cookie' in headers:
         scs = headers['set-cookie'].split(', ')
         cookies = []
