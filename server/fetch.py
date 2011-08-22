@@ -36,7 +36,7 @@ def print_notify(method, url, status, content):
     print_response(status, headers, content)
 
 def post():
-    request = gae_decode_data(zlib.decompress(sys.stdin.read()))
+    request = gae_decode_data(zlib.decompress(sys.stdin.read(int(os.environ.get('CONTENT_LENGTH', 0)))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
@@ -96,13 +96,13 @@ def post():
                 deadline = Deadline[1]
                 headers['Range'] = fetch_range
             else:
-                print_notify(method, url, 500, 'Response Too Large: %s' % e)
+                return print_notify(method, url, 500, 'Response Too Large: %s' % e)
         except Exception, e:
             if i==0 and method=='GET':
                 deadline = Deadline[1]
                 headers['Range'] = fetch_range
     else:
-        print_notify(method, url, 500, 'Urlfetch error: %s' % e)
+        return print_notify(method, url, 500, 'Urlfetch error: %s' % e)
 
     headers = dict((k,v) for k, v in response.headers.iteritems() if k[0] != 'x')
     if 'set-cookie' in headers:
