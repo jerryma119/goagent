@@ -59,9 +59,7 @@ def post():
     headers = {}
     for line in request['headers'].splitlines():
         key, _, value = line.partition(':')
-        if not value:
-            continue
-        key, value = key.strip().lower(), value.strip()
+        value = value.strip()
         if key =='range':
             m = re.search(r'(\d+)?-(\d+)?', value)
             if m is None:
@@ -73,7 +71,7 @@ def post():
                 end = '1023'
             elif not end or int(end)-int(start)+1 > FetchMaxSize:
                 end = str(FetchMaxSize - 1 + int(start))
-            fetch_range = ('bytes=%s-%s' % (start, end))
+            fetch_range = 'bytes=%s-%s' % (start, end)
         headers[key] = value
     headers['connection'] = 'close'
 
