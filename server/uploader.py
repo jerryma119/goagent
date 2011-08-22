@@ -133,7 +133,7 @@ socket.create_connection = socket_create_connection
 
 fancy_urllib._create_connection = socket_create_connection
 fancy_urllib.create_fancy_connection.PresetProxyHTTPSConnection = httplib.HTTPSConnection
-appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = ".appcfg_cookies"
+#appengine_rpc.HttpRpcServer.DEFAULT_COOKIE_FILE_PATH = ".appcfg_cookies"
 
 LIST_DELIMITER = '\n'
 TUPLE_DELIMITER = '|'
