@@ -409,7 +409,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     fetchhost = random.choice(common.GOOGLE_HOSTS[0])
                     fetchserver = '%s://%s%s' % (common.GOOGLE_PREFER, fetchhost, common.GAE_PATH)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
-                request.add_header('Content-Type', 'application/octet-stream')
+                request.add_header('Content-Type', '')
                 if common.PROXY_ENABLE:
                     request.add_header('Host', '%s.appspot.com' % appid)
                 response = self.opener.open(request)

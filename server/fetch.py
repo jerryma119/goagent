@@ -104,7 +104,7 @@ def post():
     else:
         return print_notify(method, url, 500, 'Urlfetch error: %s' % e)
 
-    headers = dict((k,v) for k, v in response.headers.iteritems() if k[0] != 'x')
+    headers = response.headers
     if 'set-cookie' in headers:
         scs = headers['set-cookie'].split(', ')
         cookies = []
