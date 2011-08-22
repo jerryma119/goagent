@@ -19,7 +19,7 @@ def gae_encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
 
 def gae_decode_data(qs):
-    return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
+    return dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
 
 def print_response(status, headers, content):
     strheaders = gae_encode_data(headers)
@@ -36,7 +36,7 @@ def print_notify(method, url, status, content):
     print_response(status, headers, content)
 
 def post():
-    request = gae_decode_data(zlib.decompress(sys.stdin.read(int(os.environ.get('CONTENT_LENGTH', 0)))))
+    request = gae_decode_data(zlib.decompress(sys.stdin.read(int(os.environ.get('CONTENT_LENGTH', -1)))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
