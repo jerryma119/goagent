@@ -104,7 +104,7 @@ def post():
     else:
         return print_notify(method, url, 500, 'Urlfetch error: %s' % e)
 
-    headers = dict((k.lower(),v) for k, v in response.headers.iteritems() if k[0] != 'x')
+    headers = dict((k,v) for k, v in response.headers.iteritems() if k[0] != 'x')
     if 'set-cookie' in headers:
         scs = headers['set-cookie'].split(', ')
         cookies = []
@@ -118,7 +118,7 @@ def post():
             else:
                 cookies.append(sc)
                 i += 1
-        headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
+        headers['set-cookie'] = '\r\nset-cookie: '.join(cookies)
     headers['connection'] = 'close'
     return print_response(response.status_code, headers, response.content)
 
