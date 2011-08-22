@@ -308,7 +308,7 @@ class CertUtil(object):
             return (keyFile, crtFile)
         if OpenSSL is None:
             keyFile = os.path.join(basedir, 'CA.key')
-            crtFile = os.path.join(basedir, 'CA.cer')
+            crtFile = os.path.join(basedir, 'CA.crt')
             return (keyFile, crtFile)
         if not os.path.isfile(keyFile):
             with CertUtil.CALock:
@@ -324,14 +324,14 @@ class CertUtil(object):
     def checkCA():
         #Check CA imported
         cmd = {
-                'win32'  : r'certmgr.exe -add CA.cer -c -s -r localMachine Root >NUL',
-                'darwin' : r'cp /System/Library/Keychains/X509Anchors ~/Library/Keychains/;certtool i mycertificate.crt k=X509Anchors >/dev/null',
+                'win32'  : r'certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL',
+                'darwin' : r'cp /System/Library/Keychains/X509Anchors ~/Library/Keychains/;certtool i CA.crt k=X509Anchors >/dev/null',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
-            logging.warn('GoAgent install trusted root CA certificate failed -- CA.cer')
+            logging.warn('GoAgent install trusted root CA certificate failed -- CA.crt')
         if OpenSSL:
             keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
-            crtFile = os.path.join(os.path.dirname(__file__), 'CA.cer')
+            crtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
             cakey = CertUtil.readFile(keyFile)
             cacrt = CertUtil.readFile(crtFile)
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
