@@ -11,7 +11,7 @@ import sys, os, re, time, struct, zlib, binascii, logging
 from google.appengine.api import urlfetch
 from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 
-FetchMax = 2
+FetchMax = 3
 FetchMaxSize = 1024*1024
 Deadline = (16, 32)
 
@@ -71,6 +71,7 @@ def post():
         except:
             pass
 
+    errors = []
     for i in xrange(int(request.get('fetchmax', FetchMax))):
         try:
             response = urlfetch.fetch(url, payload, fetchmethod, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
@@ -79,7 +80,7 @@ def post():
             break
         except apiproxy_errors.OverQuotaError, e:
             time.sleep(4)
-        except DeadlineExceededError:
+        except DeadlineExceededError, e:
             logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline[1]
@@ -92,11 +93,12 @@ def post():
             else:
                 return print_notify(method, url, 500, 'Response Too Large: %s' % e)
         except Exception, e:
+            errors.append(str(e))
             if i==0 and method=='GET':
                 deadline = Deadline[1]
                 headers['range'] = fetchrange
     else:
-        return print_notify(method, url, 500, 'Urlfetch error: %s' % e)
+        return print_notify(method, url, 500, 'Urlfetch error: %s' % errors)
 
     headers = response.headers
     if 'set-cookie' in headers:
