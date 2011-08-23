@@ -61,16 +61,14 @@ def post():
     fetchrange = 'bytes=0-%d' % (FetchMaxSize - 1)
     if 'range' in headers:
         m = re.search(r'(\d+)?-(\d+)?', headers['range'])
-        if m is None:
-            continue
-        start, end = m.group(1, 2)
-        if not start and not end:
-            continue
-        if not start and int(end) > FetchMaxSize:
-            end = '1023'
-        elif not end or int(end)-int(start)+1 > FetchMaxSize:
-            end = str(FetchMaxSize - 1 + int(start))
-        fetchrange = 'bytes=%s-%s' % (start, end)
+        if m:
+            start, end = m.group(1, 2)
+        if start or end:
+            if not start and int(end) > FetchMaxSize:
+                end = '1023'
+            elif not end or int(end)-int(start)+1 > FetchMaxSize:
+                end = str(FetchMaxSize - 1 + int(start))
+            fetchrange = 'bytes=%s-%s' % (start, end)
 
     for i in xrange(int(request.get('fetchmax', FetchMax))):
         try:
