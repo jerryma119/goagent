@@ -46,8 +46,8 @@ def post():
     if __password__ and __password__ != request.get('password', ''):
         return print_notify(method, url, 403, 'Wrong password.')
 
-    fetch_method = getattr(urlfetch, method, '')
-    if not fetch_method:
+    fetchmethod = getattr(urlfetch, method, '')
+    if not fetchmethod:
         return print_notify(method, url, 501, 'Invalid Method')
 
     if 'http' != url[:4]:
@@ -60,19 +60,20 @@ def post():
 
     fetchrange = 'bytes=0-%d' % (FetchMaxSize - 1)
     if 'range' in headers:
-        m = re.search(r'(\d+)?-(\d+)?', headers['range'])
-        if m:
-            start, end = m.group(1, 2)
-        if start or end:
-            if not start and int(end) > FetchMaxSize:
-                end = '1023'
-            elif not end or int(end)-int(start)+1 > FetchMaxSize:
-                end = str(FetchMaxSize - 1 + int(start))
-            fetchrange = 'bytes=%s-%s' % (start, end)
+        try:
+            start, end = re.search(r'(\d+)?-(\d+)?', headers['range']).group(1, 2)
+            if start or end:
+                if not start and int(end) > FetchMaxSize:
+                    end = '1023'
+                elif not end or int(end)-int(start)+1 > FetchMaxSize:
+                    end = str(FetchMaxSize - 1 + int(start))
+                fetchrange = 'bytes=%s-%s' % (start, end)
+        except:
+            pass
 
     for i in xrange(int(request.get('fetchmax', FetchMax))):
         try:
-            response = urlfetch.fetch(url, payload, fetch_method, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
+            response = urlfetch.fetch(url, payload, fetchmethod, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
             #if method=='GET' and len(response.content)>0x1000000:
             #    raise urlfetch.ResponseTooLargeError(None)
             break
