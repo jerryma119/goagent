@@ -55,25 +55,22 @@ def post():
 
     deadline = Deadline[1 if payload else 0]
 
-    fetch_range = 'bytes=0-%d' % (FetchMaxSize - 1)
-    headers = {}
-    for line in request['headers'].splitlines():
-        key, _, value = line.partition(':')
-        value = value.strip()
-        if key =='range':
-            m = re.search(r'(\d+)?-(\d+)?', value)
-            if m is None:
-                continue
-            start, end = m.group(1, 2)
-            if not start and not end:
-                continue
-            if not start and int(end) > FetchMaxSize:
-                end = '1023'
-            elif not end or int(end)-int(start)+1 > FetchMaxSize:
-                end = str(FetchMaxSize - 1 + int(start))
-            fetch_range = 'bytes=%s-%s' % (start, end)
-        headers[key] = value
+    headers = dict((k, v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers['connection'] = 'close'
+
+    fetchrange = 'bytes=0-%d' % (FetchMaxSize - 1)
+    if 'range' in headers:
+        m = re.search(r'(\d+)?-(\d+)?', headers['range'])
+        if m is None:
+            continue
+        start, end = m.group(1, 2)
+        if not start and not end:
+            continue
+        if not start and int(end) > FetchMaxSize:
+            end = '1023'
+        elif not end or int(end)-int(start)+1 > FetchMaxSize:
+            end = str(FetchMaxSize - 1 + int(start))
+        fetchrange = 'bytes=%s-%s' % (start, end)
 
     for i in xrange(int(request.get('fetchmax', FetchMax))):
         try:
@@ -92,13 +89,13 @@ def post():
         except urlfetch.ResponseTooLargeError, e:
             if method == 'GET':
                 deadline = Deadline[1]
-                headers['Range'] = fetch_range
+                headers['range'] = fetchrange
             else:
                 return print_notify(method, url, 500, 'Response Too Large: %s' % e)
         except Exception, e:
             if i==0 and method=='GET':
                 deadline = Deadline[1]
-                headers['Range'] = fetch_range
+                headers['range'] = fetchrange
     else:
         return print_notify(method, url, 500, 'Urlfetch error: %s' % e)
 

@@ -662,7 +662,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    headers += 'Range: bytes=0-%d\r\n' % self.part_size
+                    headers += 'range: bytes=0-%d\r\n' % self.part_size
                     break
 
         retval, data = self._fetch(self.path, self.command, headers, payload)
