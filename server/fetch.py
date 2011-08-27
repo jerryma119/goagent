@@ -121,7 +121,9 @@ def post():
 def get():
     print 'Content-Type: text/html; charset=utf-8'
     print ''
-    print '''\
+    if os.environ['PATH_INFO'] == '/_ah/warmup':
+        return sys.stdout.write('warmup')
+    sys.stdout.write('''\
 <html>
 <head>
     <link rel="icon" type="image/vnd.microsoft.icon" href="https://ssl.gstatic.com/codesite/ph/images/phosting.ico">
@@ -153,7 +155,7 @@ def get():
     </table>
 </body>
 </html>
-''' % dict(version=__version__)
+''' % dict(version=__version__))
 
 def main():
     if os.environ['REQUEST_METHOD'] == 'POST':
