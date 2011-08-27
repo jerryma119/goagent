@@ -80,10 +80,12 @@ def post():
         except apiproxy_errors.OverQuotaError, e:
             time.sleep(4)
         except DeadlineExceededError, e:
+            errors.append(str(e))
             logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline[1]
         except urlfetch.DownloadError, e:
+            errors.append(str(e))
             logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline[1]
