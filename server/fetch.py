@@ -31,9 +31,8 @@ def print_response(status, headers, content):
 
 def print_notify(method, url, status, content):
     logging.warning('%r Failed: url=%r, status=%r', method, url, status)
-    content = '<h2>Fetch Server Info</h2><hr noshade="noshade"><p>%s %r</p><p>Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
-    headers = {'content-type':'text/html', 'content-length':len(content)}
-    print_response(status, headers, content)
+    content = '<h2>Fetch Server Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
+    print_response(status, {'content-type':'text/html'}, content)
 
 def post():
     request = gae_decode_data(zlib.decompress(sys.stdin.read(int(os.environ.get('CONTENT_LENGTH', -1)))))
@@ -82,6 +81,10 @@ def post():
             time.sleep(4)
         except DeadlineExceededError, e:
             logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
+            time.sleep(1)
+            deadline = Deadline[1]
+        except urlfetch.DownloadError, e:
+            logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline[1]
         except urlfetch.InvalidURLError, e:
