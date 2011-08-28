@@ -531,6 +531,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if host.endswith(common.GOOGLE_SITES):
                     conn = MultiplexConnection(common.GOOGLE_HOSTS, int(port))
                     sock = conn.socket
+                    del conn
                 else:
                     sock = socket.create_connection((host, int(port)))
                 self.log_request(200)
@@ -553,6 +554,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         finally:
             try:
                 sock.close()
+                del sock
             except:
                 pass
 
@@ -612,6 +614,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if host.endswith(common.GOOGLE_SITES):
                     conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
                     sock = conn.socket
+                    del conn
                 else:
                     sock = socket.create_connection((host, port))
                 self.headers['connection'] = 'close'
@@ -643,6 +646,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         finally:
             try:
                 sock.close()
+                del sock
             except:
                 pass
 
