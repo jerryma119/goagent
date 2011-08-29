@@ -43,7 +43,6 @@ class Common(object):
         self.GAE_DEBUGLEVEL = self.config.getint('gae', 'debuglevel')
         self.GAE_PATH       = self.config.get('gae', 'path')
         self.GAE_BINDHOSTS  = tuple(self.config.get('gae', 'bindhosts').split('|')) if self.config.has_option('gae', 'bindhosts') else ()
-        self.GAE_CERTS      = self.config.get('gae', 'certs').split('|')
 
         self.PROXY_ENABLE   = self.config.getint('proxy', 'enable')
         self.PROXY_HOST     = self.config.get('proxy', 'host')
@@ -342,8 +341,6 @@ class CertUtil(object):
             cakey = CertUtil.readFile(keyFile)
             cacrt = CertUtil.readFile(crtFile)
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
-            for host in common.GAE_CERTS:
-                CertUtil.getCertificate(host)
 
 def gae_encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
