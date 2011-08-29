@@ -144,7 +144,7 @@ class MultiplexConnection(object):
             MultiplexConnection.window_ack = 0
             logging.warning(r'MultiplexConnection Cannot Connect to hostslist %s:%s, switch new window=%d', hostslist, port, MultiplexConnection.window)
             raise RuntimeError(r'MultiplexConnection Cannot Connect to hostslist %s:%s' % (hostslist, port))
-    def __del__(self):
+    def close(self):
         for sock in self._sockets:
             try:
                 sock.close()
@@ -152,6 +152,7 @@ class MultiplexConnection(object):
             except:
                 pass
         del self._sockets
+
 
 __GAE_SERVERS = frozenset('%s.appspot.com' % x for x in common.GAE_APPIDS)
 def socket_create_connection((host, port), timeout=None, source_address=None):
@@ -194,7 +195,7 @@ def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accep
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
-def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None):
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
     timecount = timeout
     try:
         while 1:
@@ -216,10 +217,15 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                             timecount = maxpong or timeout
                     else:
                         return
+            else:
+                if idlecall:
+                    idlecall()
+                    idlecall = None
     except Exception, ex:
         logging.warning('socket_forward error=%s', ex)
     finally:
-        pass
+        if idlecall:
+            idlecall()
 
 class CertUtil(object):
     '''CertUtil module, based on WallProxy 0.4.0'''
@@ -531,7 +537,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if host.endswith(common.GOOGLE_SITES):
                     conn = MultiplexConnection(common.GOOGLE_HOSTS, int(port))
                     sock = conn.socket
-                    del conn
                 else:
                     sock = socket.create_connection((host, int(port)))
                 self.log_request(200)
@@ -548,7 +553,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += '\r\n'
                 sock.sendall(data)
-            socket_forward(self.connection, sock)
+            socket_forward(self.connection, sock, idlecall=lambda:conn.close())
         except:
             logging.exception('GaeProxyHandler.do_CONNECT_Direct Error')
         finally:
@@ -614,7 +619,6 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if host.endswith(common.GOOGLE_SITES):
                     conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
                     sock = conn.socket
-                    del conn
                 else:
                     sock = socket.create_connection((host, port))
                 self.headers['connection'] = 'close'
@@ -640,7 +644,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if content_length > 0:
                 data += self.rfile.read(content_length)
             sock.sendall(data)
-            socket_forward(self.connection, sock)
+            socket_forward(self.connection, sock, idlecall=lambda:conn.close())
         except Exception, ex:
             logging.exception('GaeProxyHandler.do_GET Error, %s', ex)
         finally:
