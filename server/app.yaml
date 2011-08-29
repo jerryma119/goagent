@@ -7,10 +7,3 @@ handlers:
 - url: /fetch\.py
   script: fetch.py
   secure: optional
-  
-- url: /_ah/warmup
-  script: fetch.py
-  secure: optional
-
-inbound_services:
-- warmup

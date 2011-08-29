@@ -372,7 +372,7 @@ def build_opener():
 def proxy_auth_header(username, password):
     return 'Proxy-Authorization: Basic %s' + base64.b64encode('%s:%s'%(username, password))
 
-class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = build_opener()
@@ -395,7 +395,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _fetch(self, url, method, headers, payload):
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
-        logging.debug('GaeProxyHandler fetch params %s', params)
+        logging.debug('LocalProxyHandler fetch params %s', params)
         if common.GAE_PASSWORD:
             params['password'] = common.GAE_PASSWORD
         if common.FETCHMAX_SERVER:
@@ -409,7 +409,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     appid = common.GAE_APPIDS[0]
                 else:
                     appid = random.choice(common.GAE_APPIDS)
-                logging.debug('GaeProxyHandler fetch %r appid=%r', url, appid)
+                logging.debug('LocalProxyHandler fetch %r appid=%r', url, appid)
                 if not common.PROXY_ENABLE:
                     fetchserver = '%s://%s.appspot.com%s' % (common.GOOGLE_PREFER, appid, common.GAE_PATH)
                 else:
@@ -532,7 +532,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT_Direct(self):
         try:
-            logging.debug('GaeProxyHandler.do_CONNECT_Directt %s' % self.path)
+            logging.debug('LocalProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
             if not common.PROXY_ENABLE:
                 if host.endswith(common.GOOGLE_SITES):
@@ -556,7 +556,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=lambda:conn.close())
         except:
-            logging.exception('GaeProxyHandler.do_CONNECT_Direct Error')
+            logging.exception('LocalProxyHandler.do_CONNECT_Direct Error')
         finally:
             try:
                 sock.close()
@@ -647,7 +647,7 @@ class GaeProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=lambda:conn.close())
         except Exception, ex:
-            logging.exception('GaeProxyHandler.do_GET Error, %s', ex)
+            logging.exception('LocalProxyHandler.do_GET Error, %s', ex)
         finally:
             try:
                 sock.close()
@@ -713,5 +713,5 @@ if __name__ == '__main__':
     CertUtil.checkCA()
     sys.stdout.write(common.info())
     LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
-    httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GaeProxyHandler)
+    httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyHandler)
     httpd.serve_forever()
