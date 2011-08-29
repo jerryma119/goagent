@@ -223,6 +223,7 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                     idlecall = None
     except Exception, ex:
         logging.warning('socket_forward error=%s', ex)
+        raise
     finally:
         if idlecall:
             idlecall()
