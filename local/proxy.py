@@ -539,10 +539,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             logging.debug('LocalProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
+            idlecall = None
             if not common.PROXY_ENABLE:
                 if host.endswith(common.GOOGLE_SITES):
                     conn = MultiplexConnection(common.GOOGLE_HOSTS, int(port))
                     sock = conn.socket
+                    idlecall=conn.close
                 else:
                     sock = socket.create_connection((host, int(port)))
                 self.log_request(200)
@@ -559,7 +561,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += '\r\n'
                 sock.sendall(data)
-            socket_forward(self.connection, sock, idlecall=conn.close)
+            socket_forward(self.connection, sock, idlecall=idlecall)
         except:
             logging.exception('LocalProxyHandler.do_CONNECT_Direct Error')
         finally:
@@ -621,10 +623,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             port = 80
         try:
             self.log_request()
+            idlecall = None
             if not common.PROXY_ENABLE:
                 if host.endswith(common.GOOGLE_SITES):
                     conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
                     sock = conn.socket
+                    idlecall = conn.close
                 else:
                     sock = socket.create_connection((host, port))
                 self.headers['connection'] = 'close'
@@ -650,7 +654,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if content_length > 0:
                 data += self.rfile.read(content_length)
             sock.sendall(data)
-            socket_forward(self.connection, sock, idlecall=conn.close)
+            socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception, ex:
             logging.exception('LocalProxyHandler.do_GET Error, %s', ex)
         finally:
