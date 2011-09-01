@@ -7,12 +7,16 @@ __version__ = '1.5.2'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
-import struct, random, hashlib, ctypes
+import struct, random, hashlib
 import fnmatch, base64, logging, ConfigParser
 import threading
 import socket, ssl, select
 import httplib, urllib2, urlparse
 import BaseHTTPServer, SocketServer
+try:
+    import ctypes
+except ImportError:
+    ctypes = None
 try:
     import OpenSSL
 except ImportError:
@@ -555,7 +559,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
                 data += '\r\n'
                 sock.sendall(data)
-            socket_forward(self.connection, sock, idlecall=lambda:conn.close())
+            socket_forward(self.connection, sock, idlecall=conn.close)
         except:
             logging.exception('LocalProxyHandler.do_CONNECT_Direct Error')
         finally:
@@ -646,7 +650,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if content_length > 0:
                 data += self.rfile.read(content_length)
             sock.sendall(data)
-            socket_forward(self.connection, sock, idlecall=lambda:conn.close())
+            socket_forward(self.connection, sock, idlecall=conn.close)
         except Exception, ex:
             logging.exception('LocalProxyHandler.do_GET Error, %s', ex)
         finally:
