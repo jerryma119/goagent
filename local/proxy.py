@@ -342,7 +342,7 @@ class CertUtil(object):
                 'darwin' : r'cp /System/Library/Keychains/X509Anchors ~/Library/Keychains/;certtool i CA.crt k=X509Anchors >/dev/null',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
-            logging.warn('GoAgent install trusted root CA certificate failed -- CA.crt')
+            logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
         if OpenSSL:
             keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
             crtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
