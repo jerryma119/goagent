@@ -318,7 +318,7 @@ class CertUtil(object):
         #Check CA imported
         cmd = {
                 'win32'  : r'certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL',
-                'darwin' : r'cp /System/Library/Keychains/X509Anchors ~/Library/Keychains/;certtool i CA.crt k=X509Anchors >/dev/null',
+                #'darwin' : r'cp /System/Library/Keychains/X509Anchors ~/Library/Keychains/;certtool i CA.crt k=X509Anchors >/dev/null',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
