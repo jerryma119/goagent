@@ -530,11 +530,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if host.endswith(common.GOOGLE_SITES):
-            if common.GOOGLE_WITHGAE and host in common.GOOGLE_WITHGAE:
-                return self.do_CONNECT_GAE()
-            else:
-                return self.do_CONNECT_Direct()
+        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+            return self.do_CONNECT_Direct()
         elif host in common.HOSTS:
             return self.do_CONNECT_Direct()
         else:
@@ -608,17 +605,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
-        if host.endswith(common.GOOGLE_SITES):
+        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if self.path.startswith(common.GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header('Location', self.path.replace('http://', 'https://'))
                 self.end_headers()
                 return
-            if common.GOOGLE_WITHGAE and host in common.GOOGLE_WITHGAE:
-                return self.do_METHOD_GAE()
-            else:
-                return self.do_METHOD_Direct()
-        elif host.partition(':')[0] in common.HOSTS:
+            return self.do_METHOD_Direct()
+        elif host in common.HOSTS:
             return self.do_METHOD_Direct()
         else:
             return self.do_METHOD_GAE()
