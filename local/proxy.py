@@ -28,76 +28,57 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
 
-class Common(object):
-    '''global config module, similar with GappProxy 2.0.0'''
+ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
+COMMON_Config = ConfigParser.ConfigParser()
 
-    ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
+COMMON_Config.read(os.path.splitext(__file__)[0] + '.ini')
+COMMON_LISTEN_IP      = COMMON_Config.get('listen', 'ip')
+COMMON_LISTEN_PORT    = COMMON_Config.getint('listen', 'port')
+COMMON_LISTEN_VISIBLE = COMMON_Config.getint('listen', 'visible')
 
-    def __init__(self):
-        '''read proxy.ini config'''
-        self.config = ConfigParser.ConfigParser()
-        self.config.read(os.path.splitext(__file__)[0] + '.ini')
+COMMON_GAE_APPIDS     = tuple(re.sub(r'\..+?\.com$', '', x) for x in COMMON_Config.get('gae', 'appid').split('|'))
+COMMON_GAE_SERVERS    = frozenset('%s.appspot.com' % x for x in COMMON_GAE_APPIDS)
+COMMON_GAE_PASSWORD   = COMMON_Config.get('gae', 'password').strip()
+COMMON_GAE_DEBUGLEVEL = COMMON_Config.getint('gae', 'debuglevel')
+COMMON_GAE_PATH       = COMMON_Config.get('gae', 'path')
+COMMON_GAE_BINDHOSTS  = tuple(COMMON_Config.get('gae', 'bindhosts').split('|')) if COMMON_Config.has_option('gae', 'bindhosts') else ()
+COMMON_PROXY_ENABLE   = COMMON_Config.getint('proxy', 'enable')
 
-        self.LISTEN_IP      = self.config.get('listen', 'ip')
-        self.LISTEN_PORT    = self.config.getint('listen', 'port')
-        self.LISTEN_VISIBLE = self.config.getint('listen', 'visible')
+COMMON_PROXY_HOST     = COMMON_Config.get('proxy', 'host')
+COMMON_PROXY_PORT     = COMMON_Config.getint('proxy', 'port')
+COMMON_PROXY_USERNAME = COMMON_Config.get('proxy', 'username')
+COMMON_PROXY_PASSWROD = COMMON_Config.get('proxy', 'password')
+COMMON_PROXY_NTLM     = bool(COMMON_Config.getint('proxy', 'ntlm')) if COMMON_Config.has_option('proxy', 'ntlm') else '\\' in COMMON_PROXY_USERNAME
 
-        self.GAE_APPIDS     = tuple(re.sub(r'\..+?\.com$', '', x) for x in self.config.get('gae', 'appid').split('|'))
-        self.GAE_PASSWORD   = self.config.get('gae', 'password').strip()
-        self.GAE_DEBUGLEVEL = self.config.getint('gae', 'debuglevel')
-        self.GAE_PATH       = self.config.get('gae', 'path')
-        self.GAE_BINDHOSTS  = tuple(self.config.get('gae', 'bindhosts').split('|')) if self.config.has_option('gae', 'bindhosts') else ()
+COMMON_GOOGLE_PREFER     = COMMON_Config.get('google', 'prefer')
+COMMON_GOOGLE_AUTOSWITCH = COMMON_Config.getint('google', 'autoswitch')
+COMMON_GOOGLE_SITES      = tuple(COMMON_Config.get('google', 'sites').split('|'))
+COMMON_GOOGLE_FORCEHTTPS = tuple(COMMON_Config.get('google', 'forcehttps').split('|'))
+COMMON_GOOGLE_WITHGAE    = frozenset(COMMON_Config.get('google', 'withgae').split('|'))
+COMMON_GOOGLE_HTTP       = [x.split('|') for x in COMMON_Config.get('google', 'http').split('||')]
+COMMON_GOOGLE_HTTPS      = [x.split('|') for x in COMMON_Config.get('google', 'https').split('||')]
+COMMON_GOOGLE_HOSTS      = COMMON_GOOGLE_HTTP if COMMON_GOOGLE_PREFER == 'http' else COMMON_GOOGLE_HTTPS
 
-        self.PROXY_ENABLE   = self.config.getint('proxy', 'enable')
-        self.PROXY_HOST     = self.config.get('proxy', 'host')
-        self.PROXY_PORT     = self.config.getint('proxy', 'port')
-        self.PROXY_USERNAME = self.config.get('proxy', 'username')
-        self.PROXY_PASSWROD = self.config.get('proxy', 'password')
-        self.PROXY_NTLM     = bool(self.config.getint('proxy', 'ntlm')) if self.config.has_option('proxy', 'ntlm') else '\\' in self.PROXY_USERNAME
+COMMON_FETCHMAX_LOCAL  = COMMON_Config.getint('fetchmax', 'local') if COMMON_Config.get('fetchmax', 'local') else 3
+COMMON_FETCHMAX_SERVER = COMMON_Config.get('fetchmax', 'server')
+COMMON_AUTORANGE_HOSTS      = tuple(COMMON_Config.get('autorange', 'hosts').split('|'))
+COMMON_AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in COMMON_AUTORANGE_HOSTS)
+COMMON_AUTORANGE_ENDSWITH   = frozenset(COMMON_Config.get('autorange', 'endswith').split('|'))
 
-        self.GOOGLE_PREFER     = self.config.get('google', 'prefer')
-        self.GOOGLE_AUTOSWITCH = self.config.getint('google', 'autoswitch')
-        self.GOOGLE_SITES      = tuple(self.config.get('google', 'sites').split('|'))
-        self.GOOGLE_FORCEHTTPS = tuple(self.config.get('google', 'forcehttps').split('|'))
-        self.GOOGLE_WITHGAE    = frozenset(self.config.get('google', 'withgae').split('|'))
-        self.GOOGLE_HTTP       = [x.split('|') for x in self.config.get('google', 'http').split('||')]
-        self.GOOGLE_HTTPS      = [x.split('|') for x in self.config.get('google', 'https').split('||')]
-        self.GOOGLE_HOSTS      = self.GOOGLE_HTTP if self.GOOGLE_PREFER == 'http' else self.GOOGLE_HTTPS
+COMMON_HOSTS = dict((k, v) for k, v in COMMON_Config.items('hosts') if not k.startswith('_'))
 
-        self.FETCHMAX_LOCAL  = self.config.getint('fetchmax', 'local') if self.config.get('fetchmax', 'local') else 3
-        self.FETCHMAX_SERVER = self.config.get('fetchmax', 'server')
-
-        self.AUTORANGE_HOSTS      = tuple(self.config.get('autorange', 'hosts').split('|'))
-        self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
-        self.AUTORANGE_ENDSWITH   = frozenset(self.config.get('autorange', 'endswith').split('|'))
-
-        self.HOSTS = dict((k, v) for k, v in self.config.items('hosts') if not k.startswith('_'))
-        if self.config.getint('hosts', '__merge__'):
-            try:
-                hosts = os.path.join(os.environ['windir'], r'System32\drivers\etc\hosts') if os.name=='nt' else '/etc/hosts'
-                config = [(x.split()[1], x.split()[0]) for x in open(hosts) if x.strip() and not x.strip().startswith('#') and not x.split()[0].startswith(('127.0.0', '::'))]
-                self.HOSTS.update(config)
-            except Exception, e:
-                logging.warning('Merge system hosts config failed! error=%r', e)
-
-    def __str__(self):
-        return repr(tuple((x, getattr(self, x)) for x in dir(self) if re.match(r'[A-Z]+_[A-Z]+', x)))
-
-    def info(self):
-        info = ''
-        info += '--------------------------------------------\n'
-        info += 'OpenSSL Module : %s\n' % ('Enabled' if OpenSSL else 'Disabled')
-        info += 'Listen Address : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
-        info += 'Debug Level    : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
-        info += 'Local Proxy    : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
-        info += 'GAE Mode       : %s\n' % self.GOOGLE_PREFER
-        info += 'GAE APPID      : %s\n' % '|'.join(self.GAE_APPIDS)
-        info += 'GAE BindHost   : %s\n' % '|'.join(self.GAE_BINDHOSTS) if self.GAE_BINDHOSTS else ''
-        info += '--------------------------------------------\n'
-        return info
-
-if __name__ == '__main__':
-    common = Common()
+def common_info():
+    info = ''
+    info += '--------------------------------------------\n'
+    info += 'OpenSSL Module : %s\n' % ('Enabled' if OpenSSL else 'Disabled')
+    info += 'Listen Address : %s:%d\n' % (COMMON_LISTEN_IP, COMMON_LISTEN_PORT)
+    info += 'Debug Level    : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
+    info += 'Local Proxy    : %s:%s\n' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT) if COMMON_PROXY_ENABLE else ''
+    info += 'GAE Mode       : %s\n' % COMMON_GOOGLE_PREFER
+    info += 'GAE APPID      : %s\n' % '|'.join(COMMON_GAE_APPIDS)
+    info += 'GAE BindHost   : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_BINDHOSTS else ''
+    info += '--------------------------------------------\n'
+    return info
 
 class MultiplexConnection(object):
     '''multiplex tcp connection class'''
@@ -156,26 +137,24 @@ class MultiplexConnection(object):
                 pass
         del self._sockets
 
-
-__GAE_SERVERS = frozenset('%s.appspot.com' % x for x in common.GAE_APPIDS)
 def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host in __GAE_SERVERS:
+    if host in COMMON_GAE_SERVERS:
         msg = 'socket_create_connection returns an empty list'
         try:
-            #logging.debug('socket_create_connection connect hostslist: (%r, %r)', common.GOOGLE_HOSTS, port)
-            conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
+            #logging.debug('socket_create_connection connect hostslist: (%r, %r)', COMMON_GOOGLE_HOSTS, port)
+            conn = MultiplexConnection(COMMON_GOOGLE_HOSTS, port)
             sock = conn.socket
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
             return sock
         except socket.error, msg:
-            logging.error('socket_create_connection connect fail: (%r, %r)', common.GOOGLE_HOSTS, port)
+            logging.error('socket_create_connection connect fail: (%r, %r)', COMMON_GOOGLE_HOSTS, port)
             sock = None
         if not sock:
             raise socket.error, msg
     else:
         msg = 'getaddrinfo returns an empty list'
-        host = common.HOSTS.get(host) or host
+        host = COMMON_HOSTS.get(host) or host
         for res in socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):
             af, socktype, proto, canonname, sa = res
             sock = None
@@ -357,15 +336,15 @@ def gae_decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
 
 def build_opener():
-    if common.PROXY_ENABLE:
-        proxy = '%s:%s@%s:%d'%(common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
+    if COMMON_PROXY_ENABLE:
+        proxy = '%s:%s@%s:%d'%(COMMON_PROXY_USERNAME, COMMON_PROXY_PASSWROD, COMMON_PROXY_HOST, COMMON_PROXY_PORT)
         handlers = [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
-        if common.PROXY_NTLM:
+        if COMMON_PROXY_NTLM:
             if ntlm is None:
-                logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', common.PROXY_HOST, common.PROXY_PORT)
+                logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', COMMON_PROXY_HOST, COMMON_PROXY_PORT)
                 sys.exit(-1)
             passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
-            passman.add_password(None, '%s:%s' % (common.PROXY_HOST, common.PROXY_PORT), common.PROXY_USERNAME, common.PROXY_PASSWROD)
+            passman.add_password(None, '%s:%s' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT), COMMON_PROXY_USERNAME, COMMON_PROXY_PASSWROD)
             auth_NTLM = ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)
             handlers.append(auth_NTLM)
     else:
@@ -398,31 +377,32 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def _fetch(self, url, method, headers, payload):
+        global COMMON_GOOGLE_PREFER
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('LocalProxyHandler fetch params %s', params)
-        if common.GAE_PASSWORD:
-            params['password'] = common.GAE_PASSWORD
-        if common.FETCHMAX_SERVER:
-            params['fetchmax'] = int(common.FETCHMAX_SERVER)
+        if COMMON_GAE_PASSWORD:
+            params['password'] = COMMON_GAE_PASSWORD
+        if COMMON_FETCHMAX_SERVER:
+            params['fetchmax'] = int(COMMON_FETCHMAX_SERVER)
         params = gae_encode_data(params)
-        for i in xrange(common.FETCHMAX_LOCAL):
+        for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
-                if len(common.GAE_APPIDS) == 1:
-                    appid = common.GAE_APPIDS[0]
-                elif common.GAE_BINDHOSTS and urlparse.urlsplit(url)[1].endswith(common.GAE_BINDHOSTS):
-                    appid = common.GAE_APPIDS[0]
+                if len(COMMON_GAE_APPIDS) == 1:
+                    appid = COMMON_GAE_APPIDS[0]
+                elif COMMON_GAE_BINDHOSTS and urlparse.urlsplit(url)[1].endswith(COMMON_GAE_BINDHOSTS):
+                    appid = COMMON_GAE_APPIDS[0]
                 else:
-                    appid = random.choice(common.GAE_APPIDS)
+                    appid = random.choice(COMMON_GAE_APPIDS)
                 logging.debug('LocalProxyHandler fetch %r appid=%r', url, appid)
-                if not common.PROXY_ENABLE:
-                    fetchserver = '%s://%s.appspot.com%s' % (common.GOOGLE_PREFER, appid, common.GAE_PATH)
+                if not COMMON_PROXY_ENABLE:
+                    fetchserver = '%s://%s.appspot.com%s' % (COMMON_GOOGLE_PREFER, appid, COMMON_GAE_PATH)
                 else:
-                    fetchhost = random.choice(common.GOOGLE_HOSTS[0])
-                    fetchserver = '%s://%s%s' % (common.GOOGLE_PREFER, fetchhost, common.GAE_PATH)
+                    fetchhost = random.choice(COMMON_GOOGLE_HOSTS[0])
+                    fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, fetchhost, COMMON_GAE_PATH)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
-                if common.PROXY_ENABLE:
+                if COMMON_PROXY_ENABLE:
                     request.add_header('Host', '%s.appspot.com' % appid)
                 response = self.opener.open(request)
                 data = response.read()
@@ -430,9 +410,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except urllib2.HTTPError, e:
                 # www.google.cn:80 is down, switch to https
                 if e.code in (502, 504):
-                    common.GOOGLE_PREFER = 'https'
-                    common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
-                    sys.stdout.write(common.info())
+                    COMMON_GOOGLE_PREFER = 'https'
+                    COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTPS
+                    sys.stdout.write(common_info())
                 errors.append('%d: %s' % (e.code, httplib.responses.get(e.code, 'Unknown HTTPError')))
                 continue
             except urllib2.URLError, e:
@@ -441,10 +421,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if e.reason[0] == 10054:
                         MultiplexConnection.window_ack = 0
                         MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
-                        if common.GOOGLE_AUTOSWITCH:
-                            common.GOOGLE_PREFER = 'https'
-                            common.GOOGLE_HOSTS = common.GOOGLE_HTTPS
-                            sys.stdout.write(common.info())
+                        if COMMON_GOOGLE_AUTOSWITCH:
+                            COMMON_GOOGLE_PREFER = 'https'
+                            COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTPS
+                            sys.stdout.write(common_info())
                 errors.append(str(e))
                 continue
             except Exception, e:
@@ -530,9 +510,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+        if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE:
             return self.do_CONNECT_Direct()
-        elif host in common.HOSTS:
+        elif host in COMMON_HOSTS:
             return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_GAE()
@@ -542,9 +522,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.debug('LocalProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
             idlecall = None
-            if not common.PROXY_ENABLE:
-                if host.endswith(common.GOOGLE_SITES):
-                    conn = MultiplexConnection(common.GOOGLE_HOSTS, int(port))
+            if not COMMON_PROXY_ENABLE:
+                if host.endswith(COMMON_GOOGLE_SITES):
+                    conn = MultiplexConnection(COMMON_GOOGLE_HOSTS, int(port))
                     sock = conn.socket
                     idlecall=conn.close
                 else:
@@ -552,15 +532,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.log_request(200)
                 self.wfile.write('%s 200 Tunnel established\r\n\r\n' % self.protocol_version)
             else:
-                sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
-                if host.endswith(common.GOOGLE_SITES):
-                    ip = random.choice(common.GOOGLE_HOSTS[0])
+                sock = socket.create_connection((COMMON_PROXY_HOST, COMMON_PROXY_PORT))
+                if host.endswith(COMMON_GOOGLE_SITES):
+                    ip = random.choice(COMMON_GOOGLE_HOSTS[0])
                 else:
-                    ip = random.choice(common.HOSTS.get(host, host)[0])
+                    ip = random.choice(COMMON_HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
-                if common.PROXY_USERNAME and not common.PROXY_NTLM:
-                    data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
+                if COMMON_PROXY_USERNAME and not COMMON_PROXY_NTLM:
+                    data += '%s\r\n' % proxy_auth_header(COMMON_PROXY_USERNAME, COMMON_PROXY_PASSWROD)
                 data += '\r\n'
                 sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
@@ -605,14 +585,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            if self.path.startswith(common.GOOGLE_FORCEHTTPS):
+        if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE:
+            if self.path.startswith(COMMON_GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header('Location', self.path.replace('http://', 'https://'))
                 self.end_headers()
                 return
             return self.do_METHOD_Direct()
-        elif host in common.HOSTS:
+        elif host in COMMON_HOSTS:
             return self.do_METHOD_Direct()
         else:
             return self.do_METHOD_GAE()
@@ -628,9 +608,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             self.log_request()
             idlecall = None
-            if not common.PROXY_ENABLE:
-                if host.endswith(common.GOOGLE_SITES):
-                    conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
+            if not COMMON_PROXY_ENABLE:
+                if host.endswith(COMMON_GOOGLE_SITES):
+                    conn = MultiplexConnection(COMMON_GOOGLE_HOSTS, port)
                     sock = conn.socket
                     idlecall = conn.close
                 else:
@@ -640,17 +620,17 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
                 data += '\r\n'
             else:
-                sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
-                if host.endswith(common.GOOGLE_SITES):
-                    host = random.choice(common.GOOGLE_HOSTS[0])
+                sock = socket.create_connection((COMMON_PROXY_HOST, COMMON_PROXY_PORT))
+                if host.endswith(COMMON_GOOGLE_SITES):
+                    host = random.choice(COMMON_GOOGLE_HOSTS[0])
                 else:
-                    host = common.HOSTS.get(host, host)
+                    host = COMMON_HOSTS.get(host, host)
                 url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
                 data ='%s %s %s\r\n'  % (self.command, url, self.request_version)
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
                 data += 'Host: %s\r\n' % netloc
-                if common.PROXY_USERNAME and not common.PROXY_NTLM:
-                    data += '%s\r\n' % proxy_auth_header(common.PROXY_USERNAME, common.PROXY_PASSWROD)
+                if COMMON_PROXY_USERNAME and not COMMON_PROXY_NTLM:
+                    data += '%s\r\n' % proxy_auth_header(COMMON_PROXY_USERNAME, COMMON_PROXY_PASSWROD)
                 data += 'Proxy-connection: close\r\n'
                 data += '\r\n'
 
@@ -680,8 +660,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.dict.iteritems() if k not in self.skip_headers)
 
-        if host.endswith(common.AUTORANGE_HOSTS_TAIL):
-            for pattern in common.AUTORANGE_HOSTS:
+        if host.endswith(COMMON_AUTORANGE_HOSTS_TAIL):
+            for pattern in COMMON_AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
                     headers += 'range: bytes=0-%d\r\n' % self.part_size
@@ -719,12 +699,12 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 if __name__ == '__main__':
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
-        if not common.LISTEN_VISIBLE:
+        if not COMMON_LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
-    if common.GAE_DEBUGLEVEL:
+    if COMMON_GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
     CertUtil.checkCA()
-    sys.stdout.write(common.info())
-    LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
-    httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyHandler)
+    sys.stdout.write(common_info())
+    LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in COMMON_LISTEN_IP]
+    httpd = LocalProxyServer((COMMON_LISTEN_IP, COMMON_LISTEN_PORT), LocalProxyHandler)
     httpd.serve_forever()
