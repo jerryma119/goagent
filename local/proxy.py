@@ -377,7 +377,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def _fetch(self, url, method, headers, payload):
-        global COMMON_GOOGLE_PREFER
+        global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HOSTS
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('LocalProxyHandler fetch params %s', params)
