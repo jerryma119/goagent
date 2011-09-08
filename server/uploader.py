@@ -34,92 +34,88 @@ import logging
 
 #logging.basicConfig(level=logging.DEBUG, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
 
-class common:
-    GOOGLE_SITES = tuple('.appspot.com|.google.com|.googleusercontent.com|.googleapis.com|.googlecode.com|.gstatic.com|.google.com.hk'.split('|'))
-    GOOGLE_HTTPS = (
-                    '203.208.46.1|203.208.46.2|203.208.46.3|203.208.46.4|203.208.46.5|203.208.46.6|203.208.46.7|203.208.46.8'.split('|'),
-                    [x[-1][0] for x in socket.getaddrinfo('mail.google.com', 80)],
-                    )
-    HOSTS = {}
-
 class MultiplexConnection(object):
     '''multiplex tcp connection class'''
 
+    retry = 3
     timeout = 5
-    window = 1
+    window = 8
+    window_min = 4
+    window_max = 64
     window_ack = 0
 
-    def __init__(self, hostslist, port):
+    def __init__(self, hosts, port):
         self.socket = None
         self._sockets = set([])
-        self.connect(hostslist, port, MultiplexConnection.timeout, MultiplexConnection.window)
-    def connect(self, hostslist, port, timeout, window):
-        for i, hosts in enumerate(hostslist):
+        self.connect(hosts, port, MultiplexConnection.timeout, MultiplexConnection.window)
+    def connect(self, hosts, port, timeout, window):
+        for i in xrange(MultiplexConnection.retry):
             if len(hosts) > window:
                 hosts = random.sample(hosts, window)
-            logging.debug('MultiplexConnection connect (%s, %s)', hosts, port)
-            socs = []
+            logging.debug('MultiplexConnection connect %d hosts, port=%s', len(hosts), port)
+            socks = []
             for host in hosts:
-                soc_family = socket.AF_INET6 if ':' in host else socket.AF_INET
-                soc = socket.socket(soc_family, socket.SOCK_STREAM)
-                soc.setblocking(0)
-                logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
-                err = soc.connect_ex((host, port))
-                self._sockets.add(soc)
-                socs.append(soc)
-            (_, outs, _) = select.select([], socs, [], timeout)
+                sock_family = socket.AF_INET6 if ':' in host else socket.AF_INET
+                sock = socket.socket(sock_family, socket.SOCK_STREAM)
+                sock.setblocking(0)
+                #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
+                err = sock.connect_ex((host, port))
+                self._sockets.add(sock)
+                socks.append(sock)
+            (_, outs, _) = select.select([], socks, [], timeout)
             if outs:
                 self.socket = outs[0]
                 self.socket.setblocking(1)
                 self._sockets.remove(self.socket)
-                if window > 1:
+                if window > MultiplexConnection.window_min:
                     MultiplexConnection.window_ack += 1
-                    if MultiplexConnection.window_ack > 16:
+                    if MultiplexConnection.window_ack > 10 and window > MultiplexConnection.window_min:
                         MultiplexConnection.window = window - 1
                         MultiplexConnection.window_ack = 0
-                        logging.info('MultiplexConnection CONNECT port=443 OK 10 times, switch new window=%d', MultiplexConnection.window)
+                        logging.info('MultiplexConnection CONNECT port=%s OK 10 times, switch new window=%d', port, MultiplexConnection.window)
                 break
             else:
                 logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
-            MultiplexConnection.window = min(int(round(window*1.5)), 64)
+            MultiplexConnection.window = min(int(round(window*1.5)), self.window_max)
             MultiplexConnection.window_ack = 0
             logging.warning(r'MultiplexConnection Cannot Connect to hostslist %s:%s, switch new window=%d', hostslist, port, MultiplexConnection.window)
             raise RuntimeError(r'MultiplexConnection Cannot Connect to hostslist %s:%s' % (hostslist, port))
     def close(self):
-        for soc in self._sockets:
+        for sock in self._sockets:
             try:
-                soc.close()
+                sock.close()
+                del sock
             except:
                 pass
+        del self._sockets
 
-def socket_create_connection(address, timeout=None, source_address=None):
-    host, port = address
+def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host.endswith(common.GOOGLE_SITES):
+    if host.endswith(('.google.com', 'google.com.hk', '.appspot.com')):
         msg = 'socket_create_connection returns an empty list'
         try:
-            hostslist = common.GOOGLE_HTTPS
-            logging.debug("socket_create_connection connect hostslist: (%r, %r)", hostslist, port)
-            conn = MultiplexConnection(hostslist, port)
-            conn.close()
-            soc = conn.socket
-            soc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
-            return soc
+            COMMON_GOOGLE_HOSTS = ['www.g.cn', 'mail.google.com', 'www.google.com.hk']
+            COMMON_GOOGLE_HOSTS = list(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HOSTS], [])))
+            #logging.debug('socket_create_connection connect hostslist: (%r, %r)', COMMON_GOOGLE_HOSTS, port)
+            conn = MultiplexConnection(COMMON_GOOGLE_HOSTS, port)
+            sock = conn.socket
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+            return sock
         except socket.error, msg:
-            logging.error('socket_create_connection connect fail: (%r, %r)', hostslist, port)
-            soc = None
-        if not soc:
+            logging.error('socket_create_connection connect fail: (%r, %r)', COMMON_GOOGLE_HOSTS, port)
+            sock = None
+        if not sock:
             raise socket.error, msg
     else:
-        msg = "getaddrinfo returns an empty list"
-        host = common.HOSTS.get(host) or host
+        msg = 'getaddrinfo returns an empty list'
+        #host = COMMON_HOSTS.get(host) or host
         for res in socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM):
             af, socktype, proto, canonname, sa = res
             sock = None
             try:
                 sock = socket.socket(af, socktype, proto)
-                if timeout is not None:
+                if isinstance(timeout, (int, float)):
                     sock.settimeout(timeout)
                 if source_address is not None:
                     sock.bind(source_address)
@@ -128,7 +124,7 @@ def socket_create_connection(address, timeout=None, source_address=None):
             except socket.error, msg:
                 if sock is not None:
                     sock.close()
-        raise error, msg
+        raise socket.error, msg
 socket.create_connection = socket_create_connection
 
 fancy_urllib._create_connection = socket_create_connection
