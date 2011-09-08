@@ -55,9 +55,9 @@ COMMON_GOOGLE_AUTOSWITCH = COMMON_Config.getint('google', 'autoswitch')
 COMMON_GOOGLE_SITES      = tuple(COMMON_Config.get('google', 'sites').split('|'))
 COMMON_GOOGLE_FORCEHTTPS = tuple(COMMON_Config.get('google', 'forcehttps').split('|'))
 COMMON_GOOGLE_WITHGAE    = frozenset(COMMON_Config.get('google', 'withgae').split('|'))
-COMMON_GOOGLE_HTTP       = [x.split('|') for x in COMMON_Config.get('google', 'http').split('||')]
-COMMON_GOOGLE_HTTPS      = [x.split('|') for x in COMMON_Config.get('google', 'https').split('||')]
-COMMON_GOOGLE_HOSTS      = COMMON_GOOGLE_HTTP if COMMON_GOOGLE_PREFER == 'http' else COMMON_GOOGLE_HTTPS
+COMMON_GOOGLE_HTTP       = COMMON_Config.get('google', 'http').split('|')
+COMMON_GOOGLE_HTTPS      = COMMON_Config.get('google', 'https').split('|')
+COMMON_GOOGLE_HOSTS      = []
 
 COMMON_FETCHMAX_LOCAL  = COMMON_Config.getint('fetchmax', 'local') if COMMON_Config.get('fetchmax', 'local') else 3
 COMMON_FETCHMAX_SERVER = COMMON_Config.get('fetchmax', 'server')
@@ -66,6 +66,17 @@ COMMON_AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in COMMON_AUTORAN
 COMMON_AUTORANGE_ENDSWITH   = frozenset(COMMON_Config.get('autorange', 'endswith').split('|'))
 
 COMMON_HOSTS = dict((k, v) for k, v in COMMON_Config.items('hosts') if not k.startswith('_'))
+
+def common_google_resolve():
+    global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HTTP, COMMON_GOOGLE_HTTPS, COMMON_GOOGLE_HOSTS
+    logging.info('Resole google http address.')
+    COMMON_GOOGLE_HTTP  = list(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTP], [])))
+    logging.info('Resole google https address.')
+    COMMON_GOOGLE_HTTPS = list(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTPS], [])))
+    if COMMON_GOOGLE_PREFER=='https' or COMMON_GOOGLE_HTTP[0][:5] == COMMON_GOOGLE_HTTPS[0][:5]:
+        COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTPS
+    else:
+        COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTP
 
 def common_info():
     info = ''
@@ -83,18 +94,19 @@ def common_info():
 class MultiplexConnection(object):
     '''multiplex tcp connection class'''
 
+    retry = 3
     timeout = 5
     window = 8
     window_min = 4
     window_max = 64
     window_ack = 0
 
-    def __init__(self, hostslist, port):
+    def __init__(self, hosts, port):
         self.socket = None
         self._sockets = set([])
-        self.connect(hostslist, port, MultiplexConnection.timeout, MultiplexConnection.window)
-    def connect(self, hostslist, port, timeout, window):
-        for i, hosts in enumerate(hostslist):
+        self.connect(hosts, port, MultiplexConnection.timeout, MultiplexConnection.window)
+    def connect(self, hosts, port, timeout, window):
+        for i in xrange(MultiplexConnection.retry):
             if len(hosts) > window:
                 hosts = random.sample(hosts, window)
             logging.debug('MultiplexConnection connect %d hosts, port=%s', len(hosts), port)
@@ -112,8 +124,6 @@ class MultiplexConnection(object):
                 self.socket = outs[0]
                 self.socket.setblocking(1)
                 self._sockets.remove(self.socket)
-                if i > 0:
-                    hostslist[i:], hostslist[:i] = hostslist[:i], hostslist[i:]
                 if window > MultiplexConnection.window_min:
                     MultiplexConnection.window_ack += 1
                     if MultiplexConnection.window_ack > 10 and window > MultiplexConnection.window_min:
@@ -398,7 +408,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not COMMON_PROXY_ENABLE:
                     fetchserver = '%s://%s.appspot.com%s' % (COMMON_GOOGLE_PREFER, appid, COMMON_GAE_PATH)
                 else:
-                    fetchhost = random.choice(COMMON_GOOGLE_HOSTS[0])
+                    fetchhost = random.choice(COMMON_GOOGLE_HOSTS)
                     fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, fetchhost, COMMON_GAE_PATH)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
@@ -509,6 +519,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return True
 
     def do_CONNECT(self):
+        if not COMMON_GOOGLE_HOSTS:
+            common_google_resolve()
         host, _, port = self.path.rpartition(':')
         if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE:
             return self.do_CONNECT_Direct()
@@ -534,7 +546,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 sock = socket.create_connection((COMMON_PROXY_HOST, COMMON_PROXY_PORT))
                 if host.endswith(COMMON_GOOGLE_SITES):
-                    ip = random.choice(COMMON_GOOGLE_HOSTS[0])
+                    ip = random.choice(COMMON_GOOGLE_HOSTS)
                 else:
                     ip = random.choice(COMMON_HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
@@ -584,6 +596,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = self._realconnection
 
     def do_METHOD(self):
+        if not COMMON_GOOGLE_HOSTS:
+            common_google_resolve()
         host = self.headers.get('host')
         if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE:
             if self.path.startswith(COMMON_GOOGLE_FORCEHTTPS):
@@ -622,7 +636,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 sock = socket.create_connection((COMMON_PROXY_HOST, COMMON_PROXY_PORT))
                 if host.endswith(COMMON_GOOGLE_SITES):
-                    host = random.choice(COMMON_GOOGLE_HOSTS[0])
+                    host = random.choice(COMMON_GOOGLE_HOSTS)
                 else:
                     host = COMMON_HOSTS.get(host, host)
                 url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
