@@ -71,12 +71,15 @@ def common_google_resolve():
     global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HTTP, COMMON_GOOGLE_HTTPS, COMMON_GOOGLE_HOSTS
     logging.info('Resole google http address.')
     COMMON_GOOGLE_HTTP  = list(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTP], [])))
+    logging.info('Resole google http address OK. %s', COMMON_GOOGLE_HTTP)
     logging.info('Resole google https address.')
     COMMON_GOOGLE_HTTPS = list(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTPS], [])))
-    if COMMON_GOOGLE_PREFER=='https' or COMMON_GOOGLE_HTTP[0][:5] == COMMON_GOOGLE_HTTPS[0][:5]:
+    logging.info('Resole google https address OK. %s', COMMON_GOOGLE_HTTPS)
+    COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTP if COMMON_GOOGLE_PREFER == 'http' else COMMON_GOOGLE_HTTPS
+    if COMMON_GOOGLE_HTTP[0][:5] == COMMON_GOOGLE_HTTPS[0][:5]:
+        logging.warning('Seems that google.cn == google.com.hk, auto switch to https mode')
+        COMMON_GOOGLE_PREFER = 'https'
         COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTPS
-    else:
-        COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTP
 
 def common_info():
     info = ''
