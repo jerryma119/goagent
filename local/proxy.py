@@ -373,6 +373,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = build_opener()
+    setuplock = threading.Lock()
 
     def address_string(self):
         return '%s:%s' % (self.client_address[0], self.client_address[1])
@@ -521,9 +522,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.info('>>>>>>>>>>>>>>> Range Fetch ended')
         return True
 
-    def do_CONNECT(self):
+    def setup(self):
+        logging.info('LocalProxyHandler.setup check COMMON_GOOGLE_HOSTS=%r', COMMON_GOOGLE_HOSTS)
         if not COMMON_GOOGLE_HOSTS:
-            common_google_resolve()
+            with LocalProxyHandler.setuplock:
+                if not COMMON_GOOGLE_HOSTS:
+                    common_google_resolve()
+        BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
+        LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
+
+    def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
         if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE:
             return self.do_CONNECT_Direct()
@@ -599,8 +607,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = self._realconnection
 
     def do_METHOD(self):
-        if not COMMON_GOOGLE_HOSTS:
-            common_google_resolve()
         host = self.headers.get('host')
         if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE:
             if self.path.startswith(COMMON_GOOGLE_FORCEHTTPS):
