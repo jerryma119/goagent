@@ -140,8 +140,7 @@ class MultiplexConnection(object):
         else:
             MultiplexConnection.window = min(int(round(window*1.5)), self.window_max)
             MultiplexConnection.window_ack = 0
-            logging.warning(r'MultiplexConnection Cannot Connect to hostslist %s:%s, switch new window=%d', hostslist, port, MultiplexConnection.window)
-            raise RuntimeError(r'MultiplexConnection Cannot Connect to hostslist %s:%s' % (hostslist, port))
+            raise RuntimeError(r'MultiplexConnection Connect hosts %s:%s fail %d times!' % (hosts, port, MultiplexConnection.retry))
     def close(self):
         for sock in self._sockets:
             try:
@@ -156,7 +155,7 @@ def socket_create_connection((host, port), timeout=None, source_address=None):
     if host in COMMON_GAE_SERVERS:
         msg = 'socket_create_connection returns an empty list'
         try:
-            #logging.debug('socket_create_connection connect hostslist: (%r, %r)', COMMON_GOOGLE_HOSTS, port)
+            #logging.debug('socket_create_connection connect hosts: (%r, %r)', COMMON_GOOGLE_HOSTS, port)
             conn = MultiplexConnection(COMMON_GOOGLE_HOSTS, port)
             sock = conn.socket
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
