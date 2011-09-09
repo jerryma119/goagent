@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.5.2'
+__version__ = '1.5.3'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -84,13 +84,14 @@ def common_google_resolve():
 def common_info():
     info = ''
     info += '--------------------------------------------\n'
-    info += 'OpenSSL Module : %s\n' % ('Enabled' if OpenSSL else 'Disabled')
-    info += 'Listen Address : %s:%d\n' % (COMMON_LISTEN_IP, COMMON_LISTEN_PORT)
-    info += 'Debug Level    : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
-    info += 'Local Proxy    : %s:%s\n' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT) if COMMON_PROXY_ENABLE else ''
-    info += 'GAE Mode       : %s\n' % COMMON_GOOGLE_PREFER
-    info += 'GAE APPID      : %s\n' % '|'.join(COMMON_GAE_APPIDS)
-    info += 'GAE BindHost   : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_BINDHOSTS else ''
+    info += 'GoAgent Version : %s\n' % __version__
+    info += 'OpenSSL Module  : %s\n' % ('Enabled' if OpenSSL else 'Disabled')
+    info += 'Listen Address  : %s:%d\n' % (COMMON_LISTEN_IP, COMMON_LISTEN_PORT)
+    info += 'Debug Level     : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
+    info += 'Local Proxy     : %s:%s\n' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT) if COMMON_PROXY_ENABLE else ''
+    info += 'GAE Mode        : %s\n' % COMMON_GOOGLE_PREFER
+    info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS)
+    info += 'GAE BindHost    : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_BINDHOSTS else ''
     info += '--------------------------------------------\n'
     return info
 
