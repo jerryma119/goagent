@@ -633,7 +633,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             idlecall = None
             if not COMMON_PROXY_ENABLE:
                 if host.endswith(COMMON_GOOGLE_SITES):
-                    conn = MultiplexConnection(COMMON_GOOGLE_HOSTS, port)
+                    conn = MultiplexConnection(COMMON_GOOGLE_HTTP if port==80 else COMMON_GOOGLE_HOSTS, port)
                     sock = conn.socket
                     idlecall = conn.close
                 else:
