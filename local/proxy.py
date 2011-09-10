@@ -55,9 +55,9 @@ COMMON_GOOGLE_AUTOSWITCH = COMMON_Config.getint('google', 'autoswitch')
 COMMON_GOOGLE_SITES      = tuple(COMMON_Config.get('google', 'sites').split('|'))
 COMMON_GOOGLE_FORCEHTTPS = tuple(COMMON_Config.get('google', 'forcehttps').split('|'))
 COMMON_GOOGLE_WITHGAE    = frozenset(COMMON_Config.get('google', 'withgae').split('|'))
-COMMON_GOOGLE_HTTP       = COMMON_Config.get('google', 'http').split('|')
-COMMON_GOOGLE_HTTPS      = COMMON_Config.get('google', 'https').split('|')
-COMMON_GOOGLE_HOSTS      = []
+COMMON_GOOGLE_HTTP       = tuple(COMMON_Config.get('google', 'http').split('|'))
+COMMON_GOOGLE_HTTPS      = tuple(COMMON_Config.get('google', 'https').split('|'))
+COMMON_GOOGLE_HOSTS      = ()
 
 COMMON_FETCHMAX_LOCAL  = COMMON_Config.getint('fetchmax', 'local') if COMMON_Config.get('fetchmax', 'local') else 3
 COMMON_FETCHMAX_SERVER = COMMON_Config.get('fetchmax', 'server')
@@ -70,16 +70,16 @@ COMMON_HOSTS = dict((k, v) for k, v in COMMON_Config.items('hosts') if not k.sta
 def common_google_resolve():
     global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HTTP, COMMON_GOOGLE_HTTPS, COMMON_GOOGLE_HOSTS
     logging.info('Resole google http address.')
-    COMMON_GOOGLE_HTTP  = list(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTP], [])))
+    COMMON_GOOGLE_HTTP  = tuple(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTP], [])))
     logging.info('Resole google http address OK. %s', COMMON_GOOGLE_HTTP)
     logging.info('Resole google https address.')
-    COMMON_GOOGLE_HTTPS = list(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTPS], [])))
+    COMMON_GOOGLE_HTTPS = tuple(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTPS], [])))
     logging.info('Resole google https address OK. %s', COMMON_GOOGLE_HTTPS)
     COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTP if COMMON_GOOGLE_PREFER == 'http' else COMMON_GOOGLE_HTTPS
     if COMMON_GOOGLE_HTTP[0][:5] == COMMON_GOOGLE_HTTPS[0][:5]:
         logging.warning('Seems that google.cn == google.com.hk, auto switch to https mode')
         COMMON_GOOGLE_PREFER = 'https'
-        COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTPS
+        COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTP = COMMON_GOOGLE_HTTPS
 
 def common_info():
     info = ''
@@ -527,9 +527,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not COMMON_GOOGLE_HOSTS:
             with LocalProxyHandler.setuplock:
                 if not COMMON_GOOGLE_HOSTS:
-                    common_google_resolve()
+                    try:
+                        common_google_resolve()
+                        LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
+                    except Exception, e:
+                        logging.exception('common_google_resolve fail: %s', e)
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
-        LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
@@ -608,7 +611,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
-        if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE:
+        if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE and COMMON_GOOGLE_HTTP is not COMMON_GOOGLE_HTTPS:
             if self.path.startswith(COMMON_GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header('Location', self.path.replace('http://', 'https://'))
