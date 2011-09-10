@@ -611,7 +611,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers.get('host')
-        if host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE and COMMON_GOOGLE_HTTP is not COMMON_GOOGLE_HTTPS:
+        if COMMON_GOOGLE_HTTP is not COMMON_GOOGLE_HTTPS and host.endswith(COMMON_GOOGLE_SITES) and host not in COMMON_GOOGLE_WITHGAE:
             if self.path.startswith(COMMON_GOOGLE_FORCEHTTPS):
                 self.send_response(301)
                 self.send_header('Location', self.path.replace('http://', 'https://'))
