@@ -95,9 +95,11 @@ def common_info():
     info += 'Listen Address  : %s:%d\n' % (COMMON_LISTEN_IP, COMMON_LISTEN_PORT)
     info += 'Debug Level     : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
     info += 'Local Proxy     : %s:%s\n' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT) if COMMON_PROXY_ENABLE else ''
-    info += 'GAE Mode        : %s\n' % COMMON_GOOGLE_PREFER
-    info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS)
-    info += 'GAE BindHost    : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_BINDHOSTS else ''
+    info += 'GAE Mode        : %s\n' % COMMON_GOOGLE_PREFER if COMMON_GAE_ENABLE else ''
+    info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS) if COMMON_GAE_ENABLE else ''
+    info += 'GAE BindHost    : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_ENABLE and COMMON_GAE_BINDHOSTS else ''
+    info += 'PHP FetchServer : %s\n' % COMMON_PHP_FETCHSERVER if COMMON_PHP_ENABLE else ''
+    info += 'PHP Hosts       : %s\n' % ('|'.join(COMMON_PHP_HOSTS) if COMMON_GAE_ENABLE and COMMON_PHP_ENABLE else '(ALL)') if COMMON_PHP_ENABLE else ''
     info += '--------------------------------------------\n'
     return info
 
