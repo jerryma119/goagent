@@ -185,11 +185,6 @@ def socket_create_connection((host, port), timeout=None, source_address=None):
         raise socket.error, msg
 socket.create_connection = socket_create_connection
 
-_httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
-def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
-httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
-
 def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
     timecount = timeout
     try:
@@ -226,6 +221,14 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
     finally:
         if idlecall:
             idlecall()
+
+_httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
+def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
+    return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
+httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
+
+def proxy_auth_header(username, password):
+    return 'Proxy-Authorization: Basic %s' + base64.b64encode('%s:%s'%(username, password))
 
 class CertUtil(object):
     '''CertUtil module, based on WallProxy 0.4.0'''
@@ -366,35 +369,17 @@ def build_opener():
     opener.addheaders = []
     return opener
 
-def proxy_auth_header(username, password):
-    return 'Proxy-Authorization: Basic %s' + base64.b64encode('%s:%s'%(username, password))
-
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = build_opener()
     setuplock = threading.Lock()
 
-    def address_string(self):
-        return '%s:%s' % (self.client_address[0], self.client_address[1])
-
-    def send_response(self, code, message=None):
-        self.log_request(code)
-        message = message or self.responses.get(code, ('GoAgent Notify',))[0]
-        self.wfile.write('%s %d %s\r\n' % (self.protocol_version, code, message))
-
-    def end_error(self, code, message=None, data=None):
-        if not data:
-            self.send_error(code, message)
-        else:
-            self.send_response(code, message)
-            self.wfile.write(data)
-
-    def _fetch(self, url, method, headers, payload):
+    def _fetch(self, url, payload, method, headers, fetchserver, fetchhost):
         global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HOSTS
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
-        logging.debug('LocalProxyHandler fetch params %s', params)
+        logging.debug('URLFetch _fetch params %s', params)
         if COMMON_GAE_PASSWORD:
             params['password'] = COMMON_GAE_PASSWORD
         if COMMON_FETCHMAX_SERVER:
@@ -402,22 +387,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         params = gae_encode_data(params)
         for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
-                if len(COMMON_GAE_APPIDS) == 1:
-                    appid = COMMON_GAE_APPIDS[0]
-                elif COMMON_GAE_BINDHOSTS and urlparse.urlsplit(url)[1].endswith(COMMON_GAE_BINDHOSTS):
-                    appid = COMMON_GAE_APPIDS[0]
-                else:
-                    appid = random.choice(COMMON_GAE_APPIDS)
-                logging.debug('LocalProxyHandler fetch %r appid=%r', url, appid)
-                if not COMMON_PROXY_ENABLE:
-                    fetchserver = '%s://%s.appspot.com%s' % (COMMON_GOOGLE_PREFER, appid, COMMON_GAE_PATH)
-                else:
-                    fetchhost = random.choice(COMMON_GOOGLE_HOSTS)
-                    fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, fetchhost, COMMON_GAE_PATH)
+                logging.debug('URLFetch _fetch %r by %r', url, fetchserver)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
                 if COMMON_PROXY_ENABLE:
-                    request.add_header('Host', '%s.appspot.com' % appid)
+                    request.add_header('Host', fetchhost)
                 response = self.opener.open(request)
                 data = response.read()
                 response.close()
@@ -466,7 +440,24 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 errors.append(str(e))
         return (-1, errors)
 
-    def _RangeFetch(self, m, data):
+    def fetch_gae(self, url, payload, method, headers):
+        if len(COMMON_GAE_APPIDS) == 1:
+            appid = COMMON_GAE_APPIDS[0]
+        elif COMMON_GAE_BINDHOSTS and urlparse.urlsplit(url)[1].endswith(COMMON_GAE_BINDHOSTS):
+            appid = COMMON_GAE_APPIDS[0]
+        else:
+            appid = random.choice(COMMON_GAE_APPIDS)
+        if not COMMON_PROXY_ENABLE:
+            fetchserver = '%s://%s.appspot.com%s' % (COMMON_GOOGLE_PREFER, appid, COMMON_GAE_PATH)
+            fetchhost = '%s.appspot.com' % appid
+        else:
+            fetchhost = random.choice(COMMON_GOOGLE_HOSTS)
+            fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, fetchhost, COMMON_GAE_PATH)
+        return self._fetch(url, payload, method, headers, fetchserver, fetchhost)
+
+    fetch = fetch_gae
+
+    def rangefetch(self, m, data):
         m = map(int, m.groups())
         start = m[0]
         end = m[2] - 1
@@ -505,7 +496,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.info('>>>>>>>>>>>>>>> Range Fetch started')
         while start <= end:
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
-            retval, data = self._fetch(self.path, self.command, self.headers, '')
+            retval, data = self.fetch(self.path, '', self.command, self.headers)
             if retval != 0:
                 time.sleep(4)
                 continue
@@ -521,6 +512,21 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data['content'])
         logging.info('>>>>>>>>>>>>>>> Range Fetch ended')
         return True
+
+    def address_string(self):
+        return '%s:%s' % (self.client_address[0], self.client_address[1])
+
+    def send_response(self, code, message=None):
+        self.log_request(code)
+        message = message or self.responses.get(code, ('GoAgent Notify',))[0]
+        self.wfile.write('%s %d %s\r\n' % (self.protocol_version, code, message))
+
+    def end_error(self, code, message=None, data=None):
+        if not data:
+            self.send_error(code, message)
+        else:
+            self.send_response(code, message)
+            self.wfile.write(data)
 
     def setup(self):
         logging.info('LocalProxyHandler.setup check COMMON_GOOGLE_HOSTS=%r', COMMON_GOOGLE_HOSTS)
@@ -693,7 +699,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     headers += 'range: bytes=0-%d\r\n' % self.part_size
                     break
 
-        retval, data = self._fetch(self.path, self.command, headers, payload)
+        retval, data = self.fetch(self.path, payload, self.command, headers)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
@@ -702,7 +708,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.log_request(code)
             if code == 206 and self.command=='GET':
                 m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('content-range',''))
-                if m and self._RangeFetch(m, data):
+                if m and self.rangefetch(m, data):
                     return
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
             self.connection.sendall(content)
