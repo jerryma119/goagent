@@ -36,6 +36,7 @@ COMMON_LISTEN_IP      = COMMON_Config.get('listen', 'ip')
 COMMON_LISTEN_PORT    = COMMON_Config.getint('listen', 'port')
 COMMON_LISTEN_VISIBLE = COMMON_Config.getint('listen', 'visible')
 
+COMMON_GAE_ENABLE     = COMMON_Config.getint('gae', 'enable')
 COMMON_GAE_APPIDS     = tuple(re.sub(r'\..+?\.com$', '', x) for x in COMMON_Config.get('gae', 'appid').split('|'))
 COMMON_GAE_SERVERS    = frozenset('%s.appspot.com' % x for x in COMMON_GAE_APPIDS)
 COMMON_GAE_PASSWORD   = COMMON_Config.get('gae', 'password').strip()
@@ -43,6 +44,11 @@ COMMON_GAE_DEBUGLEVEL = COMMON_Config.getint('gae', 'debuglevel')
 COMMON_GAE_PATH       = COMMON_Config.get('gae', 'path')
 COMMON_GAE_BINDHOSTS  = tuple(COMMON_Config.get('gae', 'bindhosts').split('|')) if COMMON_Config.has_option('gae', 'bindhosts') else ()
 COMMON_PROXY_ENABLE   = COMMON_Config.getint('proxy', 'enable')
+
+COMMON_PHP_ENABLE      = COMMON_Config.getint('php', 'enable')
+COMMON_PHP_FETCHSERVER = COMMON_Config.get('php', 'fetchserver')
+COMMON_PHP_FETCHHOST   = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
+COMMON_PHP_HOSTS       = tuple(COMMON_Config.get('php', 'hosts').split('|'))
 
 COMMON_PROXY_HOST     = COMMON_Config.get('proxy', 'host')
 COMMON_PROXY_PORT     = COMMON_Config.getint('proxy', 'port')
@@ -455,7 +461,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, fetchhost, COMMON_GAE_PATH)
         return self._fetch(url, payload, method, headers, fetchserver, fetchhost)
 
-    fetch = fetch_gae
+    def fetch_php(self, url, payload, method, headers):
+        return self._fetch(url, payload, method, headers, COMMON_PHP_FETCHSERVER, COMMON_PHP_FETCHHOST)
+
+    def fetch(self, url, payload, method, headers):
+        if COMMON_PHP_ENABLE:
+            if not COMMON_GAE_ENABLE or self.headers.get('host', '').endswith(COMMON_PHP_HOSTS):
+                return self.fetch_php(url, payload, method, headers)
+        return self.fetch_gae(url, payload, method, headers)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -536,6 +549,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     try:
                         common_google_resolve()
                         LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
+                        if COMMON_GAE_ENABLE or COMMON_PHP_ENABLE:
+                            m = {(1,0):LocalProxyHandler.fetch_gae, (0,1):LocalProxyHandler.fetch_php, (1,1):LocalProxyHandler.fetch}
+                            LocalProxyHandler.fetch = m[(COMMON_GAE_ENABLE, COMMON_PHP_ENABLE)]
+                        else:
+                            LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
+                            LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
+                            LocalProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Direct
+                            LocalProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Direct
+                            LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Direct
+                            LocalProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Direct
                     except Exception, e:
                         logging.exception('common_google_resolve fail: %s', e)
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
