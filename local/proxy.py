@@ -37,8 +37,8 @@ COMMON_LISTEN_PORT    = COMMON_Config.getint('listen', 'port')
 COMMON_LISTEN_VISIBLE = COMMON_Config.getint('listen', 'visible')
 
 COMMON_GAE_ENABLE     = COMMON_Config.getint('gae', 'enable')
-COMMON_GAE_APPIDS     = tuple(re.sub(r'\..+?\.com$', '', x) for x in COMMON_Config.get('gae', 'appid').split('|'))
-COMMON_GAE_SERVERS    = frozenset('%s.appspot.com' % x for x in COMMON_GAE_APPIDS)
+COMMON_GAE_APPIDS     = tuple(x.replace('.appspot.com', '') for x in COMMON_Config.get('gae', 'appid').split('|'))
+COMMON_GAE_SERVERS    = frozenset(x if x.count('.') >= 2 else '%s.appspot.com' % x  for x in COMMON_GAE_APPIDS)
 COMMON_GAE_PASSWORD   = COMMON_Config.get('gae', 'password').strip()
 COMMON_GAE_DEBUGLEVEL = COMMON_Config.getint('gae', 'debuglevel')
 COMMON_GAE_PATH       = COMMON_Config.get('gae', 'path')
@@ -572,7 +572,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif host in COMMON_HOSTS:
             return self.do_CONNECT_Direct()
         else:
-            return self.do_CONNECT_GAE()
+            return self.do_CONNECT_Thunnel()
 
     def do_CONNECT_Direct(self):
         try:
@@ -610,7 +610,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except:
                 pass
 
-    def do_CONNECT_GAE(self):
+    def do_CONNECT_Thunnel(self):
         # for ssl proxy
         host, _, port = self.path.rpartition(':')
         keyFile, crtFile = CertUtil.getCertificate(host)
@@ -631,9 +631,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if self.path[0] == '/':
                 self.path = 'https://%s%s' % (self._realpath, self.path)
                 self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
-            self.do_METHOD_GAE()
+            self.do_METHOD_Thunnel()
         except socket.error, e:
-            logging.exception('do_CONNECT_GAE socket.error: %s', e)
+            logging.exception('do_CONNECT_Thunnel socket.error: %s', e)
         finally:
             self.connection.shutdown(socket.SHUT_WR)
             self.rfile = self._realrfile
@@ -652,7 +652,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif host in COMMON_HOSTS:
             return self.do_METHOD_Direct()
         else:
-            return self.do_METHOD_GAE()
+            return self.do_METHOD_Thunnel()
 
     def do_METHOD_Direct(self):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(self.path, 'http')
@@ -705,7 +705,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except:
                 pass
 
-    def do_METHOD_GAE(self):
+    def do_METHOD_Thunnel(self):
         host = self.headers.dict.get('host')
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
