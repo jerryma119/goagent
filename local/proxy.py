@@ -48,7 +48,7 @@ COMMON_PROXY_ENABLE   = COMMON_Config.getint('proxy', 'enable')
 COMMON_PHP_ENABLE      = COMMON_Config.getint('php', 'enable')
 COMMON_PHP_FETCHSERVER = COMMON_Config.get('php', 'fetchserver')
 COMMON_PHP_FETCHHOST   = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
-COMMON_PHP_HOSTS       = tuple(COMMON_Config.get('php', 'hosts').split('|'))
+COMMON_PHP_HOSTS       = frozenset(COMMON_Config.get('php', 'hosts').split('|'))
 
 COMMON_PROXY_HOST     = COMMON_Config.get('proxy', 'host')
 COMMON_PROXY_PORT     = COMMON_Config.getint('proxy', 'port')
@@ -467,9 +467,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return self._fetch(url, payload, method, headers, COMMON_PHP_FETCHSERVER, COMMON_PHP_FETCHHOST)
 
     def fetch(self, url, payload, method, headers):
-        if COMMON_PHP_ENABLE:
-            if not COMMON_GAE_ENABLE or self.headers.get('host', '').endswith(COMMON_PHP_HOSTS):
-                return self.fetch_php(url, payload, method, headers)
+        if self.headers.get('host', '') in COMMON_PHP_HOSTS:
+            return self.fetch_php(url, payload, method, headers)
         return self.fetch_gae(url, payload, method, headers)
 
     def rangefetch(self, m, data):
