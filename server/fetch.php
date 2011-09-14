@@ -22,7 +22,11 @@ function decode_data($qs) {
     foreach (explode("&", $qs) as $kv) {
         $pair = explode("=", $kv);
         $key = $pair[0];
-        $value = pack("H*", $pair[1]);
+        if ($pair[1]) {
+            $value = pack("H*", $pair[1]);
+        } else {
+            $value = '';
+        }
         $dic[$key] = $value;
     }
     return $dic;
@@ -91,6 +95,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 		case 'POST':
 		    $curl_opt[CURLOPT_POST] = true;
 		    $curl_opt[CURLOPT_POSTFIELDS] = $payload;
+		    //print_notify($method, $url, 502, "I am payload:".$payload);exit(0); 
 		    break;
 		case 'PUT':
 		case 'DELETE':
@@ -98,7 +103,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 			$curl_opt[CURLOPT_POSTFIELDS] = $payload;
 			break;
 		default:
-		    print_notify($method, $url, 403, "Invalid Method"); 
+		    print_notify($method, $url, 501, "Invalid Method"); 
 		    exit(-1);
 	}
 	
@@ -127,13 +132,13 @@ function post()
     
     $request = @gzuncompress(@file_get_contents('php://input'));
     if ($request === False) {
-		return print_notify($method, $url, 403, 'OOPS! gzuncompress php://input error!');
+		return print_notify($method, $url, 500, 'OOPS! gzuncompress php://input error!');
 	}
     $request = decode_data($request);
     
     $method  = $request['method'];
     $url     = $request['url'];
-    $payload = $request['payload'] || "";
+    $payload = $request['payload'];
     
     if ($__password__ && $__password__ != $request['password']) {
         return print_notify($method, $url, 403, 'Wrong password.');
@@ -177,10 +182,12 @@ function post()
         $status_code = $response['status_code'];
         if (200 <= $status_code && $status_code < 400) {
            return print_response($status_code, $response['headers'], $response['content']);
+        } else {
+            $errors[] = $status_code;
         }
     }
     
-    print_notify($request["method"], $request["url"], 403, "Fetch Server Failed!!!"); 
+    print_notify($request["method"], $request["url"], 502, "Fetch Server Failed: " . join(',', $errors)); 
 }
 
 function get() {
