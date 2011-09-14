@@ -61,7 +61,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
     $__urlfetch_headers = array();
     
     if ($payload) {
-        $headers["content-length"] = strval(strlen($data));
+        $headers["content-length"] = strval(strlen($payload));
     }
     $headers["connection"] = 'close';
     
@@ -69,27 +69,30 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
     
     $curl_opt[CURLOPT_TIMEOUT]        = $deadline;
     $curl_opt[CURLOPT_CONNECTTIMEOUT] = $deadline;
-	$curl_opt[CURLOPT_RETURNTRANSFER] = True;
-	$curl_opt[CURLOPT_BINARYTRANSFER] = True;
-	$curl_opt[CURLOPT_FAILONERROR]    = True;
+	$curl_opt[CURLOPT_RETURNTRANSFER] = true;
+	$curl_opt[CURLOPT_BINARYTRANSFER] = true;
+	$curl_opt[CURLOPT_FAILONERROR]    = true;
 	
     if (!$follow_redirects) {
-	    $curl_opt[CURLOPT_FOLLOWLOCATION] = False;
+	    $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
 	}
     
     if (!$validate_certificate) {
-	    $curl_opt[CURLOPT_SSL_VERIFYPEER] = False;
-	    $curl_opt[CURLOPT_SSL_VERIFYHOST] = False;
+	    $curl_opt[CURLOPT_SSL_VERIFYPEER] = false;
+	    $curl_opt[CURLOPT_SSL_VERIFYHOST] = false;
 	}
 	
-	switch ($method) {
+	switch (strtoupper($method)) {
 		case 'HEAD':
-			$curl_opt[CURLOPT_NOBODY] = True;
+			$curl_opt[CURLOPT_NOBODY] = true;
 			break;
 		case 'GET':
 			break;
-		case 'PUT':
 		case 'POST':
+		    $curl_opt[CURLOPT_POST] = true;
+		    $curl_opt[CURLOPT_POSTFIELDS] = $payload;
+		    break;
+		case 'PUT':
 		case 'DELETE':
 			$curl_opt[CURLOPT_CUSTOMREQUEST] = $method;
 			$curl_opt[CURLOPT_POSTFIELDS] = $payload;
@@ -99,9 +102,11 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 		    exit(-1);
 	}
 	
+	$header_array = array();
 	foreach ($headers as $key => $value) {
-	    $curl_opt[CURLOPT_HTTPHEADER][$key] = $key.'= '.$value;
+	    $header_array[] = $key.'= '.$value;
 	}
+	$curl_opt[CURLOPT_HTTPHEADER] = $header_array;
 	
 	$curl_opt[CURLOPT_HEADERFUNCTION] = 'urlfetch_header_callabck';
 	
@@ -128,7 +133,7 @@ function post()
     
     $method  = $request['method'];
     $url     = $request['url'];
-    $payload = $request['payload'];
+    $payload = $request['payload'] || "";
     
     if ($__password__ && $__password__ != $request['password']) {
         return print_notify($method, $url, 403, 'Wrong password.');
