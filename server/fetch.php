@@ -36,6 +36,7 @@ function print_response($status, $headers, $content) {
         $data = "0" . pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content;
     }
     header("Content-Type: image/gif");
+    header("Content-Length: ".strlen($data));
     print($data);
 }
 
@@ -107,12 +108,11 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
     $content = curl_exec($ch);
+    $__urlfetch_headers["connection"] = 'close';
     $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $headers = $urlfetch_headers;
-    $headers["connection"] = 'close';
     curl_close($ch);
  
-    $response = array('status_code' => $status_code, 'headers' => $headers, 'content' => $content);
+    $response = array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content' => $content);
     return $response;
 }
 
