@@ -383,11 +383,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     opener = build_opener()
     setuplock = threading.Lock()
 
-    def _fetch(self, url, payload, method, headers, fetchserver, fetchhost):
+    def _fetch(self, host, url, payload, method, headers, fetchserver, fetchhost):
         global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HOSTS
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
-        logging.debug('URLFetch _fetch params %s', params)
+        logging.debug('LocalProxyHandler _fetch params %s', params)
         if COMMON_GAE_PASSWORD:
             params['password'] = COMMON_GAE_PASSWORD
         if COMMON_FETCHMAX_SERVER:
@@ -395,7 +395,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         params = gae_encode_data(params)
         for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
-                logging.debug('URLFetch _fetch %r by %r', url, fetchserver)
+                logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
                 if COMMON_PROXY_ENABLE:
@@ -448,10 +448,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 errors.append(str(e))
         return (-1, errors)
 
-    def fetch_gae(self, url, payload, method, headers):
+    def fetch_gae(self, host, url, payload, method, headers):
         if len(COMMON_GAE_APPIDS) == 1:
             appid = COMMON_GAE_APPIDS[0]
-        elif COMMON_GAE_BINDHOSTS and urlparse.urlsplit(url)[1].endswith(COMMON_GAE_BINDHOSTS):
+        elif COMMON_GAE_BINDHOSTS and host.endswith(COMMON_GAE_BINDHOSTS):
             appid = COMMON_GAE_APPIDS[0]
         else:
             appid = random.choice(COMMON_GAE_APPIDS)
@@ -461,15 +461,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             fetchhost = random.choice(COMMON_GOOGLE_HOSTS)
             fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, fetchhost, COMMON_GAE_PATH)
-        return self._fetch(url, payload, method, headers, fetchserver, fetchhost)
+        return self._fetch(host, url, payload, method, headers, fetchserver, fetchhost)
 
-    def fetch_php(self, url, payload, method, headers):
-        return self._fetch(url, payload, method, headers, COMMON_PHP_FETCHSERVER, COMMON_PHP_FETCHHOST)
+    def fetch_php(self, host, url, payload, method, headers):
+        return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHSERVER, COMMON_PHP_FETCHHOST)
 
-    def fetch(self, url, payload, method, headers):
-        if self.header_host in COMMON_PHP_HOSTS:
-            return self.fetch_php(url, payload, method, headers)
-        return self.fetch_gae(url, payload, method, headers)
+    def fetch(self, host, url, payload, method, headers):
+        if host in COMMON_PHP_HOSTS:
+            return self.fetch_php(host, url, payload, method, headers)
+        return self.fetch_gae(host, url, payload, method, headers)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -510,7 +510,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.info('>>>>>>>>>>>>>>> Range Fetch started')
         while start <= end:
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
-            retval, data = self.fetch(self.path, '', self.command, self.headers)
+            retval, data = self.fetch(self.headers['host'], self.path, '', self.command, self.headers)
             if retval != 0:
                 time.sleep(4)
                 continue
@@ -723,8 +723,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     headers += 'range: bytes=0-%d\r\n' % self.part_size
                     break
 
-        self.header_host = host
-        retval, data = self.fetch(self.path, payload, self.command, headers)
+        retval, data = self.fetch(host, self.path, payload, self.command, headers)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
