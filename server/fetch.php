@@ -1,6 +1,7 @@
 <?php 
 
-$__version__ = "1.5.1";
+$_ENV["__version__"] = "1.5.1";
+$_ENV["__password__"] = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") 
 {
@@ -58,7 +59,9 @@ function print_notify($method, $url, $status, $content)
 
 function post()
 {
-    print_notify("GET", "http://www.g.cn", 403, "just a test!"); 
+    $body = @file_get_contents('php://input');
+    $request = decode_data(gzuncompress($body));
+    print_notify($request["method"], $request["url"], 403, "just a test!"); 
 }
 
 function get()
@@ -68,13 +71,13 @@ function get()
 <html> 
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /> 
-    <title>GoAgent $__version__ is working now</title> 
+    <title>GoAgent {$_ENV["__version__"]} is working now</title> 
 </head> 
 <body> 
     <table width="800" border="0" align="center"> 
         <tr><td align="center"><hr></td></tr> 
         <tr><td align="center"> 
-            <b><h1>GoAgent $__version__ is working now</h1></b> 
+            <b><h1>GoAgent {$_ENV["__version__"]} is working now</h1></b> 
         </td></tr> 
         <tr><td align="center"><hr></td></tr> 
  
