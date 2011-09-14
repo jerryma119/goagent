@@ -38,7 +38,8 @@ COMMON_LISTEN_VISIBLE = COMMON_Config.getint('listen', 'visible')
 
 COMMON_GAE_ENABLE     = COMMON_Config.getint('gae', 'enable')
 COMMON_GAE_APPIDS     = tuple(x.replace('.appspot.com', '') for x in COMMON_Config.get('gae', 'appid').split('|'))
-COMMON_GAE_SERVERS    = frozenset(x if x.count('.') >= 2 else '%s.appspot.com' % x  for x in COMMON_GAE_APPIDS)
+COMMON_GAE_SERVERS    = tuple(x if x.count('.') >= 2 else '%s.appspot.com' % x  for x in COMMON_GAE_APPIDS)
+COMMON_GAE_SERVER_SET = frozenset(COMMON_GAE_SERVERS)
 COMMON_GAE_PASSWORD   = COMMON_Config.get('gae', 'password').strip()
 COMMON_GAE_DEBUGLEVEL = COMMON_Config.getint('gae', 'debuglevel')
 COMMON_GAE_PATH       = COMMON_Config.get('gae', 'path')
@@ -160,7 +161,7 @@ class MultiplexConnection(object):
 
 def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host in COMMON_GAE_SERVERS:
+    if host in COMMON_GAE_SERVER_SET:
         msg = 'socket_create_connection returns an empty list'
         try:
             #logging.debug('socket_create_connection connect hosts: (%r, %r)', COMMON_GOOGLE_HOSTS, port)
@@ -449,18 +450,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return (-1, errors)
 
     def fetch_gae(self, host, url, payload, method, headers):
-        if len(COMMON_GAE_APPIDS) == 1:
-            appid = COMMON_GAE_APPIDS[0]
+        if len(COMMON_GAE_SERVERS) == 1:
+            fetchhost = COMMON_GAE_SERVERS[0]
         elif COMMON_GAE_BINDHOSTS and host.endswith(COMMON_GAE_BINDHOSTS):
-            appid = COMMON_GAE_APPIDS[0]
+            fetchhost = COMMON_GAE_SERVERS[0]
         else:
-            appid = random.choice(COMMON_GAE_APPIDS)
+            fetchhost = random.choice(COMMON_GAE_SERVERS)
         if not COMMON_PROXY_ENABLE:
-            fetchserver = '%s://%s.appspot.com%s' % (COMMON_GOOGLE_PREFER, appid, COMMON_GAE_PATH)
-            fetchhost = '%s.appspot.com' % appid
-        else:
-            fetchhost = random.choice(COMMON_GOOGLE_HOSTS)
             fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, fetchhost, COMMON_GAE_PATH)
+        else:
+            fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, random.choice(COMMON_GOOGLE_HOSTS), COMMON_GAE_PATH)
         return self._fetch(host, url, payload, method, headers, fetchserver, fetchhost)
 
     def fetch_php(self, host, url, payload, method, headers):
