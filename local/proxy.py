@@ -557,10 +557,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         else:
                             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
                             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
-                            LocalProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Direct
-                            LocalProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Direct
-                            LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Direct
-                            LocalProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Direct
+                        LocalProxyHandler.do_GET     = LocalProxyHandler.do_METHOD
+                        LocalProxyHandler.do_POST    = LocalProxyHandler.do_METHOD
+                        LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
+                        LocalProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD
                     except Exception, e:
                         logging.exception('common_google_resolve fail: %s', e)
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
@@ -743,11 +743,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # Connection closed before proxy return
             if err in (10053, errno.EPIPE):
                 return
-
-    do_GET = do_METHOD
-    do_POST = do_METHOD
-    do_PUT = do_METHOD
-    do_DELETE = do_METHOD
 
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
