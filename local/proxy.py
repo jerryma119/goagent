@@ -386,8 +386,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _fetch(self, url, payload, method, headers, fetchserver, fetchhost):
         global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HOSTS
         errors = []
-
-        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in self.skip_headers)
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('URLFetch _fetch params %s', params)
         if COMMON_GAE_PASSWORD:
@@ -469,7 +467,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return self._fetch(url, payload, method, headers, COMMON_PHP_FETCHSERVER, COMMON_PHP_FETCHHOST)
 
     def fetch(self, url, payload, method, headers):
-        if headers['host'] in COMMON_PHP_HOSTS:
+        if self.header_host in COMMON_PHP_HOSTS:
             return self.fetch_php(url, payload, method, headers)
         return self.fetch_gae(url, payload, method, headers)
 
@@ -716,15 +714,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             payload = ''
 
-        headers = self.headers.dict
+        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.dict.iteritems() if k not in self.skip_headers)
 
         if host.endswith(COMMON_AUTORANGE_HOSTS_TAIL):
             for pattern in COMMON_AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    headers['range'] = 'bytes=0-%d' % self.part_size
+                    headers += 'range: bytes=0-%d\r\n' % self.part_size
                     break
 
+        self.header_host = host
         retval, data = self.fetch(self.path, payload, self.command, headers)
         try:
             if retval == -1:
