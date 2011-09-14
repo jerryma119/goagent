@@ -1,7 +1,7 @@
 <?php 
 
-$_ENV["__version__"] = "1.5.1";
-$_ENV["__password__"] = "";
+$__version__ = "1.5.1";
+$__password__ = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     post();
@@ -45,19 +45,19 @@ function print_notify($method, $url, $status, $content) {
     print_response($status, $headers, $content);
 }
 
-$urlfetch_headers = array();
+$__urlfetch_headers = array();
 function urlfetch_header_callabck($ch, $header) {
-    global $urlfetch_headers;
+    global $__urlfetch_headers;
     
     $kv = array_map('trim', explode(':', $header, 2));
-    $urlfetch_headers[$kv[0]] = $kv[1];
+    $__urlfetch_headers[$kv[0]] = $kv[1];
 	return strlen($header);
 }
 
 function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
-    global $urlfetch_headers;
+    global $__urlfetch_headers;
     
-    $urlfetch_headers = array();
+    $__urlfetch_headers = array();
     
     if ($payload) {
         $headers["content-length"] = strval(strlen($data));
@@ -118,6 +118,8 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 
 function post()
 {
+    global $__password__;
+    
     $request = @gzuncompress(@file_get_contents('php://input'));
     if ($request === False) {
 		return print_notify($method, $url, 403, 'OOPS! gzuncompress php://input error!');
@@ -128,7 +130,7 @@ function post()
     $url     = $request['url'];
     $payload = $request['payload'];
     
-    if ($_ENV["__password__"] && $_ENV["__password__"] != $request['password']) {
+    if ($__password__ && $__password__ != $request['password']) {
         return print_notify($method, $url, 403, 'Wrong password.');
     }
     
@@ -169,7 +171,7 @@ function post()
         $response = urlfetch($url, $payload, $method, $headers, False, $deadline, False);
         $status_code = $response['status_code'];
         if (200 <= $status_code && $status_code < 400) {
-           print_response($status_code, $response['headers'], $response['content']);
+           return print_response($status_code, $response['headers'], $response['content']);
         }
     }
     
@@ -177,18 +179,20 @@ function post()
 }
 
 function get() {
+    global $__version__;
+    
     echo <<<EOF
 
 <html> 
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" /> 
-    <title>GoAgent {$_ENV["__version__"]} is working now</title> 
+    <title>GoAgent {$__version__} is working now</title> 
 </head> 
 <body> 
     <table width="800" border="0" align="center"> 
         <tr><td align="center"><hr></td></tr> 
         <tr><td align="center"> 
-            <b><h1>GoAgent {$_ENV["__version__"]} is working now</h1></b> 
+            <b><h1>GoAgent {$__version__} is working now</h1></b> 
         </td></tr> 
         <tr><td align="center"><hr></td></tr> 
  
