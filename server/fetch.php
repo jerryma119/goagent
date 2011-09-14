@@ -33,7 +33,7 @@ function print_response($status, $headers, $content) {
     if (array_key_exists("content-type", $headers) && substr($headers["content-type"], 0, 4) == 'text') {
         $data = "1" . gzcompress(pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content);
     } else {
-        $data = "0" . pack('NNN', $status, len($strheaders), len($content)) . $strheaders . $content;
+        $data = "0" . pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content;
     }
     header("Content-Type: image/gif");
     print($data);
