@@ -20,7 +20,7 @@ function encode_data($dic) {
 function decode_data($qs) {
     $dic = array();
     foreach (explode("&", $qs) as $kv) {
-        $pair = explode("=", $kv);
+        $pair = explode("=", $kv, 2);
         $key = $pair[0];
         if ($pair[1]) {
             $value = pack("H*", $pair[1]);
@@ -55,7 +55,9 @@ function urlfetch_header_callabck($ch, $header) {
     global $__urlfetch_headers;
     
     $kv = array_map('trim', explode(':', $header, 2));
-    $__urlfetch_headers[$kv[0]] = $kv[1];
+    if ($kv[1]) {
+        $__urlfetch_headers[$kv[0]] = $kv[1];
+    }
 	return strlen($header);
 }
 
@@ -76,6 +78,8 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 	$curl_opt[CURLOPT_RETURNTRANSFER] = true;
 	$curl_opt[CURLOPT_BINARYTRANSFER] = true;
 	$curl_opt[CURLOPT_FAILONERROR]    = true;
+	//$curl_opt[CURLOPT_HEADER]         = false;
+	
 	
     if (!$follow_redirects) {
 	    $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
@@ -95,7 +99,6 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 		case 'POST':
 		    $curl_opt[CURLOPT_POST] = true;
 		    $curl_opt[CURLOPT_POSTFIELDS] = $payload;
-		    //print_notify($method, $url, 502, "I am payload:".$payload);exit(0); 
 		    break;
 		case 'PUT':
 		case 'DELETE':
@@ -109,11 +112,15 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 	
 	$header_array = array();
 	foreach ($headers as $key => $value) {
-	    $header_array[] = $key.'= '.$value;
+	    if ($key) {
+	        $header_array[] = $key.': '.$value;
+	    }
 	}
 	$curl_opt[CURLOPT_HTTPHEADER] = $header_array;
 	
 	$curl_opt[CURLOPT_HEADERFUNCTION] = 'urlfetch_header_callabck';
+	
+	//print_notify($method, $url, 502, "I am curl_opt:". var_export($curl_opt, true));exit(0); 
 	
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
@@ -155,7 +162,7 @@ function post()
     
     $headers = array();
     foreach (explode("\r\n", $request['headers']) as $line) {
-        $pair = explode(":", $line);
+        $pair = explode(":", $line, 2);
         $headers[trim($pair[0])] = trim($pair[1]);
     }
     $headers['connection'] = 'close';
