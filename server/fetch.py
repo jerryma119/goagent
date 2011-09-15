@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.5.1'
+__version__ = '1.5.5'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -15,14 +15,15 @@ FetchMax = 3
 FetchMaxSize = 1024*1024
 Deadline = (16, 32)
 
-def gae_encode_data(dic):
+def encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
 
-def gae_decode_data(qs):
+def decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
 
 def print_response(status, headers, content):
-    strheaders = gae_encode_data(headers)
+    strheaders = encode_data(headers)
+    #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
     if 'text' == headers.get('content-type', 'text/plain')[:4]:
         data = 'Content-Type: image/gif\r\n\r\n1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
     else:
@@ -35,7 +36,7 @@ def print_notify(method, url, status, content):
     print_response(status, {'content-type':'text/html'}, content)
 
 def post():
-    request = gae_decode_data(zlib.decompress(sys.stdin.read(int(os.environ.get('CONTENT_LENGTH', -1)))))
+    request = decode_data(zlib.decompress(sys.stdin.read(int(os.environ.get('CONTENT_LENGTH', -1)))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
@@ -73,10 +74,12 @@ def post():
     errors = []
     for i in xrange(int(request.get('fetchmax', FetchMax))):
         try:
-            response = urlfetch.fetch(url, payload, fetchmethod, headers, follow_redirects=False, deadline=deadline, validate_certificate=False)
-            #if method=='GET' and len(response.content)>0x1000000:
-            #    raise urlfetch.ResponseTooLargeError(None)
-            break
+            response = urlfetch.fetch(url, payload, fetchmethod, headers, False, False, deadline, False)
+            if response.status_code < 400:
+                break
+            else:
+                errors.append('%s %r return %s' % (method, url, response.status_code))
+                time.sleep(4)
         except apiproxy_errors.OverQuotaError, e:
             time.sleep(4)
         except DeadlineExceededError, e:
