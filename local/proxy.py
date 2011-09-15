@@ -410,7 +410,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response.close()
             except urllib2.HTTPError, e:
                 # www.google.cn:80 is down, switch to https
-                if e.code in (502, 504):
+                if COMMON_GOOGLE_AUTOSWITCH and e.code in (502, 504):
                     COMMON_GOOGLE_PREFER = 'https'
                     COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTPS
                     sys.stdout.write(common_info())
