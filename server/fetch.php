@@ -1,7 +1,7 @@
 <?php 
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.5.1';
+$__version__  = '1.5.5';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -205,7 +205,7 @@ function get() {
         <tr><td align="center"><hr></td></tr> 
  
         <tr><td align="center"> 
-            GoAgent is HTTP Porxy written by python and hosting in google appengine.
+            GoAgent is HTTP Porxy written by python and hosting in GAE/PHP.
         </td></tr> 
         <tr><td align="center"><hr></td></tr> 
  
