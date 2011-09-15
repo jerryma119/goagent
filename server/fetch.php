@@ -45,7 +45,7 @@ function print_response($status, $headers, $content) {
 }
 
 function print_notify($method, $url, $status, $content) {
-    $content = "<h2>Fetch Server Info</h2><hr noshade='noshade'><p>$method '$url'</p><p>Return Code: $status</p><p>Message: $content</p>";
+    $content = "<h2>PHP Fetch Server Info</h2><hr noshade='noshade'><p>$method '$url'</p><p>Return Code: $status</p><p>Message: $content</p>";
     $headers = array("content-type" => "text/html");
     print_response($status, $headers, $content);
 }

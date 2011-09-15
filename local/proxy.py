@@ -74,7 +74,7 @@ COMMON_AUTORANGE_ENDSWITH   = frozenset(COMMON_Config.get('autorange', 'endswith
 
 COMMON_HOSTS = dict((k, v) for k, v in COMMON_Config.items('hosts') if not k.startswith('_'))
 
-def common_google_resolve():
+def common_dns_resolve():
     global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HTTP, COMMON_GOOGLE_HTTPS, COMMON_GOOGLE_HOSTS
     logging.info('Resole google http address.')
     COMMON_GOOGLE_HTTP  = tuple(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTP], [])))
@@ -87,6 +87,10 @@ def common_google_resolve():
         logging.warning('Seems that google.cn == google.com.hk, auto switch to https mode')
         COMMON_GOOGLE_PREFER = 'https'
         COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTP = COMMON_GOOGLE_HTTPS
+    if COMMON_PHP_ENABLE:
+        logging.info('Resole php fetchserver address.')
+        COMMON_HOSTS[COMMON_PHP_FETCHHOST] = socket.gethostbyname(COMMON_PHP_FETCHHOST)
+        logging.info('Resole php fetchserver address OK. %s', COMMON_HOSTS[COMMON_PHP_FETCHHOST])
 
 def common_info():
     info = ''
@@ -354,10 +358,10 @@ class CertUtil(object):
             cacrt = CertUtil.readFile(crtFile)
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
 
-def gae_encode_data(dic):
+def encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
 
-def gae_decode_data(qs):
+def decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
 
 def build_opener():
@@ -384,7 +388,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     opener = build_opener()
     setuplock = threading.Lock()
 
-    def _fetch(self, host, url, payload, method, headers, fetchserver, fetchhost):
+    def _fetch(self, host, url, payload, method, headers, fetchhost, fetchserver):
         global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HOSTS
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
@@ -393,7 +397,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             params['password'] = COMMON_GAE_PASSWORD
         if COMMON_FETCHMAX_SERVER:
             params['fetchmax'] = int(COMMON_FETCHMAX_SERVER)
-        params = gae_encode_data(params)
+        params = encode_data(params)
         for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
                 logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
@@ -443,7 +447,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data['content'] = raw_data[12+hlen:]
                 if data['code'] == 555:     #Urlfetch Failed
                     raise ValueError(data['content'])
-                data['headers'] = gae_decode_data(raw_data[12:12+hlen])
+                data['headers'] = decode_data(raw_data[12:12+hlen])
                 return (0, data)
             except Exception, e:
                 errors.append(str(e))
@@ -460,10 +464,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, fetchhost, COMMON_GAE_PATH)
         else:
             fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, random.choice(COMMON_GOOGLE_HOSTS), COMMON_GAE_PATH)
-        return self._fetch(host, url, payload, method, headers, fetchserver, fetchhost)
+        return self._fetch(host, url, payload, method, headers, fetchhost, fetchserver)
 
     def fetch_php(self, host, url, payload, method, headers):
-        return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHSERVER, COMMON_PHP_FETCHHOST)
+        return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
 
     def fetch(self, host, url, payload, method, headers):
         if host in COMMON_PHP_HOSTS:
@@ -547,7 +551,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             with LocalProxyHandler.setuplock:
                 if not COMMON_GOOGLE_HOSTS:
                     try:
-                        common_google_resolve()
+                        common_dns_resolve()
                         LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
                         if COMMON_GAE_ENABLE or COMMON_PHP_ENABLE:
                             m = {(1,0):LocalProxyHandler.fetch_gae, (0,1):LocalProxyHandler.fetch_php, (1,1):LocalProxyHandler.fetch}
