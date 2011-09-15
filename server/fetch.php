@@ -1,52 +1,41 @@
 <?php 
 
-$__version__ = "1.5.1";
-$__password__ = "";
-
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    post();
-} else {
-    get();
-}
+$__author__   = 'phus.lu@gmail.com';
+$__version__  = '1.5.1';
+$__password__ = '';
 
 function encode_data($dic) {
-    $str = "";
+    $str = '';
     foreach ($dic as $key => $value) {
-       $str .= "&" . $key. "=" . bin2hex($value);
+       $str .= $key. '=' . bin2hex($value) . '&';
     }
-    return substr($str, 1);
+    return rtrim($str, '&');
 }
 
 function decode_data($qs) {
     $dic = array();
-    foreach (explode("&", $qs) as $kv) {
-        $pair = explode("=", $kv, 2);
-        $key = $pair[0];
-        if ($pair[1]) {
-            $value = pack("H*", $pair[1]);
-        } else {
-            $value = '';
-        }
-        $dic[$key] = $value;
+    foreach (explode('&', $qs) as $kv) {
+        $pair = explode('=', $kv, 2);
+        $dic[$pair[0]] = $pair[1] ? pack('H*', $pair[1]) : '';
     }
     return $dic;
 }
 
 function print_response($status, $headers, $content) {
     $strheaders = encode_data($headers);
-    if (array_key_exists("content-type", $headers) && substr($headers["content-type"], 0, 4) == 'text') {
-        $data = "1" . gzcompress(pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content);
+    if (array_key_exists('content-type', $headers) && substr($headers['content-type'], 0, 4) == 'text') {
+        $data = '1' . gzcompress(pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content);
     } else {
-        $data = "0" . pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content;
+        $data = '0' . pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content;
     }
-    header("Content-Type: image/gif");
-    header("Content-Length: ".strlen($data));
+    header('Content-Type: image/gif');
+    header('Content-Length: '.strlen($data));
     print($data);
 }
 
 function print_notify($method, $url, $status, $content) {
     $content = "<h2>PHP Fetch Server Info</h2><hr noshade='noshade'><p>$method '$url'</p><p>Return Code: $status</p><p>Message: $content</p>";
-    $headers = array("content-type" => "text/html");
+    $headers = array('content-type' => 'text/html');
     print_response($status, $headers, $content);
 }
 
@@ -67,9 +56,9 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
     $__urlfetch_headers = array();
     
     if ($payload) {
-        $headers["content-length"] = strval(strlen($payload));
+        $headers['content-length'] = strval(strlen($payload));
     }
-    $headers["connection"] = 'close';
+    $headers['connection'] = 'close';
     
     $curl_opt = array();
     
@@ -106,7 +95,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 			$curl_opt[CURLOPT_POSTFIELDS] = $payload;
 			break;
 		default:
-		    print_notify($method, $url, 501, "Invalid Method"); 
+		    print_notify($method, $url, 501, 'Invalid Method');
 		    exit(-1);
 	}
 	
@@ -120,12 +109,12 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 	
 	$curl_opt[CURLOPT_HEADERFUNCTION] = 'urlfetch_header_callabck';
 	
-	//print_notify($method, $url, 502, "I am curl_opt:". var_export($curl_opt, true));exit(0); 
+	//print_notify($method, $url, 502, 'I am curl_opt:'. var_export($curl_opt, true));exit(0); 
 	
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
     $content = curl_exec($ch);
-    $__urlfetch_headers["connection"] = 'close';
+    $__urlfetch_headers['connection'] = 'close';
     $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
  
@@ -162,7 +151,7 @@ function post()
     
     $headers = array();
     foreach (explode("\r\n", $request['headers']) as $line) {
-        $pair = explode(":", $line, 2);
+        $pair = explode(':', $line, 2);
         $headers[trim($pair[0])] = trim($pair[1]);
     }
     $headers['connection'] = 'close';
@@ -194,7 +183,7 @@ function post()
         }
     }
     
-    print_notify($request["method"], $request["url"], 502, "Fetch Server Failed: " . join(',', $errors)); 
+    print_notify($request['method'], $request['url'], 502, 'PHP Fetch Server Failed: ' . join(',', $errors)); 
 }
 
 function get() {
@@ -229,3 +218,13 @@ function get() {
 
 EOF;
 }
+
+function main() {
+    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        post();
+    } else {
+        get();
+    }
+}
+
+main();
