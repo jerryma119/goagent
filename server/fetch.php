@@ -189,6 +189,16 @@ function post()
 function get() {
     global $__version__;
     
+    if (@gzcompress('test') == false) {
+        print_notify('GET', $_SERVER['SCRIPT_FILENAME'], 500, 'need zlib moudle!'); 
+        exit(-1);
+    }
+    
+    if (@curl_init('http://www.google.com') == false) {
+        print_notify('GET', $_SERVER['SCRIPT_FILENAME'], 500, 'need curl moudle!'); 
+        exit(-1);
+    }
+    
     echo <<<EOF
 
 <html> 
