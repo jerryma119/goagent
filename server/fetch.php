@@ -45,7 +45,7 @@ function urlfetch_header_callabck($ch, $header) {
     
     $kv = array_map('trim', explode(':', $header, 2));
     if ($kv[1]) {
-        $__urlfetch_headers[$kv[0]] = $kv[1];
+        $__urlfetch_headers[strtolower($kv[0])] = strtolower($kv[1]);
     }
 	return strlen($header);
 }
