@@ -746,12 +746,12 @@ class PHPProxyHandler(LocalProxyHandler):
                         logging.info('Resole php fetchserver address.')
                         COMMON_HOSTS[COMMON_PHP_FETCHHOST] = socket.gethostbyname(COMMON_PHP_FETCHHOST)
                         logging.info('Resole php fetchserver address OK. %s', COMMON_HOSTS[COMMON_PHP_FETCHHOST])
-                        PHPProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
-                        PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT
-                        PHPProxyHandler.do_GET     = LocalProxyHandler.do_METHOD
-                        PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD
-                        PHPProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
-                        PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD
+                        PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Thunnel
+                        PHPProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Thunnel
+                        PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Thunnel
+                        PHPProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Thunnel
+                        PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Thunnel
+                        PHPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
                     except Exception, e:
                         logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
