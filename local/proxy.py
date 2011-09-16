@@ -566,11 +566,18 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         common_dns_resolve()
                         LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
                         if COMMON_GAE_ENABLE and not COMMON_PHP_ENABLE:
+                            logging.info('LocalProxyHandler.fetch = LocalProxyHandler.fetch_gae')
                             LocalProxyHandler.fetch = LocalProxyHandler.fetch_gae
                         elif not COMMON_GAE_ENABLE and COMMON_PHP_ENABLE:
+                            logging.info('LocalProxyHandler.fetch = LocalProxyHandler.fetch_php')
                             LocalProxyHandler.fetch = LocalProxyHandler.fetch_php
                         elif COMMON_GAE_ENABLE and COMMON_PHP_ENABLE:
-                            LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_endswith if type(COMMON_PHP_HOSTS) is tuple else LocalProxyHandler.fetch_mix_in
+                            if type(COMMON_PHP_HOSTS) is tuple:
+                                logging.info('LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_endswith')
+                                LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_endswith
+                            else:
+                                logging.info('LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_in')
+                                LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_in
                         else:
                             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
                             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
