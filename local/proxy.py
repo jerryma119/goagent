@@ -51,7 +51,6 @@ COMMON_PHP_FETCHSERVER    = COMMON_Config.get('php', 'fetchserver')
 COMMON_PHP_FETCHHOST      = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
 COMMON_PHP_HOSTS          = COMMON_Config.get('php', 'hosts').split('|')
 COMMON_PHP_HOSTS          = tuple(COMMON_PHP_HOSTS) if any(x.startswith('.') for x in COMMON_PHP_HOSTS) else frozenset(COMMON_PHP_HOSTS)
-COMMON_PHP_HOSTS_ENDSWITH = type(COMMON_PHP_HOSTS) is tuple
 
 COMMON_PROXY_HOST     = COMMON_Config.get('proxy', 'host')
 COMMON_PROXY_PORT     = COMMON_Config.getint('proxy', 'port')
@@ -471,10 +470,21 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def fetch_php(self, host, url, payload, method, headers):
         return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
 
-    def fetch(self, host, url, payload, method, headers):
-        if not COMMON_PHP_HOSTS_ENDSWITH and host in COMMON_PHP_HOSTS or COMMON_PHP_HOSTS_ENDSWITH and host.endswith(COMMON_PHP_HOSTS):
+    def fetch_mix_endswith(self, host, url, payload, method, headers):
+        if host.endswith(COMMON_PHP_HOSTS):
             return self.fetch_php(host, url, payload, method, headers)
         return self.fetch_gae(host, url, payload, method, headers)
+
+    def fetch_mix_in(self, host, url, payload, method, headers):
+        if host in COMMON_PHP_HOSTS:
+            return self.fetch_php(host, url, payload, method, headers)
+        return self.fetch_gae(host, url, payload, method, headers)
+
+    def fetch(self, host, url, payload, method, headers):
+        if type(COMMON_PHP_HOSTS) is tuple:
+            return self.fetch_mix_endswith(host, url, payload, method, headers)
+        else:
+            return self.fetch_mix_in(host, url, payload, method, headers)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -555,9 +565,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     try:
                         common_dns_resolve()
                         LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
-                        if COMMON_GAE_ENABLE or COMMON_PHP_ENABLE:
-                            m = {(1,0):LocalProxyHandler.fetch_gae, (0,1):LocalProxyHandler.fetch_php, (1,1):LocalProxyHandler.fetch}
-                            LocalProxyHandler.fetch = m[(COMMON_GAE_ENABLE, COMMON_PHP_ENABLE)]
+                        if COMMON_GAE_ENABLE and not COMMON_PHP_ENABLE:
+                            LocalProxyHandler.fetch = LocalProxyHandler.fetch_gae
+                        elif not COMMON_GAE_ENABLE and COMMON_PHP_ENABLE:
+                            LocalProxyHandler.fetch = LocalProxyHandler.fetch_php
+                        elif COMMON_GAE_ENABLE and COMMON_PHP_ENABLE:
+                            LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_endswith if type(COMMON_PHP_HOSTS) is tuple else LocalProxyHandler.fetch_mix_in
                         else:
                             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
                             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
