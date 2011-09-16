@@ -9,7 +9,7 @@ __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 import sys, os, re, time, errno, binascii, zlib
 import struct, random, hashlib
 import fnmatch, base64, logging, ConfigParser
-import threading
+import thread, threading
 import socket, ssl, select
 import httplib, urllib2, urlparse
 import BaseHTTPServer, SocketServer
@@ -47,10 +47,10 @@ COMMON_GAE_BINDHOSTS  = tuple(COMMON_Config.get('gae', 'bindhosts').split('|')) 
 COMMON_PROXY_ENABLE   = COMMON_Config.getint('proxy', 'enable')
 
 COMMON_PHP_ENABLE         = COMMON_Config.getint('php', 'enable')
+COMMON_PHP_IP             = COMMON_Config.get('php', 'ip')
+COMMON_PHP_PORT           = COMMON_Config.getint('php', 'port')
 COMMON_PHP_FETCHSERVER    = COMMON_Config.get('php', 'fetchserver')
 COMMON_PHP_FETCHHOST      = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
-COMMON_PHP_HOSTS          = COMMON_Config.get('php', 'hosts').split('|')
-COMMON_PHP_HOSTS          = tuple(COMMON_PHP_HOSTS) if any(x.startswith('.') for x in COMMON_PHP_HOSTS) else frozenset(COMMON_PHP_HOSTS)
 
 COMMON_PROXY_HOST     = COMMON_Config.get('proxy', 'host')
 COMMON_PROXY_PORT     = COMMON_Config.getint('proxy', 'port')
@@ -75,7 +75,7 @@ COMMON_AUTORANGE_ENDSWITH   = frozenset(COMMON_Config.get('autorange', 'endswith
 
 COMMON_HOSTS = dict((k, v) for k, v in COMMON_Config.items('hosts') if not k.startswith('_'))
 
-def common_dns_resolve():
+def common_google_resolve():
     global COMMON_GOOGLE_PREFER, COMMON_GOOGLE_HTTP, COMMON_GOOGLE_HTTPS, COMMON_GOOGLE_HOSTS
     logging.info('Resole google http address.')
     COMMON_GOOGLE_HTTP  = tuple(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HTTP], [])))
@@ -88,14 +88,10 @@ def common_dns_resolve():
         logging.warning('Seems that google.cn == google.com.hk, auto switch to https mode')
         COMMON_GOOGLE_PREFER = 'https'
         COMMON_GOOGLE_HOSTS = COMMON_GOOGLE_HTTP = COMMON_GOOGLE_HTTPS
-    if COMMON_PHP_ENABLE:
-        logging.info('Resole php fetchserver address.')
-        COMMON_HOSTS[COMMON_PHP_FETCHHOST] = socket.gethostbyname(COMMON_PHP_FETCHHOST)
-        logging.info('Resole php fetchserver address OK. %s', COMMON_HOSTS[COMMON_PHP_FETCHHOST])
 
 def common_info():
     info = ''
-    info += '--------------------------------------------\n'
+    info += '------------------------------------------------------\n'
     info += 'GoAgent Version : %s\n' % __version__
     info += 'OpenSSL Module  : %s\n' % ('Enabled' if OpenSSL else 'Disabled')
     info += 'Listen Address  : %s:%d\n' % (COMMON_LISTEN_IP, COMMON_LISTEN_PORT)
@@ -104,9 +100,9 @@ def common_info():
     info += 'GAE Mode        : %s\n' % COMMON_GOOGLE_PREFER if COMMON_GAE_ENABLE else ''
     info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS) if COMMON_GAE_ENABLE else ''
     info += 'GAE BindHost    : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_ENABLE and COMMON_GAE_BINDHOSTS else ''
+    info += 'PHP Mode Listen : %s:%d\n' % (COMMON_PHP_IP, COMMON_PHP_PORT) if COMMON_PHP_ENABLE else ''
     info += 'PHP FetchServer : %s\n' % COMMON_PHP_FETCHSERVER if COMMON_PHP_ENABLE else ''
-    info += 'PHP Hosts       : %s\n' % ('|'.join(COMMON_PHP_HOSTS) if COMMON_GAE_ENABLE and COMMON_PHP_ENABLE else '(ALL)') if COMMON_PHP_ENABLE else ''
-    info += '--------------------------------------------\n'
+    info += '------------------------------------------------------\n'
     return info
 
 class MultiplexConnection(object):
@@ -454,7 +450,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 errors.append(str(e))
         return (-1, errors)
 
-    def fetch_gae(self, host, url, payload, method, headers):
+    def fetch(self, host, url, payload, method, headers):
         if len(COMMON_GAE_SERVERS) == 1:
             fetchhost = COMMON_GAE_SERVERS[0]
         elif COMMON_GAE_BINDHOSTS and host.endswith(COMMON_GAE_BINDHOSTS):
@@ -466,25 +462,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             fetchserver = '%s://%s%s' % (COMMON_GOOGLE_PREFER, random.choice(COMMON_GOOGLE_HOSTS), COMMON_GAE_PATH)
         return self._fetch(host, url, payload, method, headers, fetchhost, fetchserver)
-
-    def fetch_php(self, host, url, payload, method, headers):
-        return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
-
-    def fetch_mix_endswith(self, host, url, payload, method, headers):
-        if host.endswith(COMMON_PHP_HOSTS):
-            return self.fetch_php(host, url, payload, method, headers)
-        return self.fetch_gae(host, url, payload, method, headers)
-
-    def fetch_mix_in(self, host, url, payload, method, headers):
-        if host in COMMON_PHP_HOSTS:
-            return self.fetch_php(host, url, payload, method, headers)
-        return self.fetch_gae(host, url, payload, method, headers)
-
-    def fetch(self, host, url, payload, method, headers):
-        if type(COMMON_PHP_HOSTS) is tuple:
-            return self.fetch_mix_endswith(host, url, payload, method, headers)
-        else:
-            return self.fetch_mix_in(host, url, payload, method, headers)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -563,22 +540,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             with LocalProxyHandler.setuplock:
                 if not COMMON_GOOGLE_HOSTS:
                     try:
-                        common_dns_resolve()
+                        common_google_resolve()
                         LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
-                        if COMMON_GAE_ENABLE and not COMMON_PHP_ENABLE:
-                            logging.info('LocalProxyHandler.fetch = LocalProxyHandler.fetch_gae')
-                            LocalProxyHandler.fetch = LocalProxyHandler.fetch_gae
-                        elif not COMMON_GAE_ENABLE and COMMON_PHP_ENABLE:
-                            logging.info('LocalProxyHandler.fetch = LocalProxyHandler.fetch_php')
-                            LocalProxyHandler.fetch = LocalProxyHandler.fetch_php
-                        elif COMMON_GAE_ENABLE and COMMON_PHP_ENABLE:
-                            if type(COMMON_PHP_HOSTS) is tuple:
-                                logging.info('LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_endswith')
-                                LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_endswith
-                            else:
-                                logging.info('LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_in')
-                                LocalProxyHandler.fetch = LocalProxyHandler.fetch_mix_in
-                        else:
+                        if not COMMON_GAE_ENABLE:
                             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
                             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
                         LocalProxyHandler.do_GET     = LocalProxyHandler.do_METHOD
@@ -768,6 +732,30 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if err in (10053, errno.EPIPE):
                 return
 
+class PHPProxyHandler(LocalProxyHandler):
+
+    def fetch(self, host, url, payload, method, headers):
+        return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
+
+    def setup(self):
+        logging.info('PHPProxyHandler.setup check %s is in COMMON_HOSTS', COMMON_PHP_FETCHHOST)
+        if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
+            with LocalProxyHandler.setuplock:
+                if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
+                    try:
+                        logging.info('Resole php fetchserver address.')
+                        COMMON_HOSTS[COMMON_PHP_FETCHHOST] = socket.gethostbyname(COMMON_PHP_FETCHHOST)
+                        logging.info('Resole php fetchserver address OK. %s', COMMON_HOSTS[COMMON_PHP_FETCHHOST])
+                        PHPProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
+                        PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT
+                        PHPProxyHandler.do_GET     = LocalProxyHandler.do_METHOD
+                        PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD
+                        PHPProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
+                        PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD
+                    except Exception, e:
+                        logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
+        BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
+
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -782,5 +770,9 @@ if __name__ == '__main__':
     CertUtil.checkCA()
     sys.stdout.write(common_info())
     LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in COMMON_LISTEN_IP]
+
+    if COMMON_PHP_ENABLE:
+        httpd = LocalProxyServer((COMMON_PHP_IP, COMMON_PHP_PORT), PHPProxyHandler)
+        thread.start_new_thread(httpd.serve_forever, ())
     httpd = LocalProxyServer((COMMON_LISTEN_IP, COMMON_LISTEN_PORT), LocalProxyHandler)
     httpd.serve_forever()
