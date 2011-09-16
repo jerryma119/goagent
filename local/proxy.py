@@ -46,12 +46,12 @@ COMMON_GAE_PATH       = COMMON_Config.get('gae', 'path')
 COMMON_GAE_BINDHOSTS  = tuple(COMMON_Config.get('gae', 'bindhosts').split('|')) if COMMON_Config.has_option('gae', 'bindhosts') else ()
 COMMON_PROXY_ENABLE   = COMMON_Config.getint('proxy', 'enable')
 
-COMMON_PHP_ENABLE      = COMMON_Config.getint('php', 'enable')
-COMMON_PHP_FETCHSERVER = COMMON_Config.get('php', 'fetchserver')
-COMMON_PHP_FETCHHOST   = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
-COMMON_PHP_HOSTS       = COMMON_Config.get('php', 'hosts').split('|')
-COMMON_PHP_HOSTS       = tuple(COMMON_PHP_HOSTS) if any(x.startswith('.') for x in COMMON_PHP_HOSTS) else frozenset(COMMON_PHP_HOSTS)
-COMMON_PHP_HOSTS_PRED  = str.endswith if type(COMMON_PHP_HOSTS) is tuple else None
+COMMON_PHP_ENABLE         = COMMON_Config.getint('php', 'enable')
+COMMON_PHP_FETCHSERVER    = COMMON_Config.get('php', 'fetchserver')
+COMMON_PHP_FETCHHOST      = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
+COMMON_PHP_HOSTS          = COMMON_Config.get('php', 'hosts').split('|')
+COMMON_PHP_HOSTS          = tuple(COMMON_PHP_HOSTS) if any(x.startswith('.') for x in COMMON_PHP_HOSTS) else frozenset(COMMON_PHP_HOSTS)
+COMMON_PHP_HOSTS_ENDSWITH = type(COMMON_PHP_HOSTS) is tuple
 
 COMMON_PROXY_HOST     = COMMON_Config.get('proxy', 'host')
 COMMON_PROXY_PORT     = COMMON_Config.getint('proxy', 'port')
@@ -472,7 +472,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
 
     def fetch(self, host, url, payload, method, headers):
-        if not COMMON_PHP_HOSTS_PRED and host in COMMON_PHP_HOSTS or COMMON_PHP_HOSTS_PRED and COMMON_PHP_HOSTS_PRED(host, COMMON_PHP_HOSTS):
+        if not COMMON_PHP_HOSTS_ENDSWITH and host in COMMON_PHP_HOSTS or COMMON_PHP_HOSTS_ENDSWITH and host.endswith(COMMON_PHP_HOSTS):
             return self.fetch_php(host, url, payload, method, headers)
         return self.fetch_gae(host, url, payload, method, headers)
 
