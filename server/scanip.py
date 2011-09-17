@@ -6,10 +6,14 @@ __author__ = "phus.lu@gmail.com"
 
 import sys, os, re, time
 import socket, urllib2, threading, Queue
+import logging
+import ssl
+import OpenSSL
 
-THREAD_NUMBER = 16
+logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
+
+THREAD_NUMBER = 20
 TIMEOUT = 2
-KEYWORD = 'Google'
 
 queue = Queue.Queue()
 
@@ -24,12 +28,12 @@ def ping():
         if ip is None:
             break
         try:
-            url = 'https://%s/' % ip
-            resp = urllib2.urlopen(url,timeout=TIMEOUT)
-            if KEYWORD in resp.read():
+            cert = ssl.get_server_certificate((ip, 443))
+            x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
+            if '*.google.com' in str(x509.get_subject()):
                 sys.stdout.write(ip+'\n')
-        except:
-            pass
+        except Exception, e:
+            logging.info('something wrong, %s', e)
 
 threads = []
 for i in xrange(THREAD_NUMBER):
