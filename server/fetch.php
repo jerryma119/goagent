@@ -44,8 +44,18 @@ function urlfetch_header_callabck($ch, $header) {
     global $__urlfetch_headers;
     
     $kv = array_map('trim', explode(':', $header, 2));
-    if ($kv[1]) {
-        $__urlfetch_headers[strtolower($kv[0])] = $kv[1];
+    $key = strtolower($kv[0]);
+    $value = $kv[1];
+    if ($key && $value) {
+        if ($key == 'set-cookie') {
+            if (!array_key_exists('set-cookie', $__urlfetch_headers)) {
+                $__urlfetch_headers['set-cookie'] = $value;
+            } else {
+                $__urlfetch_headers['set-cookie'] .= "\r\nset-cookie: " . $value;
+            }
+        } else {
+            $__urlfetch_headers[$key] = $kv[1];
+        }
     }
 	return strlen($header);
 }
