@@ -439,9 +439,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     raise ValueError('Data format not match(%s)' % url)
                 data = {}
                 data['code'], hlen, clen = struct.unpack('>3I', raw_data[:12])
-                if len(raw_data) != 12+hlen+clen:
-                    raise ValueError('Data length not match')
-                data['content'] = raw_data[12+hlen:]
+                tlen = 12+hlen+clen
+                if len(raw_data) < tlen:
+                    raise ValueError('Data length is short than excepted!')
+                data['content'] = raw_data[12+hlen:tlen]
                 if data['code'] == 555:     #Urlfetch Failed
                     raise ValueError(data['content'])
                 data['headers'] = decode_data(raw_data[12:12+hlen])
