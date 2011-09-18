@@ -440,9 +440,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data = {}
                 data['code'], hlen, clen = struct.unpack('>3I', raw_data[:12])
                 tlen = 12+hlen+clen
-                if len(raw_data) < tlen:
+                realtlen = len(raw_data)
+                if realtlen == tlen:
+                    data['content'] = raw_data[12+hlen:]
+                elif realtlen > tlen:
+                    data['content'] = raw_data[12+hlen:tlen]
+                else:
                     raise ValueError('Data length is short than excepted!')
-                data['content'] = raw_data[12+hlen:tlen]
+
                 if data['code'] == 555:     #Urlfetch Failed
                     raise ValueError(data['content'])
                 data['headers'] = decode_data(raw_data[12:12+hlen])
