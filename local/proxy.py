@@ -341,6 +341,15 @@ class CertUtil(object):
 
     @staticmethod
     def checkCA():
+        #Check CA exists
+        if not os.path.exists('CA.crt'):
+            if not OpenSSL:
+                logging.critical('CA.crt is not exist and OpenSSL is disabled, ABORT!')
+                sys.exit(-1)
+            key, crt = CertUtil.makeCA()
+            CertUtil.writeFile('CA.key', key)
+            CertUtil.writeFile('CA.crt', crt)
+            [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
         #Check CA imported
         cmd = {
                 'win32'  : r'certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL',
