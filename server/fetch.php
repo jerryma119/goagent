@@ -83,6 +83,11 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
     if (!$follow_redirects) {
 	    $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
 	}
+	
+	if ($deadline) {
+	    $curl_opt[CURLOPT_CONNECTTIMEOUT] = $deadline;
+	    $curl_opt[CURLOPT_TIMEOUT] = $deadline;
+	}
     
     if (!$validate_certificate) {
 	    $curl_opt[CURLOPT_SSL_VERIFYPEER] = false;
@@ -126,9 +131,14 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
     $content = curl_exec($ch);
     $__urlfetch_headers['connection'] = 'close';
     $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $errno = curl_errno($ch);
+    if( $errno)
+    {
+        $error =  $errno . ': ' .curl_error($ch);
+    }
     curl_close($ch);
  
-    $response = array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content' => $content);
+    $response = array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content' => $content, 'error' => $error);
     return $response;
 }
 
@@ -189,11 +199,11 @@ function post()
         if (200 <= $status_code && $status_code < 400) {
            return print_response($status_code, $response['headers'], $response['content']);
         } else {
-            $errors[] = $status_code;
+            $errors[] = $response['error'];
         }
     }
     
-    print_notify($request['method'], $request['url'], 502, 'PHP Fetch Server Failed: ' . join(',', $errors)); 
+    print_notify($request['method'], $request['url'], 502, 'PHP Fetch Server Failed: ' . var_export($errors, true)); 
 }
 
 function get() {
