@@ -199,7 +199,11 @@ function post()
         if (200 <= $status_code && $status_code < 400) {
            return print_response($status_code, $response['headers'], $response['content']);
         } else {
-            $errors[] = $response['error'];
+            if ($response['error']) {
+                $errors[] = $response['error'];
+            } else {
+                $errors[] = 'URLError: ' . $status_code;
+            }
         }
     }
     
