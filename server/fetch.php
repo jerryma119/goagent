@@ -5,11 +5,11 @@ $__version__  = '1.5.5';
 $__password__ = '';
 
 function encode_data($dic) {
-    $str = '';
+    $a = array();
     foreach ($dic as $key => $value) {
-       $str .= $key. '=' . bin2hex($value) . '&';
+       $a[] = $key. '=' . bin2hex($value);
     }
-    return rtrim($str, '&');
+    return join('&', $a);
 }
 
 function decode_data($qs) {
@@ -23,7 +23,8 @@ function decode_data($qs) {
 
 function print_response($status, $headers, $content) {
     $strheaders = encode_data($headers);
-    if (array_key_exists('content-type', $headers) && substr($headers['content-type'], 0, 4) == 'text') {
+    $content_type = $headers['content-type'];
+    if ($content_type && substr($content_type, 0, 4) == 'text') {
         $data = '1' . gzcompress(pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content);
     } else {
         $data = '0' . pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content;
@@ -44,9 +45,9 @@ function urlfetch_header_callabck($ch, $header) {
     global $__urlfetch_headers;
     
     $kv = array_map('trim', explode(':', $header, 2));
-    $key = strtolower($kv[0]);
-    $value = $kv[1];
-    if ($key && $value) {
+    if ($kv[1]) {
+        $key = strtolower($kv[0]);
+        $value = $kv[1];
         if ($key == 'set-cookie') {
             if (!array_key_exists('set-cookie', $__urlfetch_headers)) {
                 $__urlfetch_headers['set-cookie'] = $value;
