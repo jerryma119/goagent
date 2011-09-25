@@ -152,7 +152,7 @@ class MultiplexConnection(object):
             else:
                 logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
-            MultiplexConnection.window = min(int(round(window*1.5)), self.window_max)
+            MultiplexConnection.window = min(int(round(window*1.5)), len(hosts), self.window_max)
             MultiplexConnection.window_ack = 0
             raise RuntimeError(r'MultiplexConnection Connect hosts %s:%s fail %d times!' % (hosts, port, MultiplexConnection.retry))
     def close(self):
