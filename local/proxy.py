@@ -402,9 +402,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response.close()
             except urllib2.HTTPError, e:
                 # www.google.cn:80 is down, switch to https
-                if COMMON_PROXY_ENABLE and e.code in (502, 504):
+                if e.code in (502, 504):
                     COMMON_APPSPOT_MODE = 'https'
-                    COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
+                    if not COMMON_PROXY_ENABLE:
+                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
                     sys.stdout.write(common_info())
                 errors.append('%d: %s' % (e.code, httplib.responses.get(e.code, 'Unknown HTTPError')))
                 continue
