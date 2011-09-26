@@ -58,9 +58,10 @@ COMMON_PROXY_USERNAME = COMMON_Config.get('proxy', 'username')
 COMMON_PROXY_PASSWROD = COMMON_Config.get('proxy', 'password')
 COMMON_PROXY_NTLM     = bool(COMMON_Config.getint('proxy', 'ntlm')) if COMMON_Config.has_option('proxy', 'ntlm') else '\\' in COMMON_PROXY_USERNAME
 
+COMMON_APPSPOT_MODE        = COMMON_Config.get('appspot', 'mode')
 COMMON_APPSPOT_HOSTS_MODE  = COMMON_Config.get('appspot', 'hosts')
 COMMON_APPSPOT_HOSTS       = ()
-COMMON_APPSPOT_MODE        = COMMON_Config.get('appspot', 'mode')
+COMMON_APPSPOT_AUTOSWITCH  = COMMON_Config.getint('appspot', 'autoswitch') if COMMON_Config.has_option('appspot', 'autoswitch') else 0
 COMMON_APPSPOT_HOSTS_MAP   = dict((x, tuple(COMMON_Config.get('appspot', x).split('|'))) for x in ('cn', 'hk', 'ipv6'))
 
 COMMON_GOOGLE_SITES      = tuple(COMMON_Config.get('google', 'sites').split('|'))
