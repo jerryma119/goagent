@@ -328,21 +328,23 @@ class CertUtil(object):
     @staticmethod
     def checkCA():
         #Check CA exists
-        if not os.path.exists('CA.crt'):
+        keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
+        crtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
+        if not os.path.exists(keyFile):
             if not OpenSSL:
                 logging.critical('CA.crt is not exist and OpenSSL is disabled, ABORT!')
                 sys.exit(-1)
             key, crt = CertUtil.makeCA()
-            CertUtil.writeFile('CA.key', key)
-            CertUtil.writeFile('CA.crt', crt)
+            CertUtil.writeFile(keyFile, key)
+            CertUtil.writeFile(crtFile, crt)
             [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
         #Check CA imported
         cmd = {
-                'win32'  : r'certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL',
+                'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
                 #'darwin' : r'cp /System/Library/Keychains/X509Anchors ~/Library/Keychains/;certtool i CA.crt k=X509Anchors >/dev/null',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
-            logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
+                logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
         if OpenSSL:
             keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
             crtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
