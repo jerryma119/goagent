@@ -59,8 +59,7 @@ COMMON_PROXY_PASSWROD = COMMON_Config.get('proxy', 'password')
 COMMON_PROXY_NTLM     = bool(COMMON_Config.getint('proxy', 'ntlm')) if COMMON_Config.has_option('proxy', 'ntlm') else '\\' in COMMON_PROXY_USERNAME
 
 COMMON_APPSPOT_MODE        = COMMON_Config.get('appspot', 'mode')
-COMMON_APPSPOT_HOSTS_MODE  = COMMON_Config.get('appspot', 'hosts')
-COMMON_APPSPOT_HOSTS       = ()
+COMMON_APPSPOT_HOSTS       = COMMON_Config.get('appspot', 'hosts')
 COMMON_APPSPOT_AUTOSWITCH  = COMMON_Config.getint('appspot', 'autoswitch') if COMMON_Config.has_option('appspot', 'autoswitch') else 0
 COMMON_APPSPOT_HOSTS_MAP   = dict((x, tuple(COMMON_Config.get('appspot', x).split('|'))) for x in ('cn', 'hk', 'ipv6'))
 
@@ -76,17 +75,6 @@ COMMON_AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in COMMON_AUTORAN
 COMMON_AUTORANGE_ENDSWITH   = frozenset(COMMON_Config.get('autorange', 'endswith').split('|'))
 
 COMMON_HOSTS = dict((k, v) for k, v in COMMON_Config.items('hosts') if not k.startswith('_'))
-
-def common_google_resolve():
-    global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS_MODE, COMMON_APPSPOT_HOSTS, COMMON_APPSPOT_HOSTS_MAP, COMMON_GOOGLE_HOSTS
-    logging.info('Resole appspot address.')
-    for area, hosts in COMMON_APPSPOT_HOSTS_MAP.items():
-        COMMON_APPSPOT_HOSTS_MAP[area] = tuple(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in hosts], [])))
-        logging.info('Resole appspot %s address OK. %s', area, COMMON_APPSPOT_HOSTS_MAP[area])
-    COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP[COMMON_APPSPOT_HOSTS_MODE]
-    logging.info('Resole google hosts address.')
-    COMMON_GOOGLE_HOSTS = tuple(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in COMMON_GOOGLE_HOSTS], [])))
-    logging.info('Resole google hosts address OK. %s', COMMON_GOOGLE_HOSTS)
 
 def common_info():
     info = ''
@@ -414,7 +402,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response.close()
             except urllib2.HTTPError, e:
                 # www.google.cn:80 is down, switch to https
-                if COMMON_APPSPOT_AUTOSWITCH and e.code in (502, 504):
+                if COMMON_PROXY_ENABLE and e.code in (502, 504):
                     COMMON_APPSPOT_MODE = 'https'
                     COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
                     sys.stdout.write(common_info())
@@ -548,17 +536,31 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def setup(self):
+        def hostlist_to_iplist(hostlist):
+            try:
+                return tuple(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in hostlist], [])))
+            except Exception, e:
+                logging.critical('socket.getaddrinfo failed. If you behide a proxy, Please replace Hostname with IP List.')
+                sys.exit(-1)
+        global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS, COMMON_APPSPOT_HOSTS_MAP, COMMON_GOOGLE_HOSTS
         logging.info('LocalProxyHandler.setup check COMMON_APPSPOT_HOSTS=%r', COMMON_APPSPOT_HOSTS)
-        if not COMMON_APPSPOT_HOSTS:
+        if type(COMMON_APPSPOT_HOSTS) is type(''):
             with LocalProxyHandler.setuplock:
-                if not COMMON_APPSPOT_HOSTS:
+                if type(COMMON_APPSPOT_HOSTS) is type(''):
                     try:
-                        common_google_resolve()
-                        if not COMMON_GAE_ENABLE:
-                            LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
-                            LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
+                        logging.info('Resole appspot address.')
+                        for area, hosts in COMMON_APPSPOT_HOSTS_MAP.items():
+                            COMMON_APPSPOT_HOSTS_MAP[area] = hostlist_to_iplist(hosts)
+                            logging.info('Resole appspot %s address OK. %s', area, COMMON_APPSPOT_HOSTS_MAP[area])
+                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP[COMMON_APPSPOT_HOSTS]
+                        logging.info('Resole google hosts address.')
+                        COMMON_GOOGLE_HOSTS =  hostlist_to_iplist(COMMON_GOOGLE_HOSTS)
+                        logging.info('Resole google hosts address OK. %s', COMMON_GOOGLE_HOSTS)
                     except Exception, e:
                         logging.exception('common_google_resolve fail: %s', e)
+        if not COMMON_GAE_ENABLE:
+            LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
+            LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
         LocalProxyHandler.do_GET     = LocalProxyHandler.do_METHOD
         LocalProxyHandler.do_POST    = LocalProxyHandler.do_METHOD
         LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
@@ -752,7 +754,7 @@ class PHPProxyHandler(LocalProxyHandler):
 
     def setup(self):
         if COMMON_PROXY_ENABLE:
-            logging.info('LocalProxy is enable, PHPProxyHandler dont resole dns')
+            logging.info('Local Proxy is enable, PHPProxyHandler dont resole DNS')
         else:
             logging.info('PHPProxyHandler.setup check %s is in COMMON_HOSTS', COMMON_PHP_FETCHHOST)
             if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
