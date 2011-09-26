@@ -93,8 +93,8 @@ def common_info():
     info += '------------------------------------------------------\n'
     info += 'GoAgent Version : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
     info += 'Listen Address  : %s:%d\n' % (COMMON_LISTEN_IP, COMMON_LISTEN_PORT)
-    info += 'Debug Level     : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
     info += 'Local Proxy     : %s:%s\n' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT) if COMMON_PROXY_ENABLE else ''
+    info += 'Debug Level     : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
     info += 'GAE Mode        : %s\n' % COMMON_APPSPOT_MODE if COMMON_GAE_ENABLE else ''
     info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS) if COMMON_GAE_ENABLE else ''
     info += 'GAE BindHost    : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_ENABLE and COMMON_GAE_BINDHOSTS else ''
@@ -554,16 +554,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not COMMON_APPSPOT_HOSTS:
                     try:
                         common_google_resolve()
-                        LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
                         if not COMMON_GAE_ENABLE:
                             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
                             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
-                        LocalProxyHandler.do_GET     = LocalProxyHandler.do_METHOD
-                        LocalProxyHandler.do_POST    = LocalProxyHandler.do_METHOD
-                        LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
-                        LocalProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD
                     except Exception, e:
                         logging.exception('common_google_resolve fail: %s', e)
+        LocalProxyHandler.do_GET     = LocalProxyHandler.do_METHOD
+        LocalProxyHandler.do_POST    = LocalProxyHandler.do_METHOD
+        LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
+        LocalProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD
+        LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
     def do_CONNECT(self):
@@ -751,22 +751,25 @@ class PHPProxyHandler(LocalProxyHandler):
         return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
 
     def setup(self):
-        logging.info('PHPProxyHandler.setup check %s is in COMMON_HOSTS', COMMON_PHP_FETCHHOST)
-        if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
-            with LocalProxyHandler.setuplock:
-                if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
-                    try:
-                        logging.info('Resole php fetchserver address.')
-                        COMMON_HOSTS[COMMON_PHP_FETCHHOST] = socket.gethostbyname(COMMON_PHP_FETCHHOST)
-                        logging.info('Resole php fetchserver address OK. %s', COMMON_HOSTS[COMMON_PHP_FETCHHOST])
-                        PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Thunnel
-                        PHPProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Thunnel
-                        PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Thunnel
-                        PHPProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Thunnel
-                        PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Thunnel
-                        PHPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
-                    except Exception, e:
-                        logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
+        if COMMON_PROXY_ENABLE:
+            logging.info('LocalProxy is enable, PHPProxyHandler dont resole dns')
+        else:
+            logging.info('PHPProxyHandler.setup check %s is in COMMON_HOSTS', COMMON_PHP_FETCHHOST)
+            if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
+                with LocalProxyHandler.setuplock:
+                    if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
+                        try:
+                            logging.info('Resole php fetchserver address.')
+                            COMMON_HOSTS[COMMON_PHP_FETCHHOST] = socket.gethostbyname(COMMON_PHP_FETCHHOST)
+                            logging.info('Resole php fetchserver address OK. %s', COMMON_HOSTS[COMMON_PHP_FETCHHOST])
+                        except Exception, e:
+                            logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
+        PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Thunnel
+        PHPProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Thunnel
+        PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Thunnel
+        PHPProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Thunnel
+        PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Thunnel
+        PHPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
