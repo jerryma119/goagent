@@ -29,52 +29,44 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
 
 ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
-COMMON_Config = ConfigParser.ConfigParser()
-
-COMMON_Config.read(os.path.splitext(__file__)[0] + '.ini')
-COMMON_LISTEN_IP      = COMMON_Config.get('listen', 'ip')
-COMMON_LISTEN_PORT    = COMMON_Config.getint('listen', 'port')
-COMMON_LISTEN_VISIBLE = COMMON_Config.getint('listen', 'visible')
-
-COMMON_GAE_ENABLE     = COMMON_Config.getint('gae', 'enable')
-COMMON_GAE_APPIDS     = tuple(x.replace('.appspot.com', '') for x in COMMON_Config.get('gae', 'appid').split('|'))
-COMMON_GAE_SERVERS    = tuple(x if x.count('.') >= 2 else '%s.appspot.com' % x  for x in COMMON_GAE_APPIDS)
-COMMON_GAE_SERVER_SET = frozenset(COMMON_GAE_SERVERS)
-COMMON_GAE_PASSWORD   = COMMON_Config.get('gae', 'password').strip()
-COMMON_GAE_DEBUGLEVEL = COMMON_Config.getint('gae', 'debuglevel')
-COMMON_GAE_PATH       = COMMON_Config.get('gae', 'path')
-COMMON_GAE_BINDHOSTS  = tuple(COMMON_Config.get('gae', 'bindhosts').split('|')) if COMMON_Config.has_option('gae', 'bindhosts') else ()
-COMMON_PROXY_ENABLE   = COMMON_Config.getint('proxy', 'enable')
-
-COMMON_PHP_ENABLE         = COMMON_Config.getint('php', 'enable')
-COMMON_PHP_IP             = COMMON_Config.get('php', 'ip')
-COMMON_PHP_PORT           = COMMON_Config.getint('php', 'port')
-COMMON_PHP_FETCHSERVER    = COMMON_Config.get('php', 'fetchserver')
-COMMON_PHP_FETCHHOST      = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
-
-COMMON_PROXY_HOST     = COMMON_Config.get('proxy', 'host')
-COMMON_PROXY_PORT     = COMMON_Config.getint('proxy', 'port')
-COMMON_PROXY_USERNAME = COMMON_Config.get('proxy', 'username')
-COMMON_PROXY_PASSWROD = COMMON_Config.get('proxy', 'password')
-COMMON_PROXY_NTLM     = bool(COMMON_Config.getint('proxy', 'ntlm')) if COMMON_Config.has_option('proxy', 'ntlm') else '\\' in COMMON_PROXY_USERNAME
-
-COMMON_APPSPOT_MODE        = COMMON_Config.get('appspot', 'mode')
-COMMON_APPSPOT_HOSTS       = COMMON_Config.get('appspot', 'hosts')
-COMMON_APPSPOT_AUTOSWITCH  = COMMON_Config.getint('appspot', 'autoswitch') if COMMON_Config.has_option('appspot', 'autoswitch') else 0
-COMMON_APPSPOT_HOSTS_MAP   = dict((x, tuple(COMMON_Config.get('appspot', x).split('|'))) for x in ('cn', 'hk', 'ipv6'))
-
-COMMON_GOOGLE_SITES      = tuple(COMMON_Config.get('google', 'sites').split('|'))
-COMMON_GOOGLE_FORCEHTTPS = frozenset(COMMON_Config.get('google', 'forcehttps').split('|'))
-COMMON_GOOGLE_WITHGAE    = frozenset(COMMON_Config.get('google', 'withgae').split('|'))
-COMMON_GOOGLE_HOSTS       = tuple(COMMON_Config.get('google', 'hosts').split('|'))
-
-COMMON_FETCHMAX_LOCAL  = COMMON_Config.getint('fetchmax', 'local') if COMMON_Config.get('fetchmax', 'local') else 3
-COMMON_FETCHMAX_SERVER = COMMON_Config.get('fetchmax', 'server')
-COMMON_AUTORANGE_HOSTS      = tuple(COMMON_Config.get('autorange', 'hosts').split('|'))
+COMMON_CONFIG = ConfigParser.ConfigParser()
+COMMON_CONFIG.read(os.path.splitext(__file__)[0] + '.ini')
+COMMON_LISTEN_IP            = COMMON_CONFIG.get('listen', 'ip')
+COMMON_LISTEN_PORT          = COMMON_CONFIG.getint('listen', 'port')
+COMMON_LISTEN_VISIBLE       = COMMON_CONFIG.getint('listen', 'visible')
+COMMON_GAE_ENABLE           = COMMON_CONFIG.getint('gae', 'enable')
+COMMON_GAE_APPIDS           = tuple(x.replace('.appspot.com', '') for x in COMMON_CONFIG.get('gae', 'appid').split('|'))
+COMMON_GAE_SERVERS          = tuple(x if x.count('.') >= 2 else '%s.appspot.com' % x  for x in COMMON_GAE_APPIDS)
+COMMON_GAE_SERVER_SET       = frozenset(COMMON_GAE_SERVERS)
+COMMON_GAE_PASSWORD         = COMMON_CONFIG.get('gae', 'password').strip()
+COMMON_GAE_DEBUGLEVEL       = COMMON_CONFIG.getint('gae', 'debuglevel')
+COMMON_GAE_PATH             = COMMON_CONFIG.get('gae', 'path')
+COMMON_GAE_BINDHOSTS        = tuple(COMMON_CONFIG.get('gae', 'bindhosts').split('|')) if COMMON_CONFIG.has_option('gae', 'bindhosts') else ()
+COMMON_PHP_ENABLE           = COMMON_CONFIG.getint('php', 'enable')
+COMMON_PHP_IP               = COMMON_CONFIG.get('php', 'ip')
+COMMON_PHP_PORT             = COMMON_CONFIG.getint('php', 'port')
+COMMON_PHP_FETCHSERVER      = COMMON_CONFIG.get('php', 'fetchserver')
+COMMON_PHP_FETCHHOST        = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
+COMMON_PROXY_ENABLE         = COMMON_CONFIG.getint('proxy', 'enable')
+COMMON_PROXY_HOST           = COMMON_CONFIG.get('proxy', 'host')
+COMMON_PROXY_PORT           = COMMON_CONFIG.getint('proxy', 'port')
+COMMON_PROXY_USERNAME       = COMMON_CONFIG.get('proxy', 'username')
+COMMON_PROXY_PASSWROD       = COMMON_CONFIG.get('proxy', 'password')
+COMMON_PROXY_NTLM           = bool(COMMON_CONFIG.getint('proxy', 'ntlm')) if COMMON_CONFIG.has_option('proxy', 'ntlm') else '\\' in COMMON_PROXY_USERNAME
+COMMON_APPSPOT_MODE         = COMMON_CONFIG.get('appspot', 'mode')
+COMMON_APPSPOT_HOSTS        = COMMON_CONFIG.get('appspot', 'hosts')
+COMMON_APPSPOT_AUTOSWITCH   = COMMON_CONFIG.getint('appspot', 'autoswitch') if COMMON_CONFIG.has_option('appspot', 'autoswitch') else 0
+COMMON_APPSPOT_HOSTS_MAP    = dict((x, tuple(COMMON_CONFIG.get('appspot', x).split('|'))) for x in ('cn', 'hk', 'ipv6'))
+COMMON_GOOGLE_SITES         = tuple(COMMON_CONFIG.get('google', 'sites').split('|'))
+COMMON_GOOGLE_FORCEHTTPS    = frozenset(COMMON_CONFIG.get('google', 'forcehttps').split('|'))
+COMMON_GOOGLE_WITHGAE       = frozenset(COMMON_CONFIG.get('google', 'withgae').split('|'))
+COMMON_GOOGLE_HOSTS         = tuple(COMMON_CONFIG.get('google', 'hosts').split('|'))
+COMMON_FETCHMAX_LOCAL       = COMMON_CONFIG.getint('fetchmax', 'local') if COMMON_CONFIG.get('fetchmax', 'local') else 3
+COMMON_FETCHMAX_SERVER      = COMMON_CONFIG.get('fetchmax', 'server')
+COMMON_AUTORANGE_HOSTS      = tuple(COMMON_CONFIG.get('autorange', 'hosts').split('|'))
 COMMON_AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in COMMON_AUTORANGE_HOSTS)
-COMMON_AUTORANGE_ENDSWITH   = frozenset(COMMON_Config.get('autorange', 'endswith').split('|'))
-
-COMMON_HOSTS = dict((k, v) for k, v in COMMON_Config.items('hosts') if not k.startswith('_'))
+COMMON_AUTORANGE_ENDSWITH   = frozenset(COMMON_CONFIG.get('autorange', 'endswith').split('|'))
+COMMON_HOSTS                = dict((k, v) for k, v in COMMON_CONFIG.items('hosts') if not k.startswith('_'))
 
 def common_info():
     info = ''
