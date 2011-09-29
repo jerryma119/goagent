@@ -533,7 +533,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def setup(self):
         def hostlist_to_iplist(hostlist):
             try:
-                return tuple(set(x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in hostlist], [])))
+                iplist = []
+                iplist += [x for x in hostlist if not re.search('[a-zA-Z]', x)]
+                iplist += [x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in hostlist if re.search('[a-zA-Z]', x)], [])]
+                return tuple(set(iplist))
             except Exception, e:
                 logging.critical('socket.getaddrinfo failed. If you behide a proxy, Please replace Hostname with IP List.')
                 sys.exit(-1)
