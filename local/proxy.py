@@ -486,10 +486,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             del data['headers']['content-range']
         data['headers']['content-length'] = end-start+1
         partSize = self.part_size
-        self.send_response(data['code'])
-        for k,v in data['headers'].iteritems():
-            self.send_header(k.title(), v)
-        self.end_headers()
+
+        respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
+        strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
+        self.wfile.write(respline+strheaders+'\r\n')
+
         if start == m[0]:
             self.wfile.write(data['content'])
             start = m[1] + 1
