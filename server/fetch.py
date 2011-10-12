@@ -8,6 +8,7 @@ __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging
+import webapp2
 from google.appengine.api import urlfetch
 from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 
@@ -165,7 +166,7 @@ class MainPage(webapp2.RequestHandler):
 </html>
 ''' % dict(version=__version__))
 
-application = webapp2.WSGIApplication([('/', MainPage)])
+application = webapp2.WSGIApplication([('/fetch.py', MainPage)])
 
 if __name__ == '__main__':
     main()
