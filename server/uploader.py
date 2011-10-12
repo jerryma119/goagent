@@ -505,7 +505,8 @@ class AppVersionUpload(object):
 
     def DoUpload(self):
         """Uploads a new appversion with the given config and files to the server."""
-        for filename in re.findall(r'(?s)script:\s*(\S+)\s*', self.yaml):
+        for app in re.findall(r'(?s)script:\s*(\S+)\s*', self.yaml):
+            filename = app.rpartition('.')[0] + '.py'
             self.AddFile(filename, open("%s/%s" % (BASE_DIR, filename), "r"))
         try:
             missing_files = self.Begin()

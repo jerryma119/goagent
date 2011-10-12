@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.5.6'
+__version__ = '1.6'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -333,7 +333,7 @@ class CertUtil(object):
         #Check CA imported
         cmd = {
                 'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
-                #'darwin' : r'cp /System/Library/Keychains/X509Anchors ~/Library/Keychains/;certtool i CA.crt k=X509Anchors >/dev/null',
+                'darwin' : r'sudo security add-trusted-cert -d –r trustRoot –k /Library/Keychains/System.keychain CA.crt',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
@@ -398,7 +398,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # www.google.cn:80 is down, switch to https
                 if e.code in (502, 504):
                     COMMON_APPSPOT_MODE = 'https'
-                    if not COMMON_PROXY_ENABLE:
+                    if COMMON_APPSPOT_AUTOSWITCH:
                         COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
                     sys.stdout.write(common_info())
                 errors.append('%d: %s' % (e.code, httplib.responses.get(e.code, 'Unknown HTTPError')))
@@ -486,10 +486,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             del data['headers']['content-range']
         data['headers']['content-length'] = end-start+1
         partSize = self.part_size
-        self.send_response(data['code'])
-        for k,v in data['headers'].iteritems():
-            self.send_header(k.title(), v)
-        self.end_headers()
+
+        respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
+        strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
+        self.wfile.write(respline+strheaders+'\r\n')
+
         if start == m[0]:
             self.wfile.write(data['content'])
             start = m[1] + 1
