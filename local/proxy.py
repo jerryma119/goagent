@@ -390,7 +390,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def fetch(self, host, url, payload, method, headers):
         global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS
-        fetchserver = self.fetchserver
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('LocalProxyHandler _fetch params %s', params)
@@ -399,6 +398,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if COMMON_FETCHMAX_SERVER:
             params['fetchmax'] = int(COMMON_FETCHMAX_SERVER)
         params = encode_data(params)
+        fetchserver = self.fetchserver
         for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
                 logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
