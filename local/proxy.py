@@ -311,10 +311,17 @@ class CertUtil(object):
             with CertUtil.CALock:
                 if not os.path.isfile(keyFile):
                     logging.info('CertUtil getCertificate for %r', host)
-                    serial = int(hashlib.md5(host).hexdigest(),16)
-                    key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
-                    CertUtil.writeFile(keyFile, key)
-                    CertUtil.writeFile(crtFile, crt)
+                    for serial in (int(hashlib.md5(host).hexdigest(),16), int(time.time() * 100)):
+                        try:
+                            key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
+                            CertUtil.writeFile(keyFile, key)
+                            CertUtil.writeFile(crtFile, crt)
+                            break
+                        except:
+                            logging.exception('CertUtil.makeCert failed: host=%r, serial=%r', host, serial)
+                    else:
+                        keyFile = os.path.join(basedir, 'CA.key')
+                        crtFile = os.path.join(basedir, 'CA.crt')
         return (keyFile, crtFile)
 
     @staticmethod
@@ -333,7 +340,7 @@ class CertUtil(object):
         #Check CA imported
         cmd = {
                 'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
-                'darwin' : r'sudo security add-trusted-cert -d –r trustRoot –k /Library/Keychains/System.keychain CA.crt',
+                #'darwin' : r'sudo security add-trusted-cert -d –r trustRoot –k /Library/Keychains/System.keychain CA.crt',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
