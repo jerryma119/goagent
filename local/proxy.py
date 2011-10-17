@@ -35,9 +35,8 @@ COMMON_LISTEN_IP            = COMMON_CONFIG.get('listen', 'ip')
 COMMON_LISTEN_PORT          = COMMON_CONFIG.getint('listen', 'port')
 COMMON_LISTEN_VISIBLE       = COMMON_CONFIG.getint('listen', 'visible')
 COMMON_GAE_ENABLE           = COMMON_CONFIG.getint('gae', 'enable')
-COMMON_GAE_APPIDS           = tuple(x.replace('.appspot.com', '') for x in COMMON_CONFIG.get('gae', 'appid').split('|'))
-COMMON_GAE_SERVERS          = tuple(x if x.count('.') >= 2 else '%s.appspot.com' % x  for x in COMMON_GAE_APPIDS)
-COMMON_GAE_SERVER_SET       = frozenset(COMMON_GAE_SERVERS)
+COMMON_GAE_APPID            = COMMON_CONFIG.get('gae', 'appid').replace('.appspot.com', '')
+COMMON_GAE_SERVER           = '%s.appspot.com' % COMMON_GAE_APPID
 COMMON_GAE_PASSWORD         = COMMON_CONFIG.get('gae', 'password').strip()
 COMMON_GAE_DEBUGLEVEL       = COMMON_CONFIG.getint('gae', 'debuglevel')
 COMMON_GAE_PATH             = COMMON_CONFIG.get('gae', 'path')
@@ -76,7 +75,7 @@ def common_info():
     info += 'Local Proxy     : %s:%s\n' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT) if COMMON_PROXY_ENABLE else ''
     info += 'Debug Level     : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
     info += 'GAE Mode        : %s\n' % COMMON_APPSPOT_MODE if COMMON_GAE_ENABLE else ''
-    info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS) if COMMON_GAE_ENABLE else ''
+    info += 'GAE APPID       : %s\n' % COMMON_GAE_APPID
     info += 'GAE BindHost    : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_ENABLE and COMMON_GAE_BINDHOSTS else ''
     info += 'PHP Mode Listen : %s:%d\n' % (COMMON_PHP_IP, COMMON_PHP_PORT) if COMMON_PHP_ENABLE else ''
     info += 'PHP FetchServer : %s\n' % COMMON_PHP_FETCHSERVER if COMMON_PHP_ENABLE else ''
@@ -140,7 +139,7 @@ class MultiplexConnection(object):
 
 def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host in COMMON_GAE_SERVER_SET:
+    if host == COMMON_GAE_SERVER:
         msg = 'socket_create_connection returns an empty list'
         try:
             #logging.debug('socket_create_connection connect hosts: (%r, %r)', COMMON_APPSPOT_HOSTS, port)
@@ -375,14 +374,23 @@ def build_opener():
     opener.addheaders = []
     return opener
 
+def build_gae_fetchserver():
+    if not COMMON_PROXY_ENABLE:
+        fetchserver = '%s://%s%s' % (COMMON_APPSPOT_MODE, COMMON_GAE_SERVER, COMMON_GAE_PATH)
+    else:
+        fetchserver = '%s://%s%s' % (COMMON_APPSPOT_MODE, random.choice(COMMON_APPSPOT_HOSTS), COMMON_GAE_PATH)
+    return fetchserver
+
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = build_opener()
     setuplock = threading.Lock()
+    fetchserver = build_gae_fetchserver()
 
-    def _fetch(self, host, url, payload, method, headers, fetchhost, fetchserver):
+    def fetch(self, host, url, payload, method, headers):
         global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS
+        fetchserver = self.fetchserver
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('LocalProxyHandler _fetch params %s', params)
@@ -397,7 +405,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
                 if COMMON_PROXY_ENABLE:
-                    request.add_header('Host', fetchhost)
+                    netloc = urlparse.urlparse(fetchserver).netloc
+                    request.add_header('Host', netloc)
                 response = self.opener.open(request)
                 data = response.read()
                 response.close()
@@ -405,6 +414,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # www.google.cn:80 is down, switch to https
                 if e.code in (502, 504):
                     COMMON_APPSPOT_MODE = 'https'
+                    self.__class__.fetchserver = build_gae_fetchserver()
                     if COMMON_APPSPOT_AUTOSWITCH:
                         COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
                     sys.stdout.write(common_info())
@@ -418,6 +428,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
                         if COMMON_APPSPOT_AUTOSWITCH:
                             COMMON_APPSPOT_MODE = 'https'
+                            self.__class__.fetchserver = build_gae_fetchserver()
                             COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
                             sys.stdout.write(common_info())
                 errors.append(str(e))
@@ -452,19 +463,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception, e:
                 errors.append(str(e))
         return (-1, errors)
-
-    def fetch(self, host, url, payload, method, headers):
-        if len(COMMON_GAE_SERVERS) == 1:
-            fetchhost = COMMON_GAE_SERVERS[0]
-        elif COMMON_GAE_BINDHOSTS and host.endswith(COMMON_GAE_BINDHOSTS):
-            fetchhost = COMMON_GAE_SERVERS[0]
-        else:
-            fetchhost = random.choice(COMMON_GAE_SERVERS)
-        if not COMMON_PROXY_ENABLE:
-            fetchserver = '%s://%s%s' % (COMMON_APPSPOT_MODE, fetchhost, COMMON_GAE_PATH)
-        else:
-            fetchserver = '%s://%s%s' % (COMMON_APPSPOT_MODE, random.choice(COMMON_APPSPOT_HOSTS), COMMON_GAE_PATH)
-        return self._fetch(host, url, payload, method, headers, fetchhost, fetchserver)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -755,8 +753,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 class PHPProxyHandler(LocalProxyHandler):
 
-    def fetch(self, host, url, payload, method, headers):
-        return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
+    fetchserver = COMMON_PHP_FETCHSERVER
 
     def setup(self):
         if COMMON_PROXY_ENABLE:
