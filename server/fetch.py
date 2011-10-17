@@ -157,10 +157,6 @@ class MainPage(webapp2.RequestHandler):
         </td></tr>
         <tr><td align="center"><hr></td></tr>
 
-        <tr><td align="center">
-            <img src="https://code.google.com/appengine/images/appengine-silver-120x30.gif" />
-        </td></tr>
-        <tr><td align="center"><hr></td></tr>
     </table>
 </body>
 </html>
