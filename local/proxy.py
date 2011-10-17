@@ -35,12 +35,12 @@ COMMON_LISTEN_IP            = COMMON_CONFIG.get('listen', 'ip')
 COMMON_LISTEN_PORT          = COMMON_CONFIG.getint('listen', 'port')
 COMMON_LISTEN_VISIBLE       = COMMON_CONFIG.getint('listen', 'visible')
 COMMON_GAE_ENABLE           = COMMON_CONFIG.getint('gae', 'enable')
-COMMON_GAE_APPID            = COMMON_CONFIG.get('gae', 'appid').replace('.appspot.com', '')
+COMMON_GAE_APPIDS           = COMMON_CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
+COMMON_GAE_APPID            = COMMON_GAE_APPIDS[0]
 COMMON_GAE_SERVER           = '%s.appspot.com' % COMMON_GAE_APPID
 COMMON_GAE_PASSWORD         = COMMON_CONFIG.get('gae', 'password').strip()
 COMMON_GAE_DEBUGLEVEL       = COMMON_CONFIG.getint('gae', 'debuglevel')
 COMMON_GAE_PATH             = COMMON_CONFIG.get('gae', 'path')
-COMMON_GAE_BINDHOSTS        = tuple(COMMON_CONFIG.get('gae', 'bindhosts').split('|')) if COMMON_CONFIG.has_option('gae', 'bindhosts') else ()
 COMMON_PHP_ENABLE           = COMMON_CONFIG.getint('php', 'enable')
 COMMON_PHP_IP               = COMMON_CONFIG.get('php', 'ip')
 COMMON_PHP_PORT             = COMMON_CONFIG.getint('php', 'port')
@@ -75,8 +75,7 @@ def common_info():
     info += 'Local Proxy     : %s:%s\n' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT) if COMMON_PROXY_ENABLE else ''
     info += 'Debug Level     : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
     info += 'GAE Mode        : %s\n' % COMMON_APPSPOT_MODE if COMMON_GAE_ENABLE else ''
-    info += 'GAE APPID       : %s\n' % COMMON_GAE_APPID
-    info += 'GAE BindHost    : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_ENABLE and COMMON_GAE_BINDHOSTS else ''
+    info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS)
     info += 'PHP Mode Listen : %s:%d\n' % (COMMON_PHP_IP, COMMON_PHP_PORT) if COMMON_PHP_ENABLE else ''
     info += 'PHP FetchServer : %s\n' % COMMON_PHP_FETCHSERVER if COMMON_PHP_ENABLE else ''
     info += '------------------------------------------------------\n'
@@ -389,7 +388,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     fetchserver = build_gae_fetchserver()
 
     def fetch(self, host, url, payload, method, headers):
-        global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS
+        global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS, COMMON_GAE_APPIDS, COMMON_GAE_APPID, COMMON_GAE_SERVER
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('LocalProxyHandler _fetch params %s', params)
@@ -411,7 +410,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data = response.read()
                 response.close()
             except urllib2.HTTPError, e:
-                # www.google.cn:80 is down, switch to https
+                # seems that current appid is over qouta, swith to next appid
+                if e.code == 503:
+                    COMMON_GAE_APPIDS.append(COMMON_GAE_APPIDS.pop(0))
+                    COMMON_GAE_APPID = COMMON_GAE_APPIDS[0]
+                    COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPID
+                    fetchserver = build_gae_fetchserver()
+                    self.__class__.fetchserver = fetchserver
+                    logging.info('Http 503 Error, switch to new fetchserver: %r', fetchserver)
+                    sys.stdout.write(common_info())
+                # seems that www.google.cn:80 is down, switch to https
                 if e.code in (502, 504):
                     COMMON_APPSPOT_MODE = 'https'
                     self.__class__.fetchserver = build_gae_fetchserver()
