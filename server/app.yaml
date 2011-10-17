@@ -8,3 +8,7 @@ handlers:
 - url: /fetch\.py
   script: fetch.application
   secure: optional
+  
+error_handlers:
+  - error_code: over_quota
+    file: over_quota.html
