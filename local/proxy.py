@@ -788,7 +788,7 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-if __name__ == '__main__':
+def main():
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not COMMON_LISTEN_VISIBLE:
@@ -804,3 +804,6 @@ if __name__ == '__main__':
         thread.start_new_thread(httpd.serve_forever, ())
     httpd = LocalProxyServer((COMMON_LISTEN_IP, COMMON_LISTEN_PORT), LocalProxyHandler)
     httpd.serve_forever()
+
+if __name__ == '__main__':
+    main()
