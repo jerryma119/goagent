@@ -415,14 +415,13 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     COMMON_GAE_APPIDS.append(COMMON_GAE_APPIDS.pop(0))
                     COMMON_GAE_APPID = COMMON_GAE_APPIDS[0]
                     COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPID
-                    fetchserver = build_gae_fetchserver()
-                    self.__class__.fetchserver = fetchserver
+                    self.__class__.fetchserver = fetchserver = build_gae_fetchserver()
                     logging.info('Http 503 Error, switch to new fetchserver: %r', fetchserver)
                     sys.stdout.write(common_info())
                 # seems that www.google.cn:80 is down, switch to https
                 if e.code in (502, 504):
                     COMMON_APPSPOT_MODE = 'https'
-                    self.__class__.fetchserver = build_gae_fetchserver()
+                    self.__class__.fetchserver = fetchserver = build_gae_fetchserver()
                     if COMMON_APPSPOT_AUTOSWITCH:
                         COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
                     sys.stdout.write(common_info())
@@ -436,7 +435,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
                         if COMMON_APPSPOT_AUTOSWITCH:
                             COMMON_APPSPOT_MODE = 'https'
-                            self.__class__.fetchserver = build_gae_fetchserver()
+                            self.__class__.fetchserver = fetchserver = build_gae_fetchserver()
                             COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
                             sys.stdout.write(common_info())
                 errors.append(str(e))
