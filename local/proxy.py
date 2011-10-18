@@ -387,8 +387,39 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     setuplock = threading.Lock()
     fetchserver = build_gae_fetchserver()
 
-    def fetch(self, host, url, payload, method, headers):
+    def handle_fetch_error(self, error):
         global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS, COMMON_GAE_APPIDS, COMMON_GAE_APPID, COMMON_GAE_SERVER
+        if isinstance(error, urllib2.HTTPError):
+            # seems that current appid is over qouta, swith to next appid
+            if error.code == 503:
+                COMMON_GAE_APPIDS.append(COMMON_GAE_APPIDS.pop(0))
+                COMMON_GAE_APPID = COMMON_GAE_APPIDS[0]
+                COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPID
+                LocalProxyHandler.fetchserver = build_gae_fetchserver()
+                logging.info('Http 503 Error, switch to new fetchserver: %r', LocalProxyHandler.fetchserver)
+                return True
+            # seems that www.google.cn:80 is down, switch to https
+            if error.code in (502, 504):
+                COMMON_APPSPOT_MODE = 'https'
+                LocalProxyHandler.fetchserver = build_gae_fetchserver()
+                if COMMON_APPSPOT_AUTOSWITCH:
+                    COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
+                return True
+        elif isinstance(error, urllib2.URLError):
+            if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
+                # it seems that google.cn is reseted, switch to https
+                if error.reason[0] == 10054:
+                    MultiplexConnection.window_ack = 0
+                    MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
+                    if COMMON_APPSPOT_AUTOSWITCH:
+                        COMMON_APPSPOT_MODE = 'https'
+                        LocalProxyHandler.fetchserver = build_gae_fetchserver()
+                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
+                        return True
+        else:
+            pass
+
+    def fetch(self, host, url, payload, method, headers):
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('LocalProxyHandler _fetch params %s', params)
@@ -397,9 +428,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if COMMON_FETCHMAX_SERVER:
             params['fetchmax'] = int(COMMON_FETCHMAX_SERVER)
         params = encode_data(params)
-        fetchserver = self.fetchserver
         for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
+                fetchserver = LocalProxyHandler.fetchserver
                 logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
@@ -410,37 +441,18 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data = response.read()
                 response.close()
             except urllib2.HTTPError, e:
-                # seems that current appid is over qouta, swith to next appid
-                if e.code == 503:
-                    COMMON_GAE_APPIDS.append(COMMON_GAE_APPIDS.pop(0))
-                    COMMON_GAE_APPID = COMMON_GAE_APPIDS[0]
-                    COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPID
-                    LocalProxyHandler.fetchserver = fetchserver = build_gae_fetchserver()
-                    logging.info('Http 503 Error, switch to new fetchserver: %r', fetchserver)
-                    sys.stdout.write(common_info())
-                # seems that www.google.cn:80 is down, switch to https
-                if e.code in (502, 504):
-                    COMMON_APPSPOT_MODE = 'https'
-                    LocalProxyHandler.fetchserver = fetchserver = build_gae_fetchserver()
-                    if COMMON_APPSPOT_AUTOSWITCH:
-                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
+                if self.handle_fetch_error(e):
                     sys.stdout.write(common_info())
                 errors.append('%d: %s' % (e.code, httplib.responses.get(e.code, 'Unknown HTTPError')))
                 continue
             except urllib2.URLError, e:
-                if e.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
-                    # it seems that google.cn is reseted, switch to https
-                    if e.reason[0] == 10054:
-                        MultiplexConnection.window_ack = 0
-                        MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
-                        if COMMON_APPSPOT_AUTOSWITCH:
-                            COMMON_APPSPOT_MODE = 'https'
-                            LocalProxyHandler.fetchserver = fetchserver = build_gae_fetchserver()
-                            COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
-                            sys.stdout.write(common_info())
+                if self.handle_fetch_error(e):
+                    sys.stdout.write(common_info())
                 errors.append(str(e))
                 continue
             except Exception, e:
+                if self.handle_fetch_error(e):
+                    sys.stdout.write(common_info())
                 errors.append(repr(e))
                 logging.exception('_fetch Exception %s', e)
                 continue
@@ -761,6 +773,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class PHPProxyHandler(LocalProxyHandler):
 
     fetchserver = COMMON_PHP_FETCHSERVER
+
+    def handle_fetch_error(self, error):
+        logging.error('PHPProxyHandler handle_fetch_error %s', error)
 
     def setup(self):
         if COMMON_PROXY_ENABLE:
