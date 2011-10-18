@@ -162,7 +162,4 @@ class MainPage(webapp2.RequestHandler):
 </html>
 ''' % dict(version=__version__))
 
-application = webapp2.WSGIApplication([('/fetch.py', MainPage)])
-
-if __name__ == '__main__':
-    main()
+app = webapp2.WSGIApplication([('/fetch.py', MainPage)])
