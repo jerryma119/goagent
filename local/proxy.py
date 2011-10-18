@@ -51,9 +51,11 @@ COMMON_PROXY_USERNAME       = COMMON_CONFIG.get('proxy', 'username')
 COMMON_PROXY_PASSWROD       = COMMON_CONFIG.get('proxy', 'password')
 COMMON_PROXY_NTLM           = bool(COMMON_CONFIG.getint('proxy', 'ntlm')) if COMMON_CONFIG.has_option('proxy', 'ntlm') else '\\' in COMMON_PROXY_USERNAME
 COMMON_APPSPOT_MODE         = COMMON_CONFIG.get('appspot', 'mode')
-COMMON_APPSPOT_HOSTS        = COMMON_CONFIG.get('appspot', 'hosts')
 COMMON_APPSPOT_AUTOSWITCH   = COMMON_CONFIG.getint('appspot', 'autoswitch') if COMMON_CONFIG.has_option('appspot', 'autoswitch') else 0
-COMMON_APPSPOT_HOSTS_MAP    = dict((x, tuple(COMMON_CONFIG.get('appspot', x).split('|'))) for x in ('cn', 'hk', 'ipv6'))
+COMMON_APPSPOT_HOSTS_CN     = tuple(COMMON_CONFIG.get('appspot', 'cn').split('|'))
+COMMON_APPSPOT_HOSTS_HK     = tuple(COMMON_CONFIG.get('appspot', 'hk').split('|'))
+COMMON_APPSPOT_HOSTS_IPV6   = tuple(COMMON_CONFIG.get('appspot', 'ipv6').split('|'))
+COMMON_APPSPOT_HOSTS        = {'cn':COMMON_APPSPOT_HOSTS_CN,'hk':COMMON_APPSPOT_HOSTS_HK,'ipv6':COMMON_APPSPOT_HOSTS_IPV6}[COMMON_CONFIG.get('appspot', 'hosts')]
 COMMON_GOOGLE_SITES         = tuple(COMMON_CONFIG.get('google', 'sites').split('|'))
 COMMON_GOOGLE_FORCEHTTPS    = frozenset(COMMON_CONFIG.get('google', 'forcehttps').split('|'))
 COMMON_GOOGLE_WITHGAE       = frozenset(COMMON_CONFIG.get('google', 'withgae').split('|'))
@@ -383,6 +385,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = build_opener()
     setuplock = threading.Lock()
+    fetchhost = COMMON_GAE_SERVER
     fetchserver = build_gae_fetchserver()
 
     def handle_fetch_error(self, error):
@@ -392,6 +395,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if error.code == 503:
                 COMMON_GAE_APPIDS.append(COMMON_GAE_APPIDS.pop(0))
                 COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPIDS[0]
+                LocalProxyHandler.fetchhost = COMMON_GAE_SERVER
                 LocalProxyHandler.fetchserver = build_gae_fetchserver()
                 logging.info('Http 503 Error, switch to new fetchserver: %r', LocalProxyHandler.fetchserver)
                 return True
@@ -400,7 +404,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 COMMON_APPSPOT_MODE = 'https'
                 LocalProxyHandler.fetchserver = build_gae_fetchserver()
                 if COMMON_APPSPOT_AUTOSWITCH:
-                    COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
+                    COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_HK
                 return True
         elif isinstance(error, urllib2.URLError):
             if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
@@ -410,8 +414,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
                     if COMMON_APPSPOT_AUTOSWITCH:
                         COMMON_APPSPOT_MODE = 'https'
+                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_HK
                         LocalProxyHandler.fetchserver = build_gae_fetchserver()
-                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
                         return True
         else:
             pass
@@ -432,8 +436,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
                 if COMMON_PROXY_ENABLE:
-                    netloc = urlparse.urlparse(fetchserver).netloc
-                    request.add_header('Host', netloc)
+                    request.add_header('Host', self.fetchhost)
                 response = self.opener.open(request)
                 data = response.read()
                 response.close()
@@ -553,31 +556,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def setup(self):
-        def hostlist_to_iplist(hostlist):
-            try:
-                iplist = []
-                iplist += [x for x in hostlist if not re.search('[a-zA-Z]', x) or ':' in x]
-                iplist += [x[-1][0] for x in sum([socket.getaddrinfo(x, 80) for x in hostlist if re.search('[a-zA-Z]', x) and ':' not in x], [])]
-                return tuple(set(iplist))
-            except Exception, e:
-                logging.critical('socket.getaddrinfo failed. If you behide a proxy, Please replace Hostname with IP List.')
-                sys.exit(-1)
-        global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS, COMMON_APPSPOT_HOSTS_MAP, COMMON_GOOGLE_HOSTS
-        logging.info('LocalProxyHandler.setup check COMMON_APPSPOT_HOSTS=%r', COMMON_APPSPOT_HOSTS)
-        if type(COMMON_APPSPOT_HOSTS) is type(''):
-            with LocalProxyHandler.setuplock:
-                if type(COMMON_APPSPOT_HOSTS) is type(''):
-                    try:
-                        logging.info('Resole appspot address.')
-                        for area, hosts in COMMON_APPSPOT_HOSTS_MAP.items():
-                            COMMON_APPSPOT_HOSTS_MAP[area] = hostlist_to_iplist(hosts)
-                            logging.info('Resole appspot %s address OK. %s', area, COMMON_APPSPOT_HOSTS_MAP[area])
-                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP[COMMON_APPSPOT_HOSTS]
-                        logging.info('Resole google hosts address.')
-                        COMMON_GOOGLE_HOSTS =  hostlist_to_iplist(COMMON_GOOGLE_HOSTS)
-                        logging.info('Resole google hosts address OK. %s', COMMON_GOOGLE_HOSTS)
-                    except Exception, e:
-                        logging.exception('common_google_resolve fail: %s', e)
         if not COMMON_GAE_ENABLE:
             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
@@ -585,6 +563,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         LocalProxyHandler.do_POST    = LocalProxyHandler.do_METHOD
         LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
         LocalProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD
+        LocalProxyHandler.do_OPTIONS = LocalProxyHandler.do_METHOD
         LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
@@ -770,6 +749,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class PHPProxyHandler(LocalProxyHandler):
 
     fetchserver = COMMON_PHP_FETCHSERVER
+    fetchhost   = re.sub(':\d+$', '', urlparse.urlparse(fetchserver).netloc)
 
     def handle_fetch_error(self, error):
         logging.error('PHPProxyHandler handle_fetch_error %s', error)
@@ -778,7 +758,7 @@ class PHPProxyHandler(LocalProxyHandler):
         if COMMON_PROXY_ENABLE:
             logging.info('Local Proxy is enable, PHPProxyHandler dont resole DNS')
         else:
-            fetchhost = re.sub(':\d+$', '', urlparse.urlparse(self.fetchserver).netloc)
+            fetchhost = self.fetchhost
             logging.info('PHPProxyHandler.setup check %s is in COMMON_HOSTS', fetchhost)
             if fetchhost not in COMMON_HOSTS:
                 with LocalProxyHandler.setuplock:
