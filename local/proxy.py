@@ -36,8 +36,7 @@ COMMON_LISTEN_PORT          = COMMON_CONFIG.getint('listen', 'port')
 COMMON_LISTEN_VISIBLE       = COMMON_CONFIG.getint('listen', 'visible')
 COMMON_GAE_ENABLE           = COMMON_CONFIG.getint('gae', 'enable')
 COMMON_GAE_APPIDS           = COMMON_CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
-COMMON_GAE_APPID            = COMMON_GAE_APPIDS[0]
-COMMON_GAE_SERVER           = '%s.appspot.com' % COMMON_GAE_APPID
+COMMON_GAE_SERVER           = '%s.appspot.com' % COMMON_GAE_APPIDS[0]
 COMMON_GAE_PASSWORD         = COMMON_CONFIG.get('gae', 'password').strip()
 COMMON_GAE_DEBUGLEVEL       = COMMON_CONFIG.getint('gae', 'debuglevel')
 COMMON_GAE_PATH             = COMMON_CONFIG.get('gae', 'path')
@@ -388,13 +387,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     fetchserver = build_gae_fetchserver()
 
     def handle_fetch_error(self, error):
-        global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS, COMMON_GAE_APPIDS, COMMON_GAE_APPID, COMMON_GAE_SERVER
+        global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS, COMMON_GAE_APPIDS, COMMON_GAE_SERVER
         if isinstance(error, urllib2.HTTPError):
             # seems that current appid is over qouta, swith to next appid
             if error.code == 503:
                 COMMON_GAE_APPIDS.append(COMMON_GAE_APPIDS.pop(0))
-                COMMON_GAE_APPID = COMMON_GAE_APPIDS[0]
-                COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPID
+                COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPIDS[0]
                 LocalProxyHandler.fetchserver = build_gae_fetchserver()
                 logging.info('Http 503 Error, switch to new fetchserver: %r', LocalProxyHandler.fetchserver)
                 return True
