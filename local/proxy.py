@@ -44,7 +44,6 @@ COMMON_PHP_ENABLE           = COMMON_CONFIG.getint('php', 'enable')
 COMMON_PHP_IP               = COMMON_CONFIG.get('php', 'ip')
 COMMON_PHP_PORT             = COMMON_CONFIG.getint('php', 'port')
 COMMON_PHP_FETCHSERVER      = COMMON_CONFIG.get('php', 'fetchserver')
-COMMON_PHP_FETCHHOST        = re.sub(':\d+$', '', urlparse.urlparse(COMMON_PHP_FETCHSERVER).netloc)
 COMMON_PROXY_ENABLE         = COMMON_CONFIG.getint('proxy', 'enable')
 COMMON_PROXY_HOST           = COMMON_CONFIG.get('proxy', 'host')
 COMMON_PROXY_PORT           = COMMON_CONFIG.getint('proxy', 'port')
@@ -779,14 +778,15 @@ class PHPProxyHandler(LocalProxyHandler):
         if COMMON_PROXY_ENABLE:
             logging.info('Local Proxy is enable, PHPProxyHandler dont resole DNS')
         else:
-            logging.info('PHPProxyHandler.setup check %s is in COMMON_HOSTS', COMMON_PHP_FETCHHOST)
-            if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
+            fetchhost = re.sub(':\d+$', '', urlparse.urlparse(self.fetchserver).netloc)
+            logging.info('PHPProxyHandler.setup check %s is in COMMON_HOSTS', fetchhost)
+            if fetchhost not in COMMON_HOSTS:
                 with LocalProxyHandler.setuplock:
-                    if COMMON_PHP_FETCHHOST not in COMMON_HOSTS:
+                    if fetchhost not in COMMON_HOSTS:
                         try:
                             logging.info('Resole php fetchserver address.')
-                            COMMON_HOSTS[COMMON_PHP_FETCHHOST] = socket.gethostbyname(COMMON_PHP_FETCHHOST)
-                            logging.info('Resole php fetchserver address OK. %s', COMMON_HOSTS[COMMON_PHP_FETCHHOST])
+                            COMMON_HOSTS[fetchhost] = socket.gethostbyname(fetchhost)
+                            logging.info('Resole php fetchserver address OK. %s', COMMON_HOSTS[fetchhost])
                         except Exception, e:
                             logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
         PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Thunnel
