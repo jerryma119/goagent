@@ -6,5 +6,5 @@ threadsafe: true
 
 handlers:
 - url: /fetch\.py
-  script: fetch.application
+  script: fetch.app
   secure: optional

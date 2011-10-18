@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6'
+__version__ = '1.6.1'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -35,13 +35,12 @@ COMMON_LISTEN_IP            = COMMON_CONFIG.get('listen', 'ip')
 COMMON_LISTEN_PORT          = COMMON_CONFIG.getint('listen', 'port')
 COMMON_LISTEN_VISIBLE       = COMMON_CONFIG.getint('listen', 'visible')
 COMMON_GAE_ENABLE           = COMMON_CONFIG.getint('gae', 'enable')
-COMMON_GAE_APPIDS           = tuple(x.replace('.appspot.com', '') for x in COMMON_CONFIG.get('gae', 'appid').split('|'))
-COMMON_GAE_SERVERS          = tuple(x if x.count('.') >= 2 else '%s.appspot.com' % x  for x in COMMON_GAE_APPIDS)
-COMMON_GAE_SERVER_SET       = frozenset(COMMON_GAE_SERVERS)
+COMMON_GAE_APPIDS           = COMMON_CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
+COMMON_GAE_APPID            = COMMON_GAE_APPIDS[0]
+COMMON_GAE_SERVER           = '%s.appspot.com' % COMMON_GAE_APPID
 COMMON_GAE_PASSWORD         = COMMON_CONFIG.get('gae', 'password').strip()
 COMMON_GAE_DEBUGLEVEL       = COMMON_CONFIG.getint('gae', 'debuglevel')
 COMMON_GAE_PATH             = COMMON_CONFIG.get('gae', 'path')
-COMMON_GAE_BINDHOSTS        = tuple(COMMON_CONFIG.get('gae', 'bindhosts').split('|')) if COMMON_CONFIG.has_option('gae', 'bindhosts') else ()
 COMMON_PHP_ENABLE           = COMMON_CONFIG.getint('php', 'enable')
 COMMON_PHP_IP               = COMMON_CONFIG.get('php', 'ip')
 COMMON_PHP_PORT             = COMMON_CONFIG.getint('php', 'port')
@@ -76,8 +75,7 @@ def common_info():
     info += 'Local Proxy     : %s:%s\n' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT) if COMMON_PROXY_ENABLE else ''
     info += 'Debug Level     : %s\n' % COMMON_GAE_DEBUGLEVEL if COMMON_GAE_DEBUGLEVEL else ''
     info += 'GAE Mode        : %s\n' % COMMON_APPSPOT_MODE if COMMON_GAE_ENABLE else ''
-    info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS) if COMMON_GAE_ENABLE else ''
-    info += 'GAE BindHost    : %s\n' % '|'.join(COMMON_GAE_BINDHOSTS) if COMMON_GAE_ENABLE and COMMON_GAE_BINDHOSTS else ''
+    info += 'GAE APPID       : %s\n' % '|'.join(COMMON_GAE_APPIDS)
     info += 'PHP Mode Listen : %s:%d\n' % (COMMON_PHP_IP, COMMON_PHP_PORT) if COMMON_PHP_ENABLE else ''
     info += 'PHP FetchServer : %s\n' % COMMON_PHP_FETCHSERVER if COMMON_PHP_ENABLE else ''
     info += '------------------------------------------------------\n'
@@ -140,7 +138,7 @@ class MultiplexConnection(object):
 
 def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host in COMMON_GAE_SERVER_SET:
+    if host == COMMON_GAE_SERVER:
         msg = 'socket_create_connection returns an empty list'
         try:
             #logging.debug('socket_create_connection connect hosts: (%r, %r)', COMMON_APPSPOT_HOSTS, port)
@@ -311,10 +309,17 @@ class CertUtil(object):
             with CertUtil.CALock:
                 if not os.path.isfile(keyFile):
                     logging.info('CertUtil getCertificate for %r', host)
-                    serial = int(hashlib.md5(host).hexdigest(),16)
-                    key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
-                    CertUtil.writeFile(keyFile, key)
-                    CertUtil.writeFile(crtFile, crt)
+                    for serial in (int(hashlib.md5(host).hexdigest(),16), int(time.time() * 100)):
+                        try:
+                            key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
+                            CertUtil.writeFile(keyFile, key)
+                            CertUtil.writeFile(crtFile, crt)
+                            break
+                        except:
+                            logging.exception('CertUtil.makeCert failed: host=%r, serial=%r', host, serial)
+                    else:
+                        keyFile = os.path.join(basedir, 'CA.key')
+                        crtFile = os.path.join(basedir, 'CA.crt')
         return (keyFile, crtFile)
 
     @staticmethod
@@ -333,7 +338,7 @@ class CertUtil(object):
         #Check CA imported
         cmd = {
                 'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
-                'darwin' : r'sudo security add-trusted-cert -d –r trustRoot –k /Library/Keychains/System.keychain CA.crt',
+                #'darwin' : r'sudo security add-trusted-cert -d –r trustRoot –k /Library/Keychains/System.keychain CA.crt',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
@@ -368,14 +373,53 @@ def build_opener():
     opener.addheaders = []
     return opener
 
+def build_gae_fetchserver():
+    if not COMMON_PROXY_ENABLE:
+        fetchserver = '%s://%s%s' % (COMMON_APPSPOT_MODE, COMMON_GAE_SERVER, COMMON_GAE_PATH)
+    else:
+        fetchserver = '%s://%s%s' % (COMMON_APPSPOT_MODE, random.choice(COMMON_APPSPOT_HOSTS), COMMON_GAE_PATH)
+    return fetchserver
+
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     opener = build_opener()
     setuplock = threading.Lock()
+    fetchserver = build_gae_fetchserver()
 
-    def _fetch(self, host, url, payload, method, headers, fetchhost, fetchserver):
-        global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS
+    def handle_fetch_error(self, error):
+        global COMMON_APPSPOT_MODE, COMMON_APPSPOT_HOSTS, COMMON_GAE_APPIDS, COMMON_GAE_APPID, COMMON_GAE_SERVER
+        if isinstance(error, urllib2.HTTPError):
+            # seems that current appid is over qouta, swith to next appid
+            if error.code == 503:
+                COMMON_GAE_APPIDS.append(COMMON_GAE_APPIDS.pop(0))
+                COMMON_GAE_APPID = COMMON_GAE_APPIDS[0]
+                COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPID
+                LocalProxyHandler.fetchserver = build_gae_fetchserver()
+                logging.info('Http 503 Error, switch to new fetchserver: %r', LocalProxyHandler.fetchserver)
+                return True
+            # seems that www.google.cn:80 is down, switch to https
+            if error.code in (502, 504):
+                COMMON_APPSPOT_MODE = 'https'
+                LocalProxyHandler.fetchserver = build_gae_fetchserver()
+                if COMMON_APPSPOT_AUTOSWITCH:
+                    COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
+                return True
+        elif isinstance(error, urllib2.URLError):
+            if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
+                # it seems that google.cn is reseted, switch to https
+                if error.reason[0] == 10054:
+                    MultiplexConnection.window_ack = 0
+                    MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
+                    if COMMON_APPSPOT_AUTOSWITCH:
+                        COMMON_APPSPOT_MODE = 'https'
+                        LocalProxyHandler.fetchserver = build_gae_fetchserver()
+                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
+                        return True
+        else:
+            pass
+
+    def fetch(self, host, url, payload, method, headers):
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('LocalProxyHandler _fetch params %s', params)
@@ -386,36 +430,29 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         params = encode_data(params)
         for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
+                fetchserver = LocalProxyHandler.fetchserver
                 logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
                 if COMMON_PROXY_ENABLE:
-                    request.add_header('Host', fetchhost)
+                    netloc = urlparse.urlparse(fetchserver).netloc
+                    request.add_header('Host', netloc)
                 response = self.opener.open(request)
                 data = response.read()
                 response.close()
             except urllib2.HTTPError, e:
-                # www.google.cn:80 is down, switch to https
-                if e.code in (502, 504):
-                    COMMON_APPSPOT_MODE = 'https'
-                    if COMMON_APPSPOT_AUTOSWITCH:
-                        COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
+                if self.handle_fetch_error(e):
                     sys.stdout.write(common_info())
                 errors.append('%d: %s' % (e.code, httplib.responses.get(e.code, 'Unknown HTTPError')))
                 continue
             except urllib2.URLError, e:
-                if e.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
-                    # it seems that google.cn is reseted, switch to https
-                    if e.reason[0] == 10054:
-                        MultiplexConnection.window_ack = 0
-                        MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
-                        if COMMON_APPSPOT_AUTOSWITCH:
-                            COMMON_APPSPOT_MODE = 'https'
-                            COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_MAP['hk']
-                            sys.stdout.write(common_info())
+                if self.handle_fetch_error(e):
+                    sys.stdout.write(common_info())
                 errors.append(str(e))
                 continue
             except Exception, e:
+                if self.handle_fetch_error(e):
+                    sys.stdout.write(common_info())
                 errors.append(repr(e))
                 logging.exception('_fetch Exception %s', e)
                 continue
@@ -445,19 +482,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except Exception, e:
                 errors.append(str(e))
         return (-1, errors)
-
-    def fetch(self, host, url, payload, method, headers):
-        if len(COMMON_GAE_SERVERS) == 1:
-            fetchhost = COMMON_GAE_SERVERS[0]
-        elif COMMON_GAE_BINDHOSTS and host.endswith(COMMON_GAE_BINDHOSTS):
-            fetchhost = COMMON_GAE_SERVERS[0]
-        else:
-            fetchhost = random.choice(COMMON_GAE_SERVERS)
-        if not COMMON_PROXY_ENABLE:
-            fetchserver = '%s://%s%s' % (COMMON_APPSPOT_MODE, fetchhost, COMMON_GAE_PATH)
-        else:
-            fetchserver = '%s://%s%s' % (COMMON_APPSPOT_MODE, random.choice(COMMON_APPSPOT_HOSTS), COMMON_GAE_PATH)
-        return self._fetch(host, url, payload, method, headers, fetchhost, fetchserver)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -748,8 +772,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 class PHPProxyHandler(LocalProxyHandler):
 
-    def fetch(self, host, url, payload, method, headers):
-        return self._fetch(host, url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
+    fetchserver = COMMON_PHP_FETCHSERVER
+
+    def handle_fetch_error(self, error):
+        logging.error('PHPProxyHandler handle_fetch_error %s', error)
 
     def setup(self):
         if COMMON_PROXY_ENABLE:
@@ -777,7 +803,7 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-if __name__ == '__main__':
+def main():
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not COMMON_LISTEN_VISIBLE:
@@ -793,3 +819,6 @@ if __name__ == '__main__':
         thread.start_new_thread(httpd.serve_forever, ())
     httpd = LocalProxyServer((COMMON_LISTEN_IP, COMMON_LISTEN_PORT), LocalProxyHandler)
     httpd.serve_forever()
+
+if __name__ == '__main__':
+    main()

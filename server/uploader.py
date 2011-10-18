@@ -508,6 +508,9 @@ class AppVersionUpload(object):
         for app in re.findall(r'(?s)script:\s*(\S+)\s*', self.yaml):
             filename = app.rpartition('.')[0] + '.py'
             self.AddFile(filename, open("%s/%s" % (BASE_DIR, filename), "r"))
+        for filename in re.findall(r'(?s)file:\s*(\S+)\s*', self.yaml):
+            #print 'addfile', "%s/%s" % (BASE_DIR, filename)
+            self.AddFile(filename, open("%s/%s" % (BASE_DIR, filename), "r"))
         try:
             missing_files = self.Begin()
             if missing_files:
