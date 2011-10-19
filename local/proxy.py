@@ -417,8 +417,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         COMMON_APPSPOT_HOSTS = COMMON_APPSPOT_HOSTS_HK
                         LocalProxyHandler.fetchserver = build_gae_fetchserver()
                         return True
+        elif isinstance(error, httplib.HTTPException):
+            COMMON_APPSPOT_MODE = 'https'
+            LocalProxyHandler.fetchserver = build_gae_fetchserver()
+            return True
         else:
-            logging.warning('LocalProxyHandler.fetch Exception %s', e, exc_info=True)
+            logging.warning('LocalProxyHandler.fetch Exception %s', error, exc_info=True)
 
     def fetch(self, url, payload, method, headers):
         errors = []
