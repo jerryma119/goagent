@@ -397,7 +397,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 COMMON_GAE_SERVER = '%s.appspot.com' % COMMON_GAE_APPIDS[0]
                 LocalProxyHandler.fetchhost = COMMON_GAE_SERVER
                 LocalProxyHandler.fetchserver = build_gae_fetchserver()
-                logging.info('Http 503 Error, switch to new fetchserver: %r', LocalProxyHandler.fetchserver)
+                logging.info('Appspot 503 Error, switch to new fetchserver: %r', LocalProxyHandler.fetchserver)
                 return True
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
@@ -418,9 +418,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         LocalProxyHandler.fetchserver = build_gae_fetchserver()
                         return True
         else:
-            pass
+            logging.warning('LocalProxyHandler.fetch Exception %s', e, exc_info=True)
 
-    def fetch(self, host, url, payload, method, headers):
+    def fetch(self, url, payload, method, headers):
         errors = []
         params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
         logging.debug('LocalProxyHandler _fetch params %s', params)
@@ -431,7 +431,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         params = encode_data(params)
         for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
-                fetchserver = self.__class__.fetchserver
+                fetchserver = LocalProxyHandler.fetchserver
                 logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
@@ -440,21 +440,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = self.opener.open(request)
                 data = response.read()
                 response.close()
-            except urllib2.HTTPError, e:
-                if self.handle_fetch_error(e):
-                    sys.stdout.write(common_info())
-                errors.append('%d: %s' % (e.code, httplib.responses.get(e.code, 'Unknown HTTPError')))
-                continue
-            except urllib2.URLError, e:
-                if self.handle_fetch_error(e):
-                    sys.stdout.write(common_info())
-                errors.append(str(e))
-                continue
             except Exception, e:
                 if self.handle_fetch_error(e):
                     sys.stdout.write(common_info())
-                errors.append(repr(e))
-                logging.exception('_fetch Exception %s', e)
+                errors.append(str(e))
                 continue
 
             try:
@@ -523,7 +512,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.info('>>>>>>>>>>>>>>> Range Fetch started')
         while start <= end:
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
-            retval, data = self.fetch(self.headers['host'], self.path, '', self.command, self.headers)
+            retval, data = self.fetch(self.path, '', self.command, self.headers)
             if retval != 0:
                 time.sleep(4)
                 continue
@@ -726,7 +715,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     headers += 'range: bytes=0-%d\r\n' % self.part_size
                     break
 
-        retval, data = self.fetch(host, self.path, payload, self.command, headers)
+        retval, data = self.fetch(self.path, payload, self.command, headers)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
