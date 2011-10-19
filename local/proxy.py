@@ -432,7 +432,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         params = encode_data(params)
         for i in xrange(COMMON_FETCHMAX_LOCAL):
             try:
-                fetchserver = LocalProxyHandler.fetchserver
+                fetchserver = self.__class__.fetchserver
                 logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
                 request = urllib2.Request(fetchserver, zlib.compress(params, 9))
                 request.add_header('Content-Type', '')
