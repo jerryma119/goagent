@@ -88,7 +88,7 @@ class MultiplexConnection(object):
     timeout = 5
     window = 8
     window_min = 4
-    window_max = 64
+    window_max = 60
     window_ack = 0
 
     def __init__(self, hosts, port):
