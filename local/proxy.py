@@ -72,6 +72,24 @@ def common_build_gae_fetchserver():
         fetchserver = '%s://%s%s' % (COMMON_GOOGLE_MODE, random.choice(COMMON_GAE_FETCHHOST), COMMON_GAE_PATH)
     return fetchserver
 
+def common_install_opener():
+    if COMMON_PROXY_ENABLE:
+        proxy = '%s:%s@%s:%d'%(COMMON_PROXY_USERNAME, COMMON_PROXY_PASSWROD, COMMON_PROXY_HOST, COMMON_PROXY_PORT)
+        handlers = [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
+        if COMMON_PROXY_NTLM:
+            if ntlm is None:
+                logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', COMMON_PROXY_HOST, COMMON_PROXY_PORT)
+                sys.exit(-1)
+            passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
+            passman.add_password(None, '%s:%s' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT), COMMON_PROXY_USERNAME, COMMON_PROXY_PASSWROD)
+            auth_NTLM = ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)
+            handlers.append(auth_NTLM)
+    else:
+        handlers = [urllib2.ProxyHandler({})]
+    opener = urllib2.build_opener(*handlers)
+    opener.addheaders = []
+    urllib2.install_opener(opener)
+
 def common_info():
     info = ''
     info += '------------------------------------------------------\n'
@@ -358,34 +376,62 @@ class CertUtil(object):
             cacrt = CertUtil.readFile(crtFile)
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
 
-def encode_data(dic):
-    return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
+def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=None):
+    encode_data = lambda dic:'&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
+    decode_data = lambda qs: dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
+    errors = []
+    params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
+    logging.debug('urlfetch params %s', params)
+    if COMMON_GAE_PASSWORD:
+        params['password'] = COMMON_GAE_PASSWORD
+    if COMMON_FETCHMAX_SERVER:
+        params['fetchmax'] = int(COMMON_FETCHMAX_SERVER)
+    params =  encode_data(params)
+    for i in xrange(COMMON_FETCHMAX_LOCAL):
+        try:
+            logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
+            request = urllib2.Request(fetchserver, zlib.compress(params, 9))
+            request.add_header('Content-Type', '')
+            if COMMON_PROXY_ENABLE:
+                request.add_header('Host', fetchhost)
+            response = urllib2.urlopen(request)
+            data = response.read()
+            response.close()
+        except Exception, e:
+            if on_error and on_error(e):
+                sys.stdout.write(common_info())
+            errors.append(str(e))
+            continue
 
-def decode_data(qs):
-    return dict((k, binascii.a2b_hex(v)) for k, v in (x.split('=') for x in qs.split('&')))
+        try:
+            if data[0] == '0':
+                raw_data = data[1:]
+            elif data[0] == '1':
+                raw_data = zlib.decompress(data[1:])
+            else:
+                raise ValueError('Data format not match(%s)' % url)
+            data = {}
+            data['code'], hlen, clen = struct.unpack('>3I', raw_data[:12])
+            tlen = 12+hlen+clen
+            realtlen = len(raw_data)
+            if realtlen == tlen:
+                data['content'] = raw_data[12+hlen:]
+            elif realtlen > tlen:
+                data['content'] = raw_data[12+hlen:tlen]
+            else:
+                raise ValueError('Data length is short than excepted!')
 
-def build_opener():
-    if COMMON_PROXY_ENABLE:
-        proxy = '%s:%s@%s:%d'%(COMMON_PROXY_USERNAME, COMMON_PROXY_PASSWROD, COMMON_PROXY_HOST, COMMON_PROXY_PORT)
-        handlers = [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
-        if COMMON_PROXY_NTLM:
-            if ntlm is None:
-                logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', COMMON_PROXY_HOST, COMMON_PROXY_PORT)
-                sys.exit(-1)
-            passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
-            passman.add_password(None, '%s:%s' % (COMMON_PROXY_HOST, COMMON_PROXY_PORT), COMMON_PROXY_USERNAME, COMMON_PROXY_PASSWROD)
-            auth_NTLM = ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)
-            handlers.append(auth_NTLM)
-    else:
-        handlers = [urllib2.ProxyHandler({})]
-    opener = urllib2.build_opener(*handlers)
-    opener.addheaders = []
-    return opener
+            if data['code'] == 555:     #Urlfetch Failed
+                raise ValueError(data['content'])
+            data['headers'] = decode_data(raw_data[12:12+hlen])
+            return (0, data)
+        except Exception, e:
+            errors.append(str(e))
+    return (-1, errors)
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
-    opener = build_opener()
     setuplock = threading.Lock()
 
     def handle_fetch_error(self, error):
@@ -421,59 +467,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             logging.warning('LocalProxyHandler.fetch Exception %s', error, exc_info=True)
 
-    def _fetch(self, url, payload, method, headers, fetchhost, fetchserver):
-        errors = []
-        params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
-        logging.debug('LocalProxyHandler _fetch params %s', params)
-        if COMMON_GAE_PASSWORD:
-            params['password'] = COMMON_GAE_PASSWORD
-        if COMMON_FETCHMAX_SERVER:
-            params['fetchmax'] = int(COMMON_FETCHMAX_SERVER)
-        params = encode_data(params)
-        for i in xrange(COMMON_FETCHMAX_LOCAL):
-            try:
-                logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
-                request = urllib2.Request(fetchserver, zlib.compress(params, 9))
-                request.add_header('Content-Type', '')
-                if COMMON_PROXY_ENABLE:
-                    request.add_header('Host', fetchhost)
-                response = self.opener.open(request)
-                data = response.read()
-                response.close()
-            except Exception, e:
-                if self.handle_fetch_error(e):
-                    sys.stdout.write(common_info())
-                errors.append(str(e))
-                continue
-
-            try:
-                if data[0] == '0':
-                    raw_data = data[1:]
-                elif data[0] == '1':
-                    raw_data = zlib.decompress(data[1:])
-                else:
-                    raise ValueError('Data format not match(%s)' % url)
-                data = {}
-                data['code'], hlen, clen = struct.unpack('>3I', raw_data[:12])
-                tlen = 12+hlen+clen
-                realtlen = len(raw_data)
-                if realtlen == tlen:
-                    data['content'] = raw_data[12+hlen:]
-                elif realtlen > tlen:
-                    data['content'] = raw_data[12+hlen:tlen]
-                else:
-                    raise ValueError('Data length is short than excepted!')
-
-                if data['code'] == 555:     #Urlfetch Failed
-                    raise ValueError(data['content'])
-                data['headers'] = decode_data(raw_data[12:12+hlen])
-                return (0, data)
-            except Exception, e:
-                errors.append(str(e))
-        return (-1, errors)
-
     def fetch(self, url, payload, method, headers):
-        return self._fetch(url, payload, method, headers, COMMON_GAE_FETCHHOST, COMMON_GAE_FETCHSERVER)
+        return urlfetch(url, payload, method, headers, COMMON_GAE_FETCHHOST, COMMON_GAE_FETCHSERVER, on_error=self.handle_fetch_error)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -744,7 +739,7 @@ class PHPProxyHandler(LocalProxyHandler):
         logging.error('PHPProxyHandler handle_fetch_error %s', error)
 
     def fetch(self, url, payload, method, headers):
-        return self._fetch(url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER)
+        return urlfetch(url, payload, method, headers, COMMON_PHP_FETCHHOST, COMMON_PHP_FETCHSERVER, on_error=self.handle_fetch_error)
 
     def setup(self):
         if COMMON_PROXY_ENABLE:
@@ -781,6 +776,7 @@ def main():
     if COMMON_GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
     CertUtil.checkCA()
+    common_install_opener()
     sys.stdout.write(common_info())
     LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in COMMON_LISTEN_IP]
 
