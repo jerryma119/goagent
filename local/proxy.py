@@ -397,13 +397,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
             response = urllib2.urlopen(request)
             data = response.read()
             response.close()
-        except Exception, e:
-            if on_error and on_error(e):
-                sys.stdout.write(common_info())
-            errors.append(str(e))
-            continue
 
-        try:
             if data[0] == '0':
                 raw_data = data[1:]
             elif data[0] == '1':
@@ -420,13 +414,13 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
                 data['content'] = raw_data[12+hlen:tlen]
             else:
                 raise ValueError('Data length is short than excepted!')
-
-            if data['code'] == 555:     #Urlfetch Failed
-                raise ValueError(data['content'])
             data['headers'] = decode_data(raw_data[12:12+hlen])
             return (0, data)
         except Exception, e:
+            if on_error and on_error(e):
+                sys.stdout.write(common_info())
             errors.append(str(e))
+            continue
     return (-1, errors)
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
