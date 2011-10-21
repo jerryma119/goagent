@@ -234,7 +234,7 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                     try:
                         idlecall()
                     except Exception, e:
-                        logging.warning('socket_forward idlecall fail:%s', str(e))
+                        logging.warning('socket_forward idlecall fail:%s', e)
                     finally:
                         idlecall = None
     except Exception, ex:
@@ -390,7 +390,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
         params['password'] = common.GAE_PASSWORD
     if common.FETCHMAX_SERVER:
         params['fetchmax'] = int(common.FETCHMAX_SERVER)
-    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in params.iteritems())
+    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
     for i in xrange(common.FETCHMAX_LOCAL):
         try:
             logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
