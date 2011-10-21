@@ -383,8 +383,10 @@ class CertUtil(object):
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
 
 def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=None):
-    encode_data = lambda dic:'&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
-    decode_data = lambda qs: dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
+    def encode_data(dic):
+        return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
+    def decode_data(qs):
+        return dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
     errors = []
     params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
     logging.debug('urlfetch params %s', params)
