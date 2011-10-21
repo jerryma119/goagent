@@ -383,10 +383,6 @@ class CertUtil(object):
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
 
 def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=None):
-    def encode_data(dic):
-        return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
-    def decode_data(qs):
-        return dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
     errors = []
     params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
     logging.debug('urlfetch params %s', params)
@@ -394,7 +390,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
         params['password'] = common.GAE_PASSWORD
     if common.FETCHMAX_SERVER:
         params['fetchmax'] = int(common.FETCHMAX_SERVER)
-    params =  encode_data(params)
+    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in params.iteritems())
     for i in xrange(common.FETCHMAX_LOCAL):
         try:
             logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
@@ -422,7 +418,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
                 data['content'] = raw_data[12+hlen:tlen]
             else:
                 raise ValueError('Data length is short than excepted!')
-            data['headers'] = decode_data(raw_data[12:12+hlen])
+            data['headers'] = dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
             return (0, data)
         except Exception, e:
             if on_error and on_error(e):
