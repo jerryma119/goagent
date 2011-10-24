@@ -135,7 +135,7 @@ class MainPage(webapp2.RequestHandler):
         self.response.out.write('''\
 <html>
 <head>
-    <link rel="icon" type="image/vnd.microsoft.icon" href="https://ssl.gstatic.com/codesite/ph/images/phosting.ico">
+    <link rel="icon" type="image/vnd.microsoft.icon" href="http://www.google.cn/favicon.ico">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>GoAgent %(version)s 已经在工作了</title>
 </head>
