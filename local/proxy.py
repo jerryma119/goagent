@@ -384,7 +384,7 @@ class CertUtil(object):
 
 def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=None):
     errors = []
-    params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
+    params = {'url':url, 'method':method, 'headers':str(headers), 'payload':payload}
     logging.debug('urlfetch params %s', params)
     if common.GAE_PASSWORD:
         params['password'] = common.GAE_PASSWORD
