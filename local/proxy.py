@@ -389,7 +389,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
     if common.GAE_PASSWORD:
         params['password'] = common.GAE_PASSWORD
     if common.FETCHMAX_SERVER:
-        params['fetchmax'] = int(common.FETCHMAX_SERVER)
+        params['fetchmax'] = common.FETCHMAX_SERVER
     params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
     for i in xrange(common.FETCHMAX_LOCAL):
         try:
