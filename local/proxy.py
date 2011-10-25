@@ -69,16 +69,16 @@ class Common(object):
         self.AUTORANGE_ENDSWITH   = frozenset(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('_'))
 
-        self.GAE_FETCHHOST        = '%s.appspot.com' % self.GAE_APPIDS[0]
-        self.GAE_FETCHSERVER      = self.build_gae_fetchserver()
+
+        self.build_gae_fetchserver()
         self.PHP_FETCHHOST        = re.sub(':\d+$', '', urlparse.urlparse(self.PHP_FETCHSERVER).netloc)
 
     def build_gae_fetchserver(self):
+        self.GAE_FETCHHOST = '%s.appspot.com' % self.GAE_APPIDS[0]
         if not self.PROXY_ENABLE:
-            fetchserver = '%s://%s%s' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
+            self.GAE_FETCHSERVER = '%s://%s%s' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
         else:
-            fetchserver = '%s://%s%s' % (self.GOOGLE_MODE, random.choice(self.GAE_FETCHHOST), self.GAE_PATH)
-        return fetchserver
+            self.GAE_FETCHSERVER = '%s://%s%s' % (self.GOOGLE_MODE, random.choice(self.GAE_FETCHHOST), self.GAE_PATH)
 
     def proxy_basic_auth_header(self):
         return 'Proxy-Authorization: Basic %s' + base64.b64encode('%s:%s'%(self.PROXY_USERNAME, self.PROXY_PASSWROD))
@@ -437,14 +437,13 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # seems that current appid is over qouta, swith to next appid
             if error.code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                common.GAE_FETCHHOST = '%s.appspot.com' % common.GAE_APPIDS[0]
-                common.GAE_FETCHSERVER = common.build_gae_fetchserver()
+                common.build_gae_fetchserver()
                 logging.info('Appspot 503 Error, switch to new fetchserver: %r', common.GAE_FETCHSERVER)
                 return True
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
-                common.GAE_FETCHSERVER = common.build_gae_fetchserver()
+                common.build_gae_fetchserver()
                 #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
                 return True
         elif isinstance(error, urllib2.URLError):
@@ -455,11 +454,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
                     common.GOOGLE_MODE = 'https'
                     #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
-                    common.GAE_FETCHSERVER = common.build_gae_fetchserver()
+                    common.build_gae_fetchserver()
                     return True
         elif isinstance(error, httplib.HTTPException):
             common.GOOGLE_MODE = 'https'
-            common.GAE_FETCHSERVER = common.build_gae_fetchserver()
+            common.build_gae_fetchserver()
             return True
         else:
             logging.warning('LocalProxyHandler.fetch Exception %s', error, exc_info=True)
