@@ -69,8 +69,9 @@ class Common(object):
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_ENDSWITH   = frozenset(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('_'))
-        self.TIP                  = self.CONFIG.get('love','tip')
-        self.TIP_ENABLE           = self.CONFIG.getboolean('love','enable')
+        self.LOVE_ENABLE          = self.CONFIG.getboolean('love','enable')
+        self.LOVE_TIMESTAMP       = self.CONFIG.getint('love', 'timestamp')
+        self.LOVE_TIP             = self.CONFIG.get('love','tip')
 
         self.build_gae_fetchserver()
         self.PHP_FETCHHOST        = re.sub(':\d+$', '', urlparse.urlparse(self.PHP_FETCHSERVER).netloc)
@@ -768,10 +769,15 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 
 def main():
     if ctypes and os.name == 'nt':
-        if common.TIP_ENABLE:
-            title = u'GoAgent v%s %s' % (__version__, __import__('_codecs').utf_8_decode(common.TIP)[0])
-        else: title = u'GoAgent v%s' % __version__
-        ctypes.windll.kernel32.SetConsoleTitleW(title)
+        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
+        if common.LOVE_ENABLE:
+            now = int(time.time())
+            if now - common.LOVE_TIMESTAMP > 60 * 60 * 24:
+                love = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m:unichr(int(m.group(1),16)), common.LOVE_TIP)
+                ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s %s' % (__version__, love))
+                with open('proxy.ini', 'wb') as fp:
+                    common.CONFIG.set('love', 'timestamp', now)
+                    common.CONFIG.write(fp)
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     if common.GAE_DEBUGLEVEL:
