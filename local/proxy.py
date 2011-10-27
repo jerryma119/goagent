@@ -13,6 +13,7 @@ import thread, threading
 import socket, ssl, select
 import httplib, urllib2, urlparse
 import BaseHTTPServer, SocketServer
+
 try:
     import ctypes
 except ImportError:
@@ -68,7 +69,8 @@ class Common(object):
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_ENDSWITH   = frozenset(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('_'))
-
+        self.TIP                  = self.CONFIG.get('love','tip')
+        self.TIP_ENABLE           = self.CONFIG.getboolean('love','enable')
 
         self.build_gae_fetchserver()
         self.PHP_FETCHHOST        = re.sub(':\d+$', '', urlparse.urlparse(self.PHP_FETCHSERVER).netloc)
@@ -766,7 +768,10 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 
 def main():
     if ctypes and os.name == 'nt':
-        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
+        if common.TIP_ENABLE:
+            title = u'GoAgent v%s %s' % (__version__, __import__('_codecs').utf_8_decode(common.TIP)[0])
+        else: title = u'GoAgent v%s' % __version__
+        ctypes.windll.kernel32.SetConsoleTitleW(title)
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     if common.GAE_DEBUGLEVEL:
