@@ -67,7 +67,7 @@ class Common(object):
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
         self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
-        self.AUTORANGE_ENDSWITH   = frozenset(self.CONFIG.get('autorange', 'endswith').split('|'))
+        self.AUTORANGE_ENDSWITH   = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('_'))
         self.LOVE_ENABLE          = self.CONFIG.getboolean('love','enable')
         self.LOVE_TIMESTAMP       = self.CONFIG.getint('love', 'timestamp')
