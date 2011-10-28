@@ -772,7 +772,7 @@ def main():
         GetConsoleWindow = ctypes.windll.kernel32.GetConsoleWindow
         if common.LOVE_ENABLE and time.time() - common.LOVE_TIMESTAMP > 86400:
             SetConsoleTitleW(u'GoAgent v%s %s' % (__version__, random.choice(common.LOVE_TIP)))
-            with open('proxy.ini', 'wb') as fp:
+            with open('proxy.ini', 'w') as fp:
                 common.CONFIG.set('love', 'timestamp', int(time.time()))
                 common.CONFIG.write(fp)
         else:
