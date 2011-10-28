@@ -446,15 +446,13 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
-                common.build_gae_fetchserver()
                 #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
+                common.build_gae_fetchserver()
                 return True
         elif isinstance(error, urllib2.URLError):
             if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
                 # it seems that google.cn is reseted, switch to https
                 if error.reason[0] == 10054:
-                    MultiplexConnection.window_ack = 0
-                    MultiplexConnection.window = min(int(round(MultiplexConnection.window*1.5)), MultiplexConnection.window_max)
                     common.GOOGLE_MODE = 'https'
                     #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
                     common.build_gae_fetchserver()
