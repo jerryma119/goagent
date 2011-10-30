@@ -70,7 +70,7 @@ class Common(object):
         self.AUTORANGE_ENDSWITH   = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('_'))
         self.LOVE_ENABLE          = self.CONFIG.getboolean('love','enable')
-        self.LOVE_TIMESTAMP       = self.CONFIG.getint('love', 'timestamp')
+        self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
         self.LOVE_TIP             = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m:unichr(int(m.group(1),16)), self.CONFIG.get('love','tip')).split('|')
 
         self.build_gae_fetchserver()
@@ -770,6 +770,13 @@ def main():
         ShowWindow       = ctypes.windll.user32.ShowWindow
         SetConsoleTitleW = ctypes.windll.kernel32.SetConsoleTitleW
         GetConsoleWindow = ctypes.windll.kernel32.GetConsoleWindow
+        if common.LOVE_TIMESTAMP.strip():
+            common.LOVE_TIMESTAMP = int(common.LOVE_TIMESTAMP)
+        else:
+            common.LOVE_TIMESTAMP = int(time.time())
+            with open('proxy.ini', 'w') as fp:
+                common.CONFIG.set('love', 'timestamp', int(time.time()))
+                common.CONFIG.write(fp)
         if common.LOVE_ENABLE and time.time() - common.LOVE_TIMESTAMP > 86400:
             SetConsoleTitleW(u'GoAgent v%s %s' % (__version__, random.choice(common.LOVE_TIP)))
             with open('proxy.ini', 'w') as fp:
