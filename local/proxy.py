@@ -765,11 +765,10 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-def main():
-    if ctypes and os.name == 'nt':
-        ShowWindow       = ctypes.windll.user32.ShowWindow
+def try_show_love():
+    if ctypes and os.name == 'nt' and common.LOVE_ENABLE:
         SetConsoleTitleW = ctypes.windll.kernel32.SetConsoleTitleW
-        GetConsoleWindow = ctypes.windll.kernel32.GetConsoleWindow
+        GetConsoleTitleW = ctypes.windll.kernel32.GetConsoleTitleW
         if common.LOVE_TIMESTAMP.strip():
             common.LOVE_TIMESTAMP = int(common.LOVE_TIMESTAMP)
         else:
@@ -777,15 +776,20 @@ def main():
             with open('proxy.ini', 'w') as fp:
                 common.CONFIG.set('love', 'timestamp', int(time.time()))
                 common.CONFIG.write(fp)
-        if common.LOVE_ENABLE and time.time() - common.LOVE_TIMESTAMP > 86400:
-            SetConsoleTitleW(u'GoAgent v%s %s' % (__version__, random.choice(common.LOVE_TIP)))
+        if time.time() - common.LOVE_TIMESTAMP > 86400:
+            title = ctypes.create_unicode_buffer(1024)
+            GetConsoleTitleW(ctypes.byref(title), len(title)-1)
+            SetConsoleTitleW(u'%s %s' % (title.value, random.choice(common.LOVE_TIP)))
             with open('proxy.ini', 'w') as fp:
                 common.CONFIG.set('love', 'timestamp', int(time.time()))
                 common.CONFIG.write(fp)
-        else:
-            SetConsoleTitleW(u'GoAgent v%s' % __version__)
+
+def main():
+    if ctypes and os.name == 'nt':
+        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
+        try_show_love()
         if not common.LISTEN_VISIBLE:
-            ShowWindow(GetConsoleWindow(), 0)
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     if common.GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
     CertUtil.checkCA()
