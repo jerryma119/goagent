@@ -396,7 +396,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
     params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
     for i in xrange(common.FETCHMAX_LOCAL):
         try:
-            logging.debug('LocalProxyHandler _fetch %r by %r', url, fetchserver)
+            logging.debug('urlfetch %r by %r', url, fetchserver)
             request = urllib2.Request(fetchserver, zlib.compress(params, 9))
             request.add_header('Content-Type', '')
             if common.PROXY_ENABLE:
@@ -424,8 +424,9 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
             data['headers'] = dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
             return (0, data)
         except Exception, e:
-            if on_error and on_error(e):
-                sys.stdout.write(common.info())
+            if on_error:
+                logging.info('urlfetch trigger on_error %s', getattr(on_error, 'func_name', ''))
+                on_error(e)
             errors.append(str(e))
             continue
     return (-1, errors)
@@ -442,13 +443,13 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 common.build_gae_fetchserver()
                 logging.info('Appspot 503 Error, switch to new fetchserver: %r', common.GAE_FETCHSERVER)
-                return True
+                sys.stdout.write(common.info())
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
                 #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
                 common.build_gae_fetchserver()
-                return True
+                sys.stdout.write(common.info())
         elif isinstance(error, urllib2.URLError):
             if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
                 # it seems that google.cn is reseted, switch to https
@@ -456,13 +457,13 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     common.GOOGLE_MODE = 'https'
                     #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
                     common.build_gae_fetchserver()
-                    return True
+                    sys.stdout.write(common.info())
         elif isinstance(error, httplib.HTTPException):
             common.GOOGLE_MODE = 'https'
             common.build_gae_fetchserver()
-            return True
+            sys.stdout.write(common.info())
         else:
-            logging.warning('LocalProxyHandler.fetch Exception %s', error, exc_info=True)
+            logging.warning('LocalProxyHandler.handle_fetch_error Exception %s', error, exc_info=True)
 
     def fetch(self, url, payload, method, headers):
         return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, on_error=self.handle_fetch_error)
