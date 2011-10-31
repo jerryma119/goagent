@@ -81,7 +81,7 @@ class Common(object):
         if not self.PROXY_ENABLE:
             self.GAE_FETCHSERVER = '%s://%s%s' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
         else:
-            self.GAE_FETCHSERVER = '%s://%s%s' % (self.GOOGLE_MODE, random.choice(self.GAE_FETCHHOST), self.GAE_PATH)
+            self.GAE_FETCHSERVER = '%s://%s%s' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_APPSPOT), self.GAE_PATH)
 
     def proxy_basic_auth_header(self):
         return 'Proxy-Authorization: Basic %s' + base64.b64encode('%s:%s'%(self.PROXY_USERNAME, self.PROXY_PASSWROD))
