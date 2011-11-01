@@ -428,6 +428,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
                 logging.info('urlfetch trigger on_error %s', getattr(on_error, 'func_name', ''))
                 on_error(e)
             errors.append(str(e))
+            time.sleep(i+1)
             continue
     return (-1, errors)
 
