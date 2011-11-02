@@ -520,6 +520,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started')
         while start <= end:
+            if failed > 16:
+                break
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
             retval, data = self.fetch(self.path, '', self.command, self.headers)
             if retval != 0 or data['code'] >= 400:
