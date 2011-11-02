@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6.4'
+__version__ = '1.6.5'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -522,7 +522,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         while start <= end:
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
             retval, data = self.fetch(self.path, '', self.command, self.headers)
-            if retval != 0:
+            if retval != 0 or data['code'] >= 400:
                 time.sleep(4)
                 continue
             m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('content-range',''))
