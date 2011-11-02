@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6'
+__version__ = '1.6.5'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -61,6 +61,8 @@ class MainPage(webapp2.RequestHandler):
 
         headers = dict((k, v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
         headers['connection'] = 'close'
+        if 'useragent' in request:
+            headers['user-agent'] = request['useragent']
 
         fetchrange = 'bytes=0-%d' % (FetchMaxSize - 1)
         if 'range' in headers:

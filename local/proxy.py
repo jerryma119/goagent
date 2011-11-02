@@ -39,21 +39,25 @@ class Common(object):
         self.LISTEN_IP            = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
         self.LISTEN_VISIBLE       = self.CONFIG.getint('listen', 'visible')
+
         self.GAE_ENABLE           = self.CONFIG.getint('gae', 'enable')
         self.GAE_APPIDS           = self.CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel')
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
+
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
         self.PHP_IP               = self.CONFIG.get('php', 'ip')
         self.PHP_PORT             = self.CONFIG.getint('php', 'port')
         self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
+
         self.PROXY_ENABLE         = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_HOST           = self.CONFIG.get('proxy', 'host')
         self.PROXY_PORT           = self.CONFIG.getint('proxy', 'port')
         self.PROXY_USERNAME       = self.CONFIG.get('proxy', 'username')
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
         self.PROXY_NTLM           = bool(self.CONFIG.getint('proxy', 'ntlm')) if self.CONFIG.has_option('proxy', 'ntlm') else '\\' in self.PROXY_USERNAME
+
         self.GOOGLE_MODE          = self.CONFIG.get('google', 'mode')
         self.GOOGLE_SITES         = tuple(self.CONFIG.get('google', 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS    = frozenset(self.CONFIG.get('google', 'forcehttps').split('|'))
@@ -63,15 +67,22 @@ class Common(object):
         self.GOOGLE_HOSTS_IPV6    = tuple(self.CONFIG.get('google', 'ipv6').split('|'))
         self.GOOGLE_APPSPOT       = {'cn':self.GOOGLE_HOSTS_CN,'hk':self.GOOGLE_HOSTS_HK,'ipv6':self.GOOGLE_HOSTS_IPV6}[self.CONFIG.get('google', 'appspot')]
         self.GOOGLE_HOSTS         = {'cn':self.GOOGLE_HOSTS_CN,'hk':self.GOOGLE_HOSTS_HK,'ipv6':self.GOOGLE_HOSTS_IPV6}[self.CONFIG.get('google', 'hosts')]
+
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
         self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
+
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_ENDSWITH   = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
-        self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('_'))
-        self.LOVE_ENABLE          = self.CONFIG.getboolean('love','enable')
+
+        self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
+        self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
+
+        self.LOVE_ENABLE          = self.CONFIG.getint('love','enable')
         self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
         self.LOVE_TIP             = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m:unichr(int(m.group(1),16)), self.CONFIG.get('love','tip')).split('|')
+
+        self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('_'))
 
         self.build_gae_fetchserver()
         self.PHP_FETCHHOST        = re.sub(':\d+$', '', urlparse.urlparse(self.PHP_FETCHSERVER).netloc)
@@ -393,6 +404,8 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
         params['password'] = common.GAE_PASSWORD
     if common.FETCHMAX_SERVER:
         params['fetchmax'] = common.FETCHMAX_SERVER
+    if common.USERAGENT_ENABLE:
+        params['useragent'] = common.USERAGENT_STRING
     params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
     for i in xrange(common.FETCHMAX_LOCAL):
         try:
