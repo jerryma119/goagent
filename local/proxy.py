@@ -715,7 +715,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     idlecall = conn.close
                 else:
                     sock = socket.create_connection((host, port))
-                self.headers['connection'] = 'close'
+                self.headers['Connection'] = 'close'
                 data = '%s %s %s\r\n%s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version, self.headers)
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
@@ -729,7 +729,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
-                data += 'Proxy-connection: close\r\n'
+                data += 'Proxy-Connection: close\r\n'
                 data += '\r\n'
 
             content_length = int(self.headers.get('content-length', 0))
