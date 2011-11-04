@@ -445,10 +445,47 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
             continue
     return (-1, errors)
 
+class SimpleMessageClass(object):
+
+    skip_headers = frozenset(['vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade'])
+
+    def __init__(self, fp, seekable = 0):
+        self.fp = fp
+        self.dict = dict = {}
+        self.headers = headers = []
+        skip_headers = self.skip_headers
+        while 1:
+            line = fp.readline()
+            if not line or line in ('\r\n', '\n'):
+                self.status = 'EOF in headers'
+                break
+            key, _, value = line.partition(':')
+            key = key.lower()
+            if value and key not in skip_headers:
+                dict[key] = value.strip()
+                headers.append(line)
+
+    def get(self, name, default=None):
+        return self.dict.get(name.lower(), default)
+
+    def __setitem__(self, name, value):
+        self.dict[name.lower()] = value
+        self.headers.append('%s: %s\r\n' % (name.title(), value))
+
+    def __getitem__(self, name):
+        return self.dict[name.lower()]
+
+    def __contains__(self, name):
+        return name.lower() in self.dict
+
+    def __str__(self):
+        return ''.join(self.headers)
+
+
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
-    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     setuplock = threading.Lock()
+    MessageClass = SimpleMessageClass
 
     def handle_fetch_error(self, error):
         if isinstance(error, urllib2.HTTPError):
@@ -644,7 +681,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = self._realconnection
 
     def do_METHOD(self):
-        host = self.headers['host']
+        host = self.headers.get('host', '')
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if host in common.GOOGLE_FORCEHTTPS:
                 self.send_response(301)
@@ -676,9 +713,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     sock = socket.create_connection((host, port))
                 self.headers['connection'] = 'close'
-                data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
-                data += '\r\n'
+                data = '%s %s %s\r\n%s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version, self.headers)
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host.endswith(common.GOOGLE_SITES):
@@ -687,7 +722,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     host = common.HOSTS.get(host, host)
                 url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
                 data ='%s %s %s\r\n'  % (self.command, url, self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
+                data += ''.join('%s: %s\r\n' % (k, v) for k in self.headers.iteritems() if k != 'host')
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
@@ -709,7 +744,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 pass
 
     def do_METHOD_Thunnel(self):
-        host = self.headers.dict.get('host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
+        host = self.headers.get('host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
         payload_len = int(self.headers.get('content-length', 0))
@@ -718,7 +753,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             payload = ''
 
-        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.dict.iteritems() if k not in self.skip_headers)
+        headers = str(self.headers)
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
@@ -777,6 +812,8 @@ class PHPProxyHandler(LocalProxyHandler):
         PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Thunnel
         PHPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
+
+
 
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
