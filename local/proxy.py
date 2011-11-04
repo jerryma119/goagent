@@ -448,15 +448,63 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
             continue
     return (-1, errors)
 
+class SimpleMessageClass(object):
+
+    def __init__(self, fp, seekable = 0):
+        self.fp = fp
+        self.dict = dict = {}
+        self.linedict = linedict = {}
+        self.headers = []
+        headers_append = self.headers.append
+        readline = fp.readline
+        while 1:
+            line = readline()
+            if not line or line == '\r\n':
+                break
+            key, _, value = line.partition(':')
+            key = key.lower()
+            if value:
+                dict[key] = value.strip()
+                linedict[key] = line
+                headers_append(line)
+
+    def get(self, name, default=None):
+        return self.dict.get(name.lower(), default)
+
+    def __getitem__(self, name):
+        return self.dict[name.lower()]
+
+    def __setitem__(self, name, value):
+        key = name.lower()
+        self.dict[key] = value
+        self.linedict[key] = '%s: %s\r\n' % (name, value)
+        self.headers = None
+
+    def __delitem__(self, name):
+        key = name.lower()
+        del self.dict[key]
+        del self.linedict[key]
+        self.headers = None
+
+    def __contains__(self, name):
+        return name.lower() in self.dict
+
+    def __str__(self):
+        return ''.join(self.headers or self.linedict.itervalues())
+
+    def __iter__(self):
+        return iter(self.dict)
+
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     setuplock = threading.Lock()
+    MessageClass = SimpleMessageClass
 
     def handle_fetch_error(self, error):
         if isinstance(error, urllib2.HTTPError):
             # seems that current appid is over qouta, swith to next appid
-            if error.code in (404, 503):
+            if error.code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 common.build_gae_fetchserver()
                 logging.info('Appspot 503 Error, switch to new fetchserver: %r', common.GAE_FETCHSERVER)
