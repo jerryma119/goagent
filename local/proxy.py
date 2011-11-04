@@ -447,8 +447,6 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
 
 class SimpleMessageClass(object):
 
-    skip_headers = frozenset(['vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade'])
-
     def __init__(self, fp, seekable = 0):
         self.fp = fp
         self.dict = dict = {}
@@ -456,12 +454,11 @@ class SimpleMessageClass(object):
         skip_headers = self.skip_headers
         while 1:
             line = fp.readline()
-            if not line or line in ('\r\n', '\n'):
-                self.status = 'EOF in headers'
+            if not line or line == '\r\n':
                 break
             key, _, value = line.partition(':')
             key = key.lower()
-            if value and key not in skip_headers:
+            if value:
                 dict[key] = value.strip()
                 headers.append(line)
 
