@@ -489,11 +489,14 @@ class SimpleMessageClass(object):
     def __contains__(self, name):
         return name.lower() in self.dict
 
-    def __str__(self):
-        return ''.join(self.headers or self.linedict.itervalues())
+    def __len__(self):
+        return len(self.dict)
 
     def __iter__(self):
         return iter(self.dict)
+
+    def __str__(self):
+        return ''.join(self.headers or self.linedict.itervalues())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     part_size = 1024 * 1024
