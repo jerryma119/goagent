@@ -1,5 +1,5 @@
-application: your_appid
-version: 1
+application: goagentm
+version: 12
 runtime: python27
 api_version: 1
 threadsafe: true
