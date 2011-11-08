@@ -1,8 +1,7 @@
 @echo off
 
-set PYTHONSCRIPT="import sys;sys.path.insert(0,'appcfg.zip');import appcfg;appcfg.main([sys.argv[0], 'rollback', '.'])"
-"%~dp0..\local\proxy.exe"
-set PYTHONSCRIPT=import sys;sys.path.insert(0,'appcfg.zip');import appcfg;appcfg.main([sys.argv[0], 'update', '.'])
-"%~dp0..\local\proxy.exe"
-pause
+set HTTPS_PROXY=http://127.0.0.1:8087
+set PYTHONSCRIPT=appcfg.zip
+"%~dp0..\local\proxy.exe" rollback . && "%~dp0..\local\proxy.exe" update . && ping -n 5 127.1 >NUL || pause
+
 @echo on
