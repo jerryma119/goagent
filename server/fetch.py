@@ -13,7 +13,7 @@ from google.appengine.api import urlfetch
 from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 
 FetchMax = 3
-FetchMaxSize = 4*1024*1024
+FetchMaxSize = 1024*1024
 Deadline = (30, 60)
 
 def encode_data(dic):

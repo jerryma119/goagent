@@ -499,8 +499,7 @@ class SimpleMessageClass(object):
         return ''.join(self.headers or self.linedict.itervalues())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    part_size = 1024 * 1024 * 4
-    first_part_size = 1024 * 1024
+    part_size = 1024 * 1024
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     setuplock = threading.Lock()
     MessageClass = SimpleMessageClass
@@ -783,7 +782,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    headers += 'range: bytes=0-%d\r\n' % self.first_part_size
+                    headers += 'range: bytes=0-%d\r\n' % self.part_size
                     break
 
         retval, data = self.fetch(self.path, payload, self.command, headers)
