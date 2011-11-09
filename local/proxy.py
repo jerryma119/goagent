@@ -733,7 +733,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     idlecall = conn.close
                 else:
                     sock = socket.create_connection((host, port))
-                self.headers['connection'] = 'close'
+                self.headers['Connection'] = 'close'
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
                 data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
                 data += '\r\n'
@@ -749,7 +749,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
-                data += 'Proxy-connection: close\r\n'
+                data += 'Proxy-Connection: close\r\n'
                 data += '\r\n'
 
             content_length = int(self.headers.get('content-length', 0))
@@ -782,7 +782,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    headers += 'range: bytes=0-%d\r\n' % self.part_size
+                    headers += 'Range: bytes=0-%d\r\n' % self.part_size
                     break
 
         retval, data = self.fetch(self.path, payload, self.command, headers)

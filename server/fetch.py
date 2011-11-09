@@ -60,9 +60,9 @@ class MainPage(webapp2.RequestHandler):
         deadline = Deadline[1 if payload else 0]
 
         headers = dict((k, v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
-        headers['connection'] = 'close'
+        headers['Connection'] = 'close'
         if 'useragent' in request:
-            headers['user-agent'] = request['useragent']
+            headers['User-Agent'] = request['useragent']
 
         fetchrange = 'bytes=0-%d' % (FetchMaxSize - 1)
         if 'range' in headers:
@@ -103,14 +103,14 @@ class MainPage(webapp2.RequestHandler):
             except urlfetch.ResponseTooLargeError, e:
                 if method == 'GET':
                     deadline = Deadline[1]
-                    headers['range'] = fetchrange
+                    headers['Range'] = fetchrange
                 else:
                     return self.send_notify(method, url, 500, 'Response Too Large: %s' % e)
             except Exception, e:
                 errors.append(str(e))
                 if i==0 and method=='GET':
                     deadline = Deadline[1]
-                    headers['range'] = fetchrange
+                    headers['Range'] = fetchrange
         else:
             return self.send_notify(method, url, 500, 'Urlfetch error: %s' % errors)
 
