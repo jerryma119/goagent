@@ -70,10 +70,11 @@ class Common(object):
 
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
-        self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
 
+        self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_ENDSWITH   = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
+        self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
 
         self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
@@ -499,8 +500,7 @@ class SimpleMessageClass(object):
         return ''.join(self.headers or self.linedict.itervalues())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    part_size = 1024 * 1024
-    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
+    #skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     setuplock = threading.Lock()
     MessageClass = SimpleMessageClass
 
@@ -565,7 +565,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data['code'] = 200
             del data['headers']['content-range']
         data['headers']['content-length'] = end-start+1
-        partSize = self.part_size
+        partSize = common.AUTORANGE_MAXSIZE
 
         respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
         strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
@@ -776,16 +776,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             payload = ''
 
-        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.dict.iteritems() if k not in self.skip_headers)
+        headers = str()
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    headers += 'Range: bytes=0-%d\r\n' % self.part_size
+                    self.headers['Range'] = 'bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
                     break
 
-        retval, data = self.fetch(self.path, payload, self.command, headers)
+        retval, data = self.fetch(self.path, payload, self.command, self.headers)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
@@ -796,7 +796,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('content-range',''))
                 if m and self.rangefetch(m, data):
                     return
-            content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
+            content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in headers.iteritems()), data['content'])
             self.connection.sendall(content)
             if 'close' == headers.get('connection',''):
                 self.close_connection = 1
