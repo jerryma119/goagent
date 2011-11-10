@@ -61,10 +61,31 @@ function urlfetch_header_callabck($ch, $header) {
 	return strlen($header);
 }
 
+$__urlfetch_body = '';
+$__urlfetch_body_size = 0;
+$__urlfetch_body_maxsize = 1024*1024;
+function urlfetch_body_callabck($ch, $data) {
+    global $__urlfetch_body;
+    global $__urlfetch_body_size;
+    global $__urlfetch_body_maxsize;
+    
+    $bytes = strlen($data); 
+    $__urlfetch_body_size += $bytes; 
+    $__urlfetch_body .= $data;
+    if ($__urlfetch_body_size > $__urlfetch_body_maxsize) { 
+        return -1; 
+    } 
+    return $bytes; 
+}
+
 function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
     global $__urlfetch_headers;
+    global $__urlfetch_body;
+    global $__urlfetch_body_size;
     
     $__urlfetch_headers = array();
+    $__urlfetch_body = '';
+    $__urlfetch_body_size = 0;
     
     if ($payload) {
         $headers['content-length'] = strval(strlen($payload));
@@ -77,9 +98,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
     $curl_opt[CURLOPT_CONNECTTIMEOUT] = $deadline;
 	$curl_opt[CURLOPT_RETURNTRANSFER] = true;
 	$curl_opt[CURLOPT_BINARYTRANSFER] = true;
-	$curl_opt[CURLOPT_FAILONERROR]    = true;
-	//$curl_opt[CURLOPT_HEADER]         = false;
-	
+	$curl_opt[CURLOPT_FAILONERROR]    = true;	
 	
     if (!$follow_redirects) {
 	    $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
@@ -123,13 +142,15 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 	}
 	$curl_opt[CURLOPT_HTTPHEADER] = $header_array;
 	
+	$curl_opt[CURLOPT_HEADER]         = false;	
 	$curl_opt[CURLOPT_HEADERFUNCTION] = 'urlfetch_header_callabck';
+	$curl_opt[CURLOPT_WRITEFUNCTION]  = 'urlfetch_body_callabck';
 	
 	//print_notify($method, $url, 502, 'I am curl_opt:'. var_export($curl_opt, true));exit(0); 
 	
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
-    $content = curl_exec($ch);
+    $ret = curl_exec($ch);
     $__urlfetch_headers['connection'] = 'close';
     $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
@@ -138,8 +159,20 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
         $error =  $errno . ': ' .curl_error($ch);
     }
     curl_close($ch);
+    
+    $content_length = 1 * $__urlfetch_headers["content-length"];
+    
+    if ($status_code == 200 && $__urlfetch_body_size > $__urlfetch_body_maxsize && $content_length && $__urlfetch_body_size < $content_length) {
+        $status_code = 206;
+        $range_start = 0;
+        $range_end = $__urlfetch_body_size - 1;
+        $__urlfetch_headers["content-range"] = "bytes $range_start-$range_end/$content_length";
+        $__urlfetch_headers["content-length"] = $__urlfetch_body_size;
+    }
+    
+    //print_notify($method, $url, 502, 'I am curl_opt:'. var_export(array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content-size' => $__urlfetch_body_size, 'error' => $error), true));exit(0); 
  
-    $response = array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content' => $content, 'error' => $error);
+    $response = array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content' => $__urlfetch_body, 'error' => $error);
     return $response;
 }
 
