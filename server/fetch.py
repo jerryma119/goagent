@@ -64,19 +64,6 @@ class MainPage(webapp2.RequestHandler):
         if 'useragent' in request:
             headers['User-Agent'] = request['useragent']
 
-        fetchrange = 'bytes=0-%d' % (FetchMaxSize - 1)
-        if 'range' in headers:
-            try:
-                start, end = re.search(r'(\d+)?-(\d+)?', headers['range']).group(1, 2)
-                if start or end:
-                    if not start and int(end) > FetchMaxSize:
-                        end = '1023'
-                    elif not end or int(end)-int(start)+1 > FetchMaxSize:
-                        end = str(FetchMaxSize - 1 + int(start))
-                    fetchrange = 'bytes=%s-%s' % (start, end)
-            except:
-                pass
-
         errors = []
         for i in xrange(int(request.get('fetchmax', FetchMax))):
             try:
@@ -101,16 +88,20 @@ class MainPage(webapp2.RequestHandler):
             except urlfetch.InvalidURLError, e:
                 return self.send_notify(method, url, 501, 'Invalid URL: %s' % e)
             except urlfetch.ResponseTooLargeError, e:
-                if method == 'GET':
-                    deadline = Deadline[1]
-                    headers['Range'] = fetchrange
+                response = e.response
+                logging.error('DownloadError(deadline=%s, url=%r) response(%s)', deadline, url, response and response.headers)
+                if response and response.headers.get('content-length'):
+                    response.status_code = 206
+                    response.headers['content-range'] = 'bytes 0-%d/%s' % (len(response.content)-1, response.headers['content-length'])
+                    response.headers['content-length'] = len(response.content)
+                    break
                 else:
-                    return self.send_notify(method, url, 500, 'Response Too Large: %s' % e)
+                    headers['Range'] = 'bytes=0-%d' % FetchMaxSize
+                deadline = Deadline[1]
             except Exception, e:
                 errors.append(str(e))
                 if i==0 and method=='GET':
                     deadline = Deadline[1]
-                    headers['Range'] = fetchrange
         else:
             return self.send_notify(method, url, 500, 'Urlfetch error: %s' % errors)
 
