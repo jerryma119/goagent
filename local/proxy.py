@@ -585,7 +585,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             start = m[1] + 1
             partSize = len(data['content'])
         failed = 0
-        logging.info('>>>>>>>>>>>>>>> Range Fetch started(host=%r)', host)
+        logging.info('>>>>>>>>>>>>>>> Range Fetch started(host=%r)', data['headers'].get('host'))
         while start <= end:
             if failed > 16:
                 break
