@@ -585,7 +585,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             start = m[1] + 1
             partSize = len(data['content'])
         failed = 0
-        logging.info('>>>>>>>>>>>>>>> Range Fetch started')
+        logging.info('>>>>>>>>>>>>>>> Range Fetch started(host=%r)', host)
         while start <= end:
             if failed > 16:
                 break
@@ -605,7 +605,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['content-range'], end))
             failed = 0
             self.wfile.write(data['content'])
-        logging.info('>>>>>>>>>>>>>>> Range Fetch ended')
+        logging.info('>>>>>>>>>>>>>>> Range Fetch ended(host=%r)', data['headers'].get('host'))
         return True
 
     def address_string(self):
