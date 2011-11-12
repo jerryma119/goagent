@@ -472,6 +472,15 @@ class SimpleMessageClass(object):
     def get(self, name, default=None):
         return self.dict.get(name.lower(), default)
 
+    def iteritems(self):
+        return self.dict.iteritems()
+
+    def iterkeys(self):
+        return self.dict.iterkeys()
+
+    def itervalues(self):
+        return self.dict.itervalues()
+
     def __getitem__(self, name):
         return self.dict[name.lower()]
 
@@ -500,8 +509,8 @@ class SimpleMessageClass(object):
         return ''.join(self.headers or self.linedict.itervalues())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    #skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
-    setuplock = threading.Lock()
+    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
+    SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
 
     def handle_fetch_error(self, error):
@@ -776,16 +785,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             payload = ''
 
-        headers = str()
+        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in self.skip_headers)
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    self.headers['Range'] = 'bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
+                    headers += 'range: bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
                     break
 
-        retval, data = self.fetch(self.path, payload, self.command, self.headers)
+        retval, data = self.fetch(self.path, payload, self.command, headers)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
@@ -820,7 +829,7 @@ class PHPProxyHandler(LocalProxyHandler):
             fetchhost = common.PHP_FETCHHOST
             logging.info('PHPProxyHandler.setup check %s is in common.HOSTS', fetchhost)
             if fetchhost not in common.HOSTS:
-                with LocalProxyHandler.setuplock:
+                with LocalProxyHandler.SetupLock:
                     if fetchhost not in common.HOSTS:
                         try:
                             logging.info('Resole php fetchserver address.')
