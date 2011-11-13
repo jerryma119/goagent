@@ -1,7 +1,7 @@
 <?php 
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.5.5';
+$__version__  = '1.6.7';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -63,7 +63,7 @@ function urlfetch_header_callabck($ch, $header) {
 
 $__urlfetch_body = '';
 $__urlfetch_body_size = 0;
-$__urlfetch_body_maxsize = 1024*1024;
+$__urlfetch_body_maxsize = 1024*1024*2;
 function urlfetch_body_callabck($ch, $data) {
     global $__urlfetch_body;
     global $__urlfetch_body_size;
