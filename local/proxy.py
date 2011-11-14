@@ -438,7 +438,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
             return (0, data)
         except Exception, e:
             if on_error:
-                logging.info('urlfetch error=%s on_error=%s', str(on_error), str(e))
+                logging.info('urlfetch error=%s on_error=%s', str(e), str(on_error))
                 data = on_error(e)
                 if data:
                     fetchhost = data.get('fetchhost', fetchhost)
