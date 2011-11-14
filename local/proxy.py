@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6.7'
+__version__ = '1.6.8 dev'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -13,7 +13,6 @@ import thread, threading
 import socket, ssl, select
 import httplib, urllib2, urlparse
 import BaseHTTPServer, SocketServer
-
 try:
     import ctypes
 except ImportError:
@@ -439,7 +438,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
             return (0, data)
         except Exception, e:
             if on_error:
-                logging.info('urlfetch trigger on_error %s', getattr(on_error, 'func_name', ''))
+                logging.info('urlfetch trigger on_error=%s error=%s', getattr(on_error, 'func_name', ''), str(e))
                 data = on_error(e)
                 if data:
                     fetchhost = data.get('fetchhost', fetchhost)
@@ -585,9 +584,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             start = m[1] + 1
             partSize = len(data['content'])
         failed = 0
-        logging.info('>>>>>>>>>>>>>>> Range Fetch started(host=%r)', self.headers.get('Host'))
+        logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
         while start <= end:
-            if failed > 16:
+            if failed > 5:
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
             retval, data = self.fetch(self.path, '', self.command, self.headers)
@@ -605,7 +604,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['content-range'], end))
             failed = 0
             self.wfile.write(data['content'])
-        logging.info('>>>>>>>>>>>>>>> Range Fetch ended(host=%r)', self.headers.get('Host'))
+        logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.headers.get('Host'))
         return True
 
     def address_string(self):
