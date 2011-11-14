@@ -870,6 +870,8 @@ def try_show_love():
 def main():
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
+        if not common.LOVE_TIMESTAMP.strip():
+            os.system('wscript.exe /nologo addto-startup.vbs')
         try_show_love()
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
