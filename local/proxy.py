@@ -146,10 +146,9 @@ class MultiplexConnection(object):
         self.socket = None
         self._sockets = set([])
         self.connect(hosts, port, MultiplexConnection.timeout, MultiplexConnection.window)
-    def connect(self, hosts, port, timeout, window):
+    def connect(self, hostlist, port, timeout, window):
         for i in xrange(MultiplexConnection.retry):
-            if len(hosts) > window:
-                hosts = random.sample(hosts, window)
+            hosts = random.sample(hostlist, window) if len(hostlist) > window else hostlist
             logging.debug('MultiplexConnection try connect hosts=%s, port=%d', hosts, port)
             socks = []
             for host in hosts:
@@ -175,7 +174,7 @@ class MultiplexConnection(object):
             else:
                 logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
-            MultiplexConnection.window = min(int(round(window*1.5)), len(hosts), self.window_max)
+            MultiplexConnection.window = min(int(round(window*1.5)), len(hostlist), self.window_max)
             MultiplexConnection.window_ack = 0
             raise RuntimeError(r'MultiplexConnection Connect hosts %s:%s fail %d times!' % (hosts, port, MultiplexConnection.retry))
     def close(self):
