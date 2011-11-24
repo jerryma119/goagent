@@ -1,7 +1,7 @@
 <?php 
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.6.7';
+$__version__  = '1.6.8';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -148,7 +148,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 	$header_array = array();
 	foreach ($headers as $key => $value) {
 	    if ($key) {
-	        $header_array[] = ucfirst($key).': '.$value;
+	        $header_array[] = join('-', array_map('ucfirst', explode('-', $key))).': '.$value;
 	    }
 	}
 	$curl_opt[CURLOPT_HTTPHEADER] = $header_array;
@@ -239,14 +239,15 @@ function post()
     }
     
     if ($dns) {
-        preg_match('@://(.+?)[:/]@', $url, $matches);
-        if ($matches[1]) {
-            $headers['host'] = $matches[1];
+        preg_match('@://(.+?)[:/]@', $url, $matches, PREG_OFFSET_CAPTURE);
+        if ($matches[1][0]) {
+            $headers['host'] = $matches[1][0];
             $url = preg_replace('@://.+?([:/])@', "://$dns\\1", $url);
         }
+        //error_exit('matches', $matches);
     }
     
-    //error_exit('post headers:', $headers);
+    //error_exit('url', $url, 'headers:', $headers);
     
     $errors = array();
     for ($i = 0; $i < $FetchMax; $i++) {
