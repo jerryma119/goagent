@@ -40,6 +40,17 @@ function print_notify($method, $url, $status, $content) {
     print_response($status, $headers, $content);
 }
 
+function error_exit() {
+    $status = 200;
+    $headers = array('content-type' => 'text/html');
+    $content = "<h2>PHP Fetch Server Debug Info</h2><hr noshade='noshade'>";
+    foreach (func_get_args() as $key => $value) {
+        $content .= '<p>' . var_export($value, true) . '</p>';
+    }
+    print_response($status, $headers, $content);
+    exit(0); 
+}
+
 $__urlfetch_headers = array();
 function urlfetch_header_callabck($ch, $header) {
     global $__urlfetch_headers;
@@ -146,7 +157,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 	$curl_opt[CURLOPT_HEADERFUNCTION] = 'urlfetch_header_callabck';
 	$curl_opt[CURLOPT_WRITEFUNCTION]  = 'urlfetch_body_callabck';
 	
-	//print_notify($method, $url, 502, 'I am curl_opt:'. var_export($curl_opt, true));exit(0); 
+	//error_exit('curl_opt:', $curl_opt);
 	
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
@@ -170,7 +181,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
         $__urlfetch_headers["content-length"] = $__urlfetch_body_size;
     }
     
-    //print_notify($method, $url, 502, 'I am curl_opt:'. var_export(array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content-size' => $__urlfetch_body_size, 'error' => $error), true));exit(0); 
+    //error_exit('urlfetch result:', array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content-size' => $__urlfetch_body_size, 'error' => $error));
  
     $response = array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content' => $__urlfetch_body, 'error' => $error);
     return $response;
@@ -228,12 +239,14 @@ function post()
     }
     
     if ($dns) {
-        $url = preg_replace('@://.+?([:/])@', "://$dns\\1", $url);
         preg_match('@://(.+?)[:/]@', $url, $matches);
         if ($matches[1]) {
             $headers['host'] = $matches[1];
+            $url = preg_replace('@://.+?([:/])@', "://$dns\\1", $url);
         }
     }
+    
+    //error_exit('post headers:', $headers);
     
     $errors = array();
     for ($i = 0; $i < $FetchMax; $i++) {
