@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6.8 dev'
+__version__ = '1.6.8'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -123,7 +123,7 @@ class Common(object):
         info += 'Local Proxy     : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'Debug Level     : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
         info += 'GAE Mode        : %s\n' % self.GOOGLE_MODE if self.GAE_ENABLE else ''
-        info += 'GAE Aera        : %s\n' % self.CONFIG.get('google', 'appspot')
+        info += 'GAE Area        : %s\n' % self.CONFIG.get('google', 'appspot')
         info += 'GAE APPID       : %s\n' % '|'.join(self.GAE_APPIDS)
         info += 'PHP Mode Listen : %s:%d\n' % (self.PHP_IP, self.PHP_PORT) if self.PHP_ENABLE else ''
         info += 'PHP FetchServer : %s\n' % self.PHP_FETCHSERVER if self.PHP_ENABLE else ''
