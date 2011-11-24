@@ -395,7 +395,7 @@ class CertUtil(object):
             cacrt = CertUtil.readFile(crtFile)
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
 
-def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=None):
+def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on_error=None):
     errors = []
     params = {'url':url, 'method':method, 'headers':str(headers), 'payload':payload}
     logging.debug('urlfetch params %s', params)
@@ -405,6 +405,8 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=Non
         params['fetchmax'] = common.FETCHMAX_SERVER
     if common.USERAGENT_ENABLE:
         params['useragent'] = common.USERAGENT_STRING
+    if dns:
+        params['dns'] = dns
     params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
     for i in xrange(common.FETCHMAX_LOCAL):
         try:
@@ -818,7 +820,8 @@ class PHPProxyHandler(LocalProxyHandler):
         logging.error('PHPProxyHandler handle_fetch_error %s', error)
 
     def fetch(self, url, payload, method, headers):
-        return urlfetch(url, payload, method, headers, common.PHP_FETCHHOST, common.PHP_FETCHSERVER, on_error=self.handle_fetch_error)
+        dns = common.HOSTS.get(self.headers.get('host'))
+        return urlfetch(url, payload, method, headers, common.PHP_FETCHHOST, common.PHP_FETCHSERVER, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
         if common.PROXY_ENABLE:
@@ -858,7 +861,7 @@ def try_show_love():
             with open('proxy.ini', 'w') as fp:
                 common.CONFIG.set('love', 'timestamp', int(time.time()))
                 common.CONFIG.write(fp)
-        if time.time() - common.LOVE_TIMESTAMP > 86400:
+        if time.time() - common.LOVE_TIMESTAMP > 86400 and random.randint(1,10) > 5:
             title = ctypes.create_unicode_buffer(1024)
             GetConsoleTitleW(ctypes.byref(title), len(title)-1)
             SetConsoleTitleW(u'%s %s' % (title.value, random.choice(common.LOVE_TIP)))

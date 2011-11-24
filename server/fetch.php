@@ -137,7 +137,7 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
 	$header_array = array();
 	foreach ($headers as $key => $value) {
 	    if ($key) {
-	        $header_array[] = $key.': '.$value;
+	        $header_array[] = ucfirst($key).': '.$value;
 	    }
 	}
 	$curl_opt[CURLOPT_HTTPHEADER] = $header_array;
@@ -189,6 +189,7 @@ function post()
     $method  = $request['method'];
     $url     = $request['url'];
     $payload = $request['payload'];
+    $dns     = $request['dns'];
     
     if ($__password__ && $__password__ != $request['password']) {
         return print_notify($method, $url, 403, 'Wrong password.');
@@ -223,6 +224,14 @@ function post()
                 $end = strval($FetchMaxSize-1+intval($start));
             }
             $fetchrange = 'bytes='.$start.'-'.$end;
+        }
+    }
+    
+    if ($dns) {
+        $url = preg_replace('@://.+?([:/])@', "://$dns\\1", $url);
+        preg_match('@://(.+?)[:/]@', $url, $matches);
+        if ($matches[1]) {
+            $headers['host'] = $matches[1];
         }
     }
     
