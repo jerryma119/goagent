@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6.5'
+__version__ = '1.6.8'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -72,7 +72,7 @@ class MainPage(webapp2.RequestHandler):
                     break
                 else:
                     errors.append('%s %r return %s' % (method, url, response.status_code))
-                    time.sleep(4)
+                    time.sleep(1)
             except apiproxy_errors.OverQuotaError, e:
                 time.sleep(4)
             except DeadlineExceededError, e:
