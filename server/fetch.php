@@ -51,7 +51,11 @@ function error_exit() {
     exit(0); 
 }
 
+$__urlfetch_body_maxsize = 1024*1024*2;
 $__urlfetch_headers = array();
+$__urlfetch_body = '';
+$__urlfetch_body_size = 0;
+
 function urlfetch_header_callabck($ch, $header) {
     global $__urlfetch_headers;
     
@@ -72,9 +76,6 @@ function urlfetch_header_callabck($ch, $header) {
 	return strlen($header);
 }
 
-$__urlfetch_body = '';
-$__urlfetch_body_size = 0;
-$__urlfetch_body_maxsize = 1024*1024*2;
 function urlfetch_body_callabck($ch, $data) {
     global $__urlfetch_body;
     global $__urlfetch_body_size;
@@ -89,7 +90,7 @@ function urlfetch_body_callabck($ch, $data) {
     return $bytes; 
 }
 
-function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
+function urlfetch_curl($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
     global $__urlfetch_headers;
     global $__urlfetch_body;
     global $__urlfetch_body_size;
@@ -185,6 +186,106 @@ function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadlin
  
     $response = array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content' => $__urlfetch_body, 'error' => $error);
     return $response;
+}
+
+function urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
+    global $__urlfetch_headers;
+    global $__urlfetch_body;
+    global $__urlfetch_body_size;
+    global $__urlfetch_body_maxsize;
+    
+    $__urlfetch_headers = array();
+    $__urlfetch_body = '';
+    $__urlfetch_body_size = 0;
+    
+    if ($payload) {
+        $headers['content-length'] = strval(strlen($payload));
+    }
+    $headers['connection'] = 'close';
+    
+    if ($follow_redirects) {
+        //error_exit('urlfetch_fsockopen', 'follow_redirects is not supported!!!');
+    }
+    
+    if ($validate_certificate) {
+	    //error_exit('urlfetch_fsockopen', 'validate_certificate is not supported!!!');
+	}
+	
+	$header_string = '';
+	foreach ($headers as $key => $value) {
+	    if ($key) {
+	        $header_string .= join('-', array_map('ucfirst', explode('-', $key))).': '.$value."\r\n";
+	    }
+	}
+
+	//error_exit('header_string:', $header_string);
+	
+	$opt = array();
+	$opt['http'] = array();
+	$opt['http']['method'] = $method;
+	$opt['http']['header'] = $header_string;
+	if ($payload) {
+	    $opt['http']['content'] = $payload;
+	}
+	$opt['http']['timeout'] = $deadline;
+	
+	$context = stream_context_create($opt);
+	if ($context == false) {
+	    return array('status_code' => 500, 'error' => "stream_context_create fail");
+	}
+    
+    $fp = @fopen($url, 'r', false, $context);
+    if ($fp == false) {
+        return array('status_code' => 500, 'error' => "fopen $url fail");
+    }
+    $meta = stream_get_meta_data($fp);
+    if ($meta == false) {
+        return array('status_code' => 500, 'error' => "stream_get_meta_data $url fail");
+    }
+    //error_exit('meta_data', $meta);
+    $response_terms = explode(' ', array_shift($meta['wrapper_data']), 3);
+    $status_code = intval($response_terms[1]);
+    foreach($meta['wrapper_data'] as $line) {
+        $kv = array_map('trim', explode(':', $line, 2));
+        if ($kv[1]) {
+            $key = strtolower($kv[0]);
+            $value = $kv[1];
+            if ($key == 'set-cookie') {
+                if (!array_key_exists('set-cookie', $__urlfetch_headers)) {
+                    $__urlfetch_headers['set-cookie'] = $value;
+                } else {
+                    $__urlfetch_headers['set-cookie'] .= "\r\nset-cookie: " . $value;
+                }
+            } else {
+             $__urlfetch_headers[$key] = $kv[1];
+            }
+        }
+    }
+    $content = @file_get_contents($url, false, $context);
+    if ($content == false) {
+        return array('status_code' => 500, 'error' => "file_get_contents $url fail");
+    }
+    $__urlfetch_body_size = strlen($content);
+    $__urlfetch_body = $content;
+    
+    $content_length = 1 * $__urlfetch_headers["content-length"];
+    
+    if ($status_code == 200 && $__urlfetch_body_size > $__urlfetch_body_maxsize && $content_length && $__urlfetch_body_size < $content_length) {
+        $status_code = 206;
+        $range_start = 0;
+        $range_end = $__urlfetch_body_size - 1;
+        $__urlfetch_headers["content-range"] = "bytes $range_start-$range_end/$content_length";
+        $__urlfetch_headers["content-length"] = $__urlfetch_body_size;
+    }
+    
+    //error_exit('urlfetch result:', array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content-size' => $__urlfetch_body_size, 'error' => $error));
+ 
+    $response = array('status_code' => $status_code, 'headers' => $__urlfetch_headers, 'content' => $__urlfetch_body, 'error' => $error);
+    return $response;
+}
+
+function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
+    return urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
 }
 
 function post()
