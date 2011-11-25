@@ -203,38 +203,40 @@ function urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $d
     }
     $headers['connection'] = 'close';
     
-    if ($follow_redirects) {
-        //error_exit('urlfetch_fsockopen', 'follow_redirects is not supported!!!');
-    }
-    
-    if ($validate_certificate) {
-	    //error_exit('urlfetch_fsockopen', 'validate_certificate is not supported!!!');
-	}
-	
-	$header_string = '';
+    $header_string = '';
 	foreach ($headers as $key => $value) {
 	    if ($key) {
 	        $header_string .= join('-', array_map('ucfirst', explode('-', $key))).': '.$value."\r\n";
 	    }
 	}
-
 	//error_exit('header_string:', $header_string);
-	
-	$opt = array();
-	$opt['http'] = array();
+    
+    $opt = array();
+    $opt['http'] = array();
 	$opt['http']['method'] = $method;
 	$opt['http']['header'] = $header_string;
 	if ($payload) {
 	    $opt['http']['content'] = $payload;
 	}
 	$opt['http']['timeout'] = $deadline;
+	$opt['ssl'] = array();
+	$opt['ssl']['ciphers'] = 'ALL:!AES:!3DES:!RC4:@STRENGTH';
+    
+    if (!$follow_redirects) {
+        $opt['http']['follow_location'] = false;
+    }
+    
+    if (!$validate_certificate) {
+	    $opt['ssl']['verify_peer'] = false;
+	    $opt['ssl']['capture_peer_cert'] = false;
+	}
 	
 	$context = stream_context_create($opt);
 	if ($context == false) {
 	    return array('status_code' => 500, 'error' => "stream_context_create fail");
 	}
     
-    $fp = @fopen($url, 'r', false, $context);
+    $fp = @fopen($url, 'rb', false, $context);
     if ($fp == false) {
         return array('status_code' => 500, 'error' => "fopen $url fail");
     }
@@ -285,7 +287,11 @@ function urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $d
 }
 
 function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
-    return urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
+    if(function_exists('curl_exec')) {
+        return urlfetch_curl($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
+    } else {
+        return urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
+    }
 }
 
 function post()
