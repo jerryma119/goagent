@@ -69,7 +69,7 @@ class URLFetch {
                 if (!array_key_exists('set-cookie', $this->headers)) {
                     $this->headers['set-cookie'] = $value;
                 } else {
-                    $this->headers['set-cookie'] .= "\r\nset-cookie: " . $value;
+                    $this->headers['set-cookie'] .= "\r\nSet-Cookie: " . $value;
                 }
             } else {
                 $this->headers[$key] = $kv[1];
@@ -275,15 +275,15 @@ class URLFetch {
         $response = array('status_code' => $status_code, 'headers' => $this->headers, 'content' => $this->body, 'error' => $error);
         return $response;
     }
+}
 
-    function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
-        if(function_exists('curl_exec')) {
-            return $this->urlfetch_curl($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
-        } else {
-            return $this->urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
-        }
+function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
+    $urlfetch = new URLFetch();
+    if(function_exists('curl_exec')) {
+        return $urlfetch->urlfetch_curl($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
+    } else {
+        return $urlfetch->urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
     }
-
 }
 
 function post()
@@ -350,8 +350,7 @@ function post()
 
     $errors = array();
     for ($i = 0; $i < $FetchMax; $i++) {
-        $urlfetch = new URLFetch();
-        $response = $urlfetch->urlfetch($url, $payload, $method, $headers, False, $deadline, False);
+        $response = urlfetch($url, $payload, $method, $headers, False, $deadline, False);
         $status_code = $response['status_code'];
         if (200 <= $status_code && $status_code < 400) {
            return print_response($status_code, $response['headers'], $response['content']);
