@@ -851,7 +851,7 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     allow_reuse_address = True
 
 def try_show_love():
-    '''If you do not like this, please go back to gappproxy/wallproxy'''
+    '''If you hate this funtion, please go back to gappproxy/wallproxy'''
     if ctypes and os.name == 'nt' and common.LOVE_ENABLE:
         SetConsoleTitleW = ctypes.windll.kernel32.SetConsoleTitleW
         GetConsoleTitleW = ctypes.windll.kernel32.GetConsoleTitleW
@@ -874,7 +874,7 @@ def main():
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
-            os.system('wscript.exe /nologo addto-startup.vbs')
+            print(u'双击 addto-startup.vbs 可以把goagent.exe加入到启动项，需确认。')
         try_show_love()
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
