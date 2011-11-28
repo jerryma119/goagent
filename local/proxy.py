@@ -851,6 +851,7 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     allow_reuse_address = True
 
 def try_show_love():
+    '''If you do not like this, please go back to gappproxy/wallproxy'''
     if ctypes and os.name == 'nt' and common.LOVE_ENABLE:
         SetConsoleTitleW = ctypes.windll.kernel32.SetConsoleTitleW
         GetConsoleTitleW = ctypes.windll.kernel32.GetConsoleTitleW
