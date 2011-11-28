@@ -68,11 +68,7 @@ class MainPage(webapp2.RequestHandler):
         for i in xrange(int(request.get('fetchmax', FetchMax))):
             try:
                 response = urlfetch.fetch(url, payload, fetchmethod, headers, False, False, deadline, False)
-                if response.status_code < 400:
-                    break
-                else:
-                    errors.append('%s %r return %s' % (method, url, response.status_code))
-                    time.sleep(1)
+                break
             except apiproxy_errors.OverQuotaError, e:
                 time.sleep(4)
             except DeadlineExceededError, e:
