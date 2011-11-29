@@ -279,9 +279,10 @@ class URLFetch {
 
 function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
     $urlfetch = new URLFetch();
-    if(function_exists('curl_exec')) {
+    if(function_exists('curl_version')) {
         return $urlfetch->urlfetch_curl($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
     } else {
+        //error_exit('urlfetch', "Enter urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate)");
         return $urlfetch->urlfetch_fopen($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate);
     }
 }
@@ -373,7 +374,12 @@ function get() {
         print_notify('GET', $_SERVER['SCRIPT_FILENAME'], 200, 'Error: need zlib moudle!');
         exit(-1);
     }
-
+    
+    if (!function_exists('curl_version') && !ini_get('allow_url_fopen')) {
+        print_notify('GET', $_SERVER['SCRIPT_FILENAME'], 200, 'Error: need curl moudle or allow_url_fopen!');
+        exit(-1);
+    }
+    
     echo <<<EOF
 
 <html>
