@@ -166,7 +166,7 @@ class MultiplexConnection(object):
                 self._sockets.remove(self.socket)
                 if window > MultiplexConnection.window_min:
                     MultiplexConnection.window_ack += 1
-                    if MultiplexConnection.window_ack > 10 and window > MultiplexConnection.window_min:
+                    if MultiplexConnection.window_ack > 10:
                         MultiplexConnection.window = window - 1
                         MultiplexConnection.window_ack = 0
                         logging.info('MultiplexConnection CONNECT port=%s OK 10 times, switch new window=%d', port, MultiplexConnection.window)
@@ -874,7 +874,7 @@ def main():
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
-            print(u'双击 addto-startup.vbs 可以把goagent.exe加入到启动项，需确认。')
+            print(u'\u53cc\u51fb addto-startup.vbs \u53ef\u4ee5\u628agoagent.exe\u52a0\u5165\u5230\u542f\u52a8\u9879\u3002'.encode('mbcs'))
         try_show_love()
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
