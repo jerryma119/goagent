@@ -694,7 +694,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
-            self.raw_requestline = self.rfile.readline()
+            self.raw_requestline = self.rfile.readline(4096)
             if self.raw_requestline == '':
                 return
             self.parse_request()
