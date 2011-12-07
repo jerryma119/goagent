@@ -705,7 +705,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except socket.error, e:
             logging.exception('do_CONNECT_Thunnel socket.error: %s', e)
         finally:
-            self.connection.shutdown(socket.SHUT_WR)
+            try:
+                self.connection.shutdown(socket.SHUT_WR)
+            except socket.error:
+                # caught error: [Errno 107] Transport endpoint is not connected
+                pass
             self.rfile = self._realrfile
             self.wfile = self._realwfile
             self.connection = self._realconnection
@@ -892,4 +896,7 @@ def main():
     httpd.serve_forever()
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
