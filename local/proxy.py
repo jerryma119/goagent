@@ -552,7 +552,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         end = int(m.group(3)) - 1
         if start == 0:
             data['code'] = 200
-            del data['headers']['content-range']
         data['headers']['content-length'] = end-start+1
         partSize = common.AUTORANGE_MAXSIZE
 
