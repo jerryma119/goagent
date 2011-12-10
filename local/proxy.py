@@ -509,6 +509,7 @@ class SimpleMessageClass(object):
         return ''.join(self.headers or self.linedict.itervalues())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
 
@@ -773,7 +774,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.headers['Range'] = 'bytes=0-%d' % common.AUTORANGE_MAXSIZE
                     break
 
-        retval, data = self.fetch(self.path, payload, self.command, self.headers)
+        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in self.skip_headers)
+
+        retval, data = self.fetch(self.path, payload, self.command, headers)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
