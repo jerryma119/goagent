@@ -548,23 +548,20 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, on_error=self.handle_fetch_error)
 
     def rangefetch(self, m, data):
-        m = map(int, m.groups())
-        start = m[0]
-        end = m[2] - 1
+        start = int(m.group(1))
+        end = int(m.group(3)) - 1
         if start == 0:
             data['code'] = 200
             del data['headers']['content-range']
         data['headers']['content-length'] = end-start+1
         partSize = common.AUTORANGE_MAXSIZE
 
-        respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
+        respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], 'OK')
         strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
-        self.wfile.write(respline+strheaders+'\r\n')
+        self.wfile.write(respline+strheaders+'\r\n'+data['content'])
 
-        if start == m[0]:
-            self.wfile.write(data['content'])
-            start = m[1] + 1
-            partSize = len(data['content'])
+        start = int(m.group(2)) + 1
+        partSize = len(data['content'])
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
         while start <= end:
