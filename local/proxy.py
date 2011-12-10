@@ -551,8 +551,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def rangefetch(self, m, data):
         start = int(m.group(1))
         end = int(m.group(3)) - 1
-        if start == 0:
-            data['code'] = 200
         data['headers']['content-length'] = end-start+1
         partSize = common.AUTORANGE_MAXSIZE
 
