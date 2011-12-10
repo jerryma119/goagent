@@ -572,7 +572,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if retval != 0 or data['code'] >= 400:
                 failed += 1
                 seconds = random.randint(2*failed, 2*(failed+1))
-                logging.error('rangefetch fail %d times: retval=%d http_code=%d, retry after %d secs!', failed, retval, data['code'] if not retval else 'Unkown', seconds)
+                logging.error('Range Fetch fail %d times: retval=%d http_code=%d, retry after %d secs!', failed, retval, data['code'] if not retval else 'Unkown', seconds)
                 time.sleep(seconds)
                 continue
             m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('content-range',''))
