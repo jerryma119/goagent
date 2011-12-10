@@ -509,7 +509,6 @@ class SimpleMessageClass(object):
         return ''.join(self.headers or self.linedict.itervalues())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
 
@@ -552,25 +551,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         m = map(int, m.groups())
         start = m[0]
         end = m[2] - 1
-        if 'range' in self.headers:
-            req_range = re.search(r'(\d+)?-(\d+)?', self.headers['range'])
-            if req_range:
-                req_range = [u and int(u) for u in req_range.groups()]
-                if req_range[0] is None:
-                    if req_range[1] is not None:
-                        if m[1]-m[0]+1==req_range[1] and m[1]+1==m[2]:
-                            return False
-                        if m[2] >= req_range[1]:
-                            start = m[2] - req_range[1]
-                else:
-                    start = req_range[0]
-                    if req_range[1] is not None:
-                        if m[0]==req_range[0] and m[1]==req_range[1]:
-                            return False
-                        if end > req_range[1]:
-                            end = req_range[1]
-            data['headers']['content-range'] = 'bytes %d-%d/%d' % (start, end, m[2])
-        elif start == 0:
+        if start == 0:
             data['code'] = 200
             del data['headers']['content-range']
         data['headers']['content-length'] = end-start+1
@@ -789,16 +770,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             payload = ''
 
-        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in self.skip_headers)
-
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    headers += 'range: bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
+                    self.headers['Range'] = 'bytes=0-%d' % common.AUTORANGE_MAXSIZE
                     break
 
-        retval, data = self.fetch(self.path, payload, self.command, headers)
+        retval, data = self.fetch(self.path, payload, self.command, self.headers)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
