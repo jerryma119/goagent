@@ -463,14 +463,14 @@ class SimpleMessageClass(object):
             if not line or line == '\r\n':
                 break
             key, _, value = line.partition(':')
-            key = key.lower()
+            key = key.title()
             if value:
                 dict[key] = value.strip()
                 linedict[key] = line
                 headers_append(line)
 
     def get(self, name, default=None):
-        return self.dict.get(name.lower(), default)
+        return self.dict.get(name.title(), default)
 
     def iteritems(self):
         return self.dict.iteritems()
@@ -482,22 +482,22 @@ class SimpleMessageClass(object):
         return self.dict.itervalues()
 
     def __getitem__(self, name):
-        return self.dict[name.lower()]
+        return self.dict[name.title()]
 
     def __setitem__(self, name, value):
-        key = name.lower()
+        key = name.title()
         self.dict[key] = value
         self.linedict[key] = '%s: %s\r\n' % (name, value)
         self.headers = None
 
     def __delitem__(self, name):
-        key = name.lower()
+        key = name.title()
         del self.dict[key]
         del self.linedict[key]
         self.headers = None
 
     def __contains__(self, name):
-        return name.lower() in self.dict
+        return name.title() in self.dict
 
     def __len__(self):
         return len(self.dict)
