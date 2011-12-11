@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6.9'
+__version__ = '1.6.10'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -59,7 +59,7 @@ class MainPage(webapp2.RequestHandler):
 
         deadline = Deadline[1 if payload else 0]
 
-        headers = dict((k, v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+        headers = dict(('-'.join(x.title() for x in k.split('-')), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
         headers['Connection'] = 'close'
         if 'useragent' in request:
             headers['User-Agent'] = request['useragent']

@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6.9'
+__version__ = '1.6.10'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -509,7 +509,7 @@ class SimpleMessageClass(object):
         return ''.join(self.headers or self.linedict.itervalues())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
+    skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
 
@@ -556,16 +556,17 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], 'OK')
         strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
-        self.wfile.write(respline+strheaders+'\r\n'+data['content'])
+        self.connection.sendall(respline+strheaders+'\r\n'+data['content'])
 
         start = int(m.group(2)) + 1
-        partSize = len(data['content'])
+        #partSize = len(data['content'])
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
         while start <= end:
             if failed > 5:
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
+            #print self.headers
             retval, data = self.fetch(self.path, '', self.command, self.headers)
             if retval != 0 or data['code'] >= 400:
                 failed += 1
@@ -580,7 +581,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             start = int(m.group(2)) + 1
             logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['content-range'], end))
             failed = 0
-            self.wfile.write(data['content'])
+            self.connection.sendall(data['content'])
         logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.headers.get('Host'))
         return True
 
@@ -590,14 +591,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def send_response(self, code, message=None):
         self.log_request(code)
         message = message or self.responses.get(code, ('GoAgent Notify',))[0]
-        self.wfile.write('%s %d %s\r\n' % (self.protocol_version, code, message))
+        self.connection.sendall('%s %d %s\r\n' % (self.protocol_version, code, message))
 
     def end_error(self, code, message=None, data=None):
         if not data:
             self.send_error(code, message)
         else:
             self.send_response(code, message)
-            self.wfile.write(data)
+            self.connection.sendall(data)
 
     def setup(self):
         if not common.GAE_ENABLE:
@@ -633,7 +634,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     sock = socket.create_connection((host, int(port)))
                 self.log_request(200)
-                self.wfile.write('%s 200 Tunnel established\r\n\r\n' % self.protocol_version)
+                self.connection.sendall('%s 200 Tunnel established\r\n\r\n' % self.protocol_version)
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host.endswith(common.GOOGLE_SITES):
