@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.6.9';
+$__version__  = '1.6.10';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -137,7 +137,7 @@ class URLFetch {
                 $curl_opt[CURLOPT_POSTFIELDS] = $payload;
                 break;
             default:
-                print_notify($method, $url, 501, 'Invalid Method');
+                error_exit('Invalid Method', "$method: $url");
                 exit(-1);
         }
 
@@ -170,10 +170,11 @@ class URLFetch {
         $content_length = 1 * $this->headers["content-length"];
 
         if ($status_code == 200 && $this->body_size > $this->body_maxsize && $content_length && $this->body_size < $content_length) {
+            //error_exit($status_code, $this->headers, strlen($this->body));
             $status_code = 206;
-            $range_start = 0;
             $range_end = $this->body_size - 1;
-            $this->headers["content-range"] = "bytes $range_start-$range_end/$content_length";
+            $this->headers["content-range"] = "bytes 0-$range_end/$content_length";
+            $this->headers["accept-ranges"] = "bytes";
             $this->headers["content-length"] = $this->body_size;
         }
 
@@ -263,10 +264,11 @@ class URLFetch {
         $content_length = 1 * $this->headers["content-length"];
 
         if ($status_code == 200 && $this->body_size > $this->body_maxsize && $content_length && $this->body_size < $content_length) {
+            //error_exit($status_code, $this->headers, strlen($this->body));
             $status_code = 206;
-            $range_start = 0;
             $range_end = $this->body_size - 1;
-            $this->headers["content-range"] = "bytes $range_start-$range_end/$content_length";
+            $this->headers["content-range"] = "bytes 0-$range_end/$content_length";
+            $this->headers["accept-ranges"] = "bytes";
             $this->headers["content-length"] = $this->body_size;
         }
 
@@ -318,10 +320,13 @@ function post()
     $headers = array();
     foreach (explode("\r\n", $request['headers']) as $line) {
         $pair = explode(':', $line, 2);
-        $headers[trim($pair[0])] = trim($pair[1]);
+        if (trim($pair[0])) {       
+            $headers[trim($pair[0])] = trim($pair[1]);
+        }
     }
     $headers['connection'] = 'close';
 
+    /*
     $fetchrange = 'bytes=0-' . strval($FetchMaxSize - 1);
     if (array_key_exists('range', $headers)) {
         preg_match('/(\d+)?-(\d+)?/', $headers['range'], $matches, PREG_OFFSET_CAPTURE);
@@ -337,6 +342,7 @@ function post()
             $fetchrange = 'bytes='.$start.'-'.$end;
         }
     }
+    */
 
     if ($dns) {
         preg_match('@://(.+?)[:/]@', $url, $matches, PREG_OFFSET_CAPTURE);
@@ -374,12 +380,12 @@ function get() {
         print_notify('GET', $_SERVER['SCRIPT_FILENAME'], 200, 'Error: need zlib moudle!');
         exit(-1);
     }
-    
+
     if (!function_exists('curl_version') && !ini_get('allow_url_fopen')) {
         print_notify('GET', $_SERVER['SCRIPT_FILENAME'], 200, 'Error: need curl moudle or allow_url_fopen!');
         exit(-1);
     }
-    
+
     echo <<<EOF
 
 <html>
