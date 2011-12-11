@@ -459,7 +459,7 @@ class SimpleMessageClass(object):
         headers_append = self.headers.append
         readline = fp.readline
         while 1:
-            line = readline()
+            line = readline(8192)
             if not line or line == '\r\n':
                 break
             key, _, value = line.partition(':')
@@ -468,6 +468,9 @@ class SimpleMessageClass(object):
                 dict[key] = value.strip()
                 linedict[key] = line
                 headers_append(line)
+
+    def getheader(self, name, default=None):
+        return self.dict.get(name.lower(), default)
 
     def get(self, name, default=None):
         return self.dict.get(name.lower(), default)
@@ -481,13 +484,22 @@ class SimpleMessageClass(object):
     def itervalues(self):
         return self.dict.itervalues()
 
+    def keys(self):
+        return self.dict.keys()
+
+    def values(self):
+        return self.dict.values()
+
+    def items(self):
+        return self.dict.items()
+
     def __getitem__(self, name):
         return self.dict[name.lower()]
 
     def __setitem__(self, name, value):
         key = name.lower()
         self.dict[key] = value
-        self.linedict[key] = '%s: %s\r\n' % (name, value)
+        self.linedict[key] = '%s: %s\r\n' % ('-'.join(x.title() for x in name.split('-')), value)
         self.headers = None
 
     def __delitem__(self, name):
@@ -594,7 +606,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if retval != 0 or data['code'] >= 400:
                 failed += 1
                 seconds = random.randint(2*failed, 2*(failed+1))
-                logging.error('rangefetch fail %d times: retval=%d http_code=%d, retry after %d secs!', failed, retval, data['code'] if not retval else 'Unkown', seconds)
+                logging.error('Range Fetch fail %d times: retval=%d http_code=%d, retry after %d secs!', failed, retval, data['code'] if not retval else 'Unkown', seconds)
                 time.sleep(seconds)
                 continue
             m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('content-range',''))
@@ -830,15 +842,14 @@ class PHPProxyHandler(LocalProxyHandler):
         if common.PROXY_ENABLE:
             logging.info('Local Proxy is enable, PHPProxyHandler dont resole DNS')
         else:
-            fetchhost = common.PHP_FETCHHOST
-            logging.info('PHPProxyHandler.setup check %s is in common.HOSTS', fetchhost)
-            if fetchhost not in common.HOSTS:
+            logging.info('PHPProxyHandler.setup check %s is in common.HOSTS', common.PHP_FETCHHOST)
+            if common.PHP_FETCHHOST not in common.HOSTS:
                 with LocalProxyHandler.SetupLock:
-                    if fetchhost not in common.HOSTS:
+                    if common.PHP_FETCHHOST not in common.HOSTS:
                         try:
                             logging.info('Resole php fetchserver address.')
-                            common.HOSTS[fetchhost] = socket.gethostbyname(fetchhost)
-                            logging.info('Resole php fetchserver address OK. %s', common.HOSTS[fetchhost])
+                            common.HOSTS[common.PHP_FETCHHOST] = socket.gethostbyname(common.PHP_FETCHHOST)
+                            logging.info('Resole php fetchserver address OK. %s', common.HOSTS[common.PHP_FETCHHOST])
                         except Exception, e:
                             logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
         PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Thunnel
