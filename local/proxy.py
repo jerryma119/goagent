@@ -463,14 +463,14 @@ class SimpleMessageClass(object):
             if not line or line == '\r\n':
                 break
             key, _, value = line.partition(':')
-            key = key.title()
+            key = key.lower()
             if value:
                 dict[key] = value.strip()
                 linedict[key] = line
                 headers_append(line)
 
     def get(self, name, default=None):
-        return self.dict.get(name.title(), default)
+        return self.dict.get(name.lower(), default)
 
     def iteritems(self):
         return self.dict.iteritems()
@@ -482,22 +482,22 @@ class SimpleMessageClass(object):
         return self.dict.itervalues()
 
     def __getitem__(self, name):
-        return self.dict[name.title()]
+        return self.dict[name.lower()]
 
     def __setitem__(self, name, value):
-        key = name.title()
+        key = name.lower()
         self.dict[key] = value
         self.linedict[key] = '%s: %s\r\n' % (name, value)
         self.headers = None
 
     def __delitem__(self, name):
-        key = name.title()
+        key = name.lower()
         del self.dict[key]
         del self.linedict[key]
         self.headers = None
 
     def __contains__(self, name):
-        return name.title() in self.dict
+        return name.lower() in self.dict
 
     def __len__(self):
         return len(self.dict)
@@ -509,7 +509,7 @@ class SimpleMessageClass(object):
         return ''.join(self.headers or self.linedict.itervalues())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
+    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
 
@@ -549,29 +549,52 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, on_error=self.handle_fetch_error)
 
     def rangefetch(self, m, data):
-        start = int(m.group(1))
-        end = int(m.group(3)) - 1
+        m = map(int, m.groups())
+        start = m[0]
+        end = m[2] - 1
+        if 'range' in self.headers:
+            req_range = re.search(r'(\d+)?-(\d+)?', self.headers['range'])
+            if req_range:
+                req_range = [u and int(u) for u in req_range.groups()]
+                if req_range[0] is None:
+                    if req_range[1] is not None:
+                        if m[1]-m[0]+1==req_range[1] and m[1]+1==m[2]:
+                            return False
+                        if m[2] >= req_range[1]:
+                            start = m[2] - req_range[1]
+                else:
+                    start = req_range[0]
+                    if req_range[1] is not None:
+                        if m[0]==req_range[0] and m[1]==req_range[1]:
+                            return False
+                        if end > req_range[1]:
+                            end = req_range[1]
+            data['headers']['content-range'] = 'bytes %d-%d/%d' % (start, end, m[2])
+        elif start == 0:
+            data['code'] = 200
+            del data['headers']['content-range']
         data['headers']['content-length'] = end-start+1
         partSize = common.AUTORANGE_MAXSIZE
 
-        respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], 'OK')
+        respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
         strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
-        self.connection.sendall(respline+strheaders+'\r\n'+data['content'])
+        self.connection.sendall(respline+strheaders+'\r\n')
 
-        start = int(m.group(2)) + 1
-        #partSize = len(data['content'])
+        if start == m[0]:
+            self.connection.sendall(data['content'])
+            start = m[1] + 1
+            partSize = len(data['content'])
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
         while start <= end:
             if failed > 5:
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
-            #print self.headers
             retval, data = self.fetch(self.path, '', self.command, self.headers)
             if retval != 0 or data['code'] >= 400:
                 failed += 1
                 seconds = random.randint(2*failed, 2*(failed+1))
-                logging.error('Range Fetch fail %d times: retval=%d http_code=%d, retry after %d secs!', failed, retval, data['code'] if not retval else 'Unkown', seconds)
+                logging.error('rangefetch fail %d times: retval=%d http_code=%d, retry after %d secs!', failed, retval, data['code'] if not retval else 'Unkown', seconds)
                 time.sleep(seconds)
                 continue
             m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('content-range',''))
@@ -671,7 +694,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
-            self.raw_requestline = self.rfile.readline(4096)
+            self.raw_requestline = self.rfile.readline(8192)
             if self.raw_requestline == '':
                 return
             self.parse_request()
@@ -685,7 +708,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             try:
                 self.connection.shutdown(socket.SHUT_WR)
             except socket.error:
-                # caught error: [Errno 107] Transport endpoint is not connected
                 pass
             self.rfile = self._realrfile
             self.wfile = self._realwfile
@@ -766,14 +788,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             payload = ''
 
+        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in self.skip_headers)
+
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    self.headers['Range'] = 'bytes=0-%d' % common.AUTORANGE_MAXSIZE
+                    headers += 'range: bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
                     break
-
-        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in self.skip_headers)
 
         retval, data = self.fetch(self.path, payload, self.command, headers)
         try:
@@ -873,7 +895,7 @@ def main():
     httpd.serve_forever()
 
 if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
+   try:
+       main()
+   except KeyboardInterrupt:
+       pass

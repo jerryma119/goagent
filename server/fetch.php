@@ -137,7 +137,7 @@ class URLFetch {
                 $curl_opt[CURLOPT_POSTFIELDS] = $payload;
                 break;
             default:
-                error_exit('Invalid Method', "$method: $url");
+                print_notify($method, $url, 501, 'Invalid Method');
                 exit(-1);
         }
 
@@ -320,13 +320,10 @@ function post()
     $headers = array();
     foreach (explode("\r\n", $request['headers']) as $line) {
         $pair = explode(':', $line, 2);
-        if (trim($pair[0])) {       
-            $headers[trim($pair[0])] = trim($pair[1]);
-        }
+        $headers[trim($pair[0])] = trim($pair[1]);
     }
     $headers['connection'] = 'close';
 
-    /*
     $fetchrange = 'bytes=0-' . strval($FetchMaxSize - 1);
     if (array_key_exists('range', $headers)) {
         preg_match('/(\d+)?-(\d+)?/', $headers['range'], $matches, PREG_OFFSET_CAPTURE);
@@ -342,7 +339,6 @@ function post()
             $fetchrange = 'bytes='.$start.'-'.$end;
         }
     }
-    */
 
     if ($dns) {
         preg_match('@://(.+?)[:/]@', $url, $matches, PREG_OFFSET_CAPTURE);
