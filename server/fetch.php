@@ -80,11 +80,11 @@ class URLFetch {
 
     function urlfetch_curl_readbody($ch, $data) {
         $bytes = strlen($data);
-        $this->body_size += $bytes;
-        $this->body .= $data;
-        if ($this->body_size > $this->body_maxsize) {
+    	if ($this->body_size + $bytes > $this->body_maxsize) {
             return -1;
         }
+        $this->body_size += $bytes;
+        $this->body .= $data;
         return $bytes;
     }
 
@@ -157,11 +157,16 @@ class URLFetch {
 
         $ch = curl_init($url);
         curl_setopt_array($ch, $curl_opt);
+        retry:
         $ret = curl_exec($ch);
         $this->headers['connection'] = 'close';
         $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $errno = curl_errno($ch);
-        if( $errno)
+        if ($errno == 28)
+		{
+			goto retry;
+		}
+        if ($errno)
         {
             $error =  $errno . ': ' .curl_error($ch);
         }
@@ -169,7 +174,7 @@ class URLFetch {
 
         $content_length = 1 * $this->headers["content-length"];
 
-        if ($status_code == 200 && $this->body_size > $this->body_maxsize && $content_length && $this->body_size < $content_length) {
+        if ($status_code == 200 && $errno == 23 && $content_length && $this->body_size < $content_length) {
             //error_exit($status_code, $this->headers, strlen($this->body));
             $status_code = 206;
             $range_end = $this->body_size - 1;
