@@ -658,6 +658,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
             ip = (ip for p, ip in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
             if not ip and not common.PROXY_ENABLE:
+                logging.info('try resolve %r', host)
                 ip = socket.gethostbyname(host)
             common.HOSTS[host] = ip
             self.do_CONNECT_Direct()
