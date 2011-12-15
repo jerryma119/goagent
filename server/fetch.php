@@ -157,15 +157,10 @@ class URLFetch {
 
         $ch = curl_init($url);
         curl_setopt_array($ch, $curl_opt);
-        retry:
         $ret = curl_exec($ch);
         $this->headers['connection'] = 'close';
         $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $errno = curl_errno($ch);
-        if ($errno == 28)
-		{
-			goto retry;
-		}
         if ($errno)
         {
             $error =  $errno . ': ' .curl_error($ch);
