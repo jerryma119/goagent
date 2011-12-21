@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6.11'
+__version__ = '1.6.12'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -92,9 +92,10 @@ class Common(object):
     def build_gae_fetchserver(self):
         self.GAE_FETCHHOST = '%s.appspot.com' % self.GAE_APPIDS[0]
         if not self.PROXY_ENABLE:
-            self.GAE_FETCHSERVER = '%s://%s%s' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
+            # append '?' to url, it can avoid china telicom/unicom AD
+            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
         else:
-            self.GAE_FETCHSERVER = '%s://%s%s' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_APPSPOT), self.GAE_PATH)
+            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_APPSPOT), self.GAE_PATH)
 
     def proxy_basic_auth_header(self):
         return 'Proxy-Authorization: Basic %s' + base64.b64encode('%s:%s'%(self.PROXY_USERNAME, self.PROXY_PASSWROD))
