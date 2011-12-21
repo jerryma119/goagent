@@ -408,6 +408,7 @@ function get() {
         <tr><td align="center"><hr></td></tr>
     </table>
 </body>
+</html>
 
 EOF;
 }
