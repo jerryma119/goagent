@@ -438,7 +438,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
                 data['content'] = raw_data[12+hlen:tlen]
             else:
                 raise ValueError('Data length is short than excepted!')
-            data['headers'] = dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
+            data['headers'] = dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&') if x))
             return (0, data)
         except Exception, e:
             if on_error:

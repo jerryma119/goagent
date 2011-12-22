@@ -26,40 +26,40 @@ const (
     Password = ""
 )
 
-func encodeData(h http.Header) string {
+func encodeData(h map[string]string) []byte {
 	w := bytes.NewBufferString("")
-	for k, vs := range h {
-		fmt.Fprintf(w, "%s=%s&", k, hex.Dump([]byte(strings.Join(vs, " "))))
+	for k, v := range h {
+		fmt.Fprintf(w, "%s=%s&", k, hex.EncodeToString([]byte(v)))
 	}
-	return w.String()
+	return w.Bytes()
 }
 
-func decodeData(r []byte) http.Header{
-    h := make(http.Header)
+func decodeData(r []byte) map[string]string{
+    h := make(map[string]string)
 	for _, kv := range strings.Split(string(r), "&") {
 		if kv != "" {
 			pair := strings.Split(kv, "=")
 			value, _ := hex.DecodeString(pair[1])
-			h.Set(pair[0], string(value))
+			h[pair[0]] = string(value)
 		}
 	}
 	return h;
 }
 
-func printResponse(status int, headers http.Header, content string, w http.ResponseWriter) {
+func printResponse(status int, headers map[string]string, content []byte, w http.ResponseWriter) {
 	data := bytes.NewBufferString("")
-    strheaders := encodeData(headers)
+    headersbytes := encodeData(headers)
     //contentType := headers.Get("content-type")
     //if strings.HasPrefix(contentType, "text/") {
     //	data.WriteString("1")
     //	data.WriteString("gzcompress(pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content")
    // } else {
     	data.WriteString("0")
-    	binary.Write(data, binary.BigEndian, status)
-    	binary.Write(data, binary.BigEndian, len(strheaders))
-    	binary.Write(data, binary.BigEndian, len(content))
-    	data.WriteString(strheaders)
-    	data.WriteString(content)
+    	binary.Write(data, binary.BigEndian, uint32(status))
+    	binary.Write(data, binary.BigEndian, uint32(len(headersbytes)))
+    	binary.Write(data, binary.BigEndian, uint32(len(content)))
+    	data.Write(headersbytes)
+    	data.Write(content)
    // }
     w.WriteHeader(status)
     w.Header().Set("Content-Type", "image/gif")
@@ -68,15 +68,14 @@ func printResponse(status int, headers http.Header, content string, w http.Respo
     w.Write(databytes)
 }
 
-func printNotify(method string, url string, status int, content string, w http.ResponseWriter) {
-    content = "<h2>PHP Fetch Server Info</h2><hr noshade='noshade'><p>$method '$url'</p><p>Return Code: $status</p><p>Message: $content</p>"
-    headers := make(http.Header)
-    headers.Set("content-type", "text/html")
+func printNotify(method string, url string, status int, content []byte, w http.ResponseWriter) {
+    content = []byte("<h2>PHP Fetch Server Info</h2><hr noshade='noshade'><p>$method '$url'</p><p>Return Code: $status</p><p>Message: $content</p>")
+    headers := map[string]string{"content-type":"text/html"}
     printResponse(status, headers, content, w)
 }
 
 func post(w http.ResponseWriter, r *http.Request) {
-	printNotify("", "", 200, "hello world", w);
+	printNotify("", "", 200, []byte("hello world"), w);
 }
 
 func get(w http.ResponseWriter, r *http.Request) {
@@ -123,4 +122,3 @@ func handle(w http.ResponseWriter, r *http.Request) {
 func init() {
 	http.HandleFunc("/fetch.py", handle)
 }
- 
