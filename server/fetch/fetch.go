@@ -5,19 +5,18 @@ package fetch
 
 import (
 	"fmt"
+	"log"
 	"bytes"
 	"strings"
 	"strconv"
 	"encoding/hex"
 	"encoding/binary"
-	//"compress/zlib"
-	
-	"http"
-	//"io"
-	//"strconv"
+	"compress/zlib"
 
 	//"appengine"
 	//"appengine/urlfetch"
+	
+	"http"
 )
 
 const (
@@ -26,62 +25,89 @@ const (
     Password = ""
 )
 
-func encodeData(h map[string]string) []byte {
+func encodeData(h http.Header) []byte {
 	w := bytes.NewBufferString("")
-	for k, v := range h {
-		fmt.Fprintf(w, "%s=%s&", k, hex.EncodeToString([]byte(v)))
+	for k, vs := range h {
+		fmt.Fprintf(w, "%s=%s&", k, hex.EncodeToString([]byte(vs[0])))
 	}
 	return w.Bytes()
 }
 
-func decodeData(r []byte) map[string]string{
-    h := make(map[string]string)
+func decodeData(r []byte) http.Header{
+    h := make(http.Header)
 	for _, kv := range strings.Split(string(r), "&") {
 		if kv != "" {
 			pair := strings.Split(kv, "=")
 			value, _ := hex.DecodeString(pair[1])
-			h[pair[0]] = string(value)
+			h.Set(pair[0], string(value))
 		}
 	}
 	return h;
 }
 
-func printResponse(status int, headers map[string]string, content []byte, w http.ResponseWriter) {
+type Webapp struct {
+	response http.ResponseWriter
+	request  *http.Request
+}
+
+func (app Webapp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	app.response = w
+	app.request = r
+	if r.Method == "POST" {
+        app.post()
+    } else {
+        app.get()
+    }
+}
+
+func (app Webapp) printResponse(status int, headers http.Header, content []byte) {
 	data := bytes.NewBufferString("")
-    headersbytes := encodeData(headers)
-    //contentType := headers.Get("content-type")
-    //if strings.HasPrefix(contentType, "text/") {
-    //	data.WriteString("1")
-    //	data.WriteString("gzcompress(pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content")
-   // } else {
+    headersBytes := encodeData(headers)
+   
+    if strings.HasPrefix(headers.Get("content-type"), "text/") {
+    	data.WriteString("1")
+    	w, err := zlib.NewWriter(data)
+    	defer w.Close()
+    	if err != nil {
+    		log.Fatalf("Error: %v", err)
+    	}
+    	binary.Write(w, binary.BigEndian, uint32(status))
+    	binary.Write(w, binary.BigEndian, uint32(len(headersBytes)))
+    	binary.Write(w, binary.BigEndian, uint32(len(content)))
+    	w.Write(headersBytes)
+    	w.Write(content)
+    } else {
     	data.WriteString("0")
     	binary.Write(data, binary.BigEndian, uint32(status))
-    	binary.Write(data, binary.BigEndian, uint32(len(headersbytes)))
+    	binary.Write(data, binary.BigEndian, uint32(len(headersBytes)))
     	binary.Write(data, binary.BigEndian, uint32(len(content)))
-    	data.Write(headersbytes)
+    	data.Write(headersBytes)
     	data.Write(content)
-   // }
-    w.WriteHeader(status)
-    w.Header().Set("Content-Type", "image/gif")
-    databytes := data.Bytes()
-    w.Header().Set("Content-Length", strconv.Itoa(len(databytes)))
-    w.Write(databytes)
+    }
+    
+    log.Printf("data.Len()==%v\n", data.Len())
+    
+    app.response.WriteHeader(status)
+    app.response.Header().Set("Content-Type", "image/gif")
+    app.response.Header().Set("Content-Length", strconv.Itoa(data.Len()))
+    app.response.Write(data.Bytes())
 }
 
-func printNotify(method string, url string, status int, content []byte, w http.ResponseWriter) {
+func (app Webapp) printNotify(method string, url string, status int, content []byte) {
     content = []byte("<h2>PHP Fetch Server Info</h2><hr noshade='noshade'><p>$method '$url'</p><p>Return Code: $status</p><p>Message: $content</p>")
-    headers := map[string]string{"content-type":"text/html"}
-    printResponse(status, headers, content, w)
+    headers := make(http.Header)
+    headers.Set("Content-Type", "text/html")
+    app.printResponse(status, headers, content)
 }
 
-func post(w http.ResponseWriter, r *http.Request) {
-	printNotify("", "", 200, []byte("hello world"), w);
+func (app Webapp) post() {
+	app.printNotify("", "", 200, []byte("hello world"))
 }
 
-func get(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `
+func (app Webapp) get() {
+	app.response.WriteHeader(http.StatusOK)
+	app.response.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(app.response, `
 <html>
 <head>
     <link rel="icon" type="image/vnd.microsoft.icon" href="http://www.google.cn/favicon.ico">
@@ -111,14 +137,6 @@ func get(w http.ResponseWriter, r *http.Request) {
 </html>`, Version, Version)
 }
 
-func handle(w http.ResponseWriter, r *http.Request) {
-    if r.Method == "POST" {
-        post(w, r);
-    } else {
-        get(w, r);
-    }
-}
-
 func init() {
-	http.HandleFunc("/fetch.py", handle)
+	http.Handle("/fetch.py", Webapp{})
 }
