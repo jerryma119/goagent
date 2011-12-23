@@ -8,7 +8,6 @@ import (
 	"log"
 	"bytes"
 	"strings"
-	"strconv"
 	"encoding/hex"
 	"encoding/binary"
 	"compress/zlib"
@@ -61,12 +60,14 @@ func (app Webapp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app Webapp) printResponse(status int, headers http.Header, content []byte) {
-	data := bytes.NewBufferString("")
-    headersBytes := encodeData(headers)
+	headersBytes := encodeData(headers)
+
+	app.response.WriteHeader(status)
+	app.response.Header().Set("Content-Type", "image/gif")    
    
     if strings.HasPrefix(headers.Get("content-type"), "text/") {
-    	data.WriteString("1")
-    	w, err := zlib.NewWriter(data)
+    	app.response.Write([]byte("1"))
+    	w, err := zlib.NewWriter(app.response)
     	defer w.Close()
     	if err != nil {
     		log.Fatalf("Error: %v", err)
@@ -77,20 +78,13 @@ func (app Webapp) printResponse(status int, headers http.Header, content []byte)
     	w.Write(headersBytes)
     	w.Write(content)
     } else {
-    	data.WriteString("0")
-    	binary.Write(data, binary.BigEndian, uint32(status))
-    	binary.Write(data, binary.BigEndian, uint32(len(headersBytes)))
-    	binary.Write(data, binary.BigEndian, uint32(len(content)))
-    	data.Write(headersBytes)
-    	data.Write(content)
+    	app.response.Write([]byte("0"))
+    	binary.Write(app.response, binary.BigEndian, uint32(status))
+    	binary.Write(app.response, binary.BigEndian, uint32(len(headersBytes)))
+    	binary.Write(app.response, binary.BigEndian, uint32(len(content)))
+    	app.response.Write(headersBytes)
+    	app.response.Write(content)
     }
-    
-    log.Printf("data.Len()==%v\n", data.Len())
-    
-    app.response.WriteHeader(status)
-    app.response.Header().Set("Content-Type", "image/gif")
-    app.response.Header().Set("Content-Length", strconv.Itoa(data.Len()))
-    app.response.Write(data.Bytes())
 }
 
 func (app Webapp) printNotify(method string, url string, status int, content []byte) {
