@@ -584,7 +584,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         partSize = common.AUTORANGE_MAXSIZE
 
         respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
-        strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in name.split('-')), v) for k, v in data['headers'].iteritems())
+        strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
         self.connection.sendall(respline+strheaders+'\r\n')
 
         if start == m[0]:
