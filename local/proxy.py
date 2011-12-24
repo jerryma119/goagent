@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+# coding:utf-8
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.0 dev'
+__version__ = '1.7.1 dev'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -786,7 +786,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data += 'Proxy-Connection: close\r\n'
                 data += '\r\n'
 
-            content_length = int(self.headers.get('content-length', 0))
+            content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
             sock.sendall(data)
@@ -804,7 +804,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.headers.dict.get('host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
-        payload_len = int(self.headers.get('content-length', 0))
+        payload_len = int(self.headers.get('Content-Length', 0))
         if payload_len > 0:
             payload = self.rfile.read(payload_len)
         else:
