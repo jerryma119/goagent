@@ -584,7 +584,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         partSize = common.AUTORANGE_MAXSIZE
 
         respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
-        strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems())
+        strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in name.split('-')), v) for k, v in data['headers'].iteritems())
         self.connection.sendall(respline+strheaders+'\r\n')
 
         if start == m[0]:
@@ -814,7 +814,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    headers += 'range: bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
+                    headers += 'Range: bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
                     break
 
         retval, data = self.fetch(self.path, payload, self.command, headers)
@@ -825,7 +825,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers = data['headers']
             self.log_request(code)
             if code == 206 and self.command=='GET':
-                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('Content-Range',''))
+                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('Content-Range') or headers.get('content-range') or '')
                 if m and self.rangefetch(m, data):
                     return
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
