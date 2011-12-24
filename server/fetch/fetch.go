@@ -8,11 +8,13 @@ import (
 	"log"
 	"bytes"
 	"strings"
+	"strconv"
 	"regexp"
 	"encoding/hex"
 	"encoding/binary"
 	"compress/zlib"
 	"io/ioutil"
+	"time"
 
 	"appengine"
 	"appengine/urlfetch"
@@ -93,7 +95,7 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 }
 
 func (app Webapp) printNotify(method string, url string, status int, text string) {
-    content := []byte(fmt.Sprintf("<h2>PHP Fetch Server Info</h2><hr noshade='noshade'><p>%s '%s'</p><p>Return Code: %d</p><p>Message: %s</p>", method, url, status, text))
+    content := []byte(fmt.Sprintf("<h2>GAE/GO Fetch Server Info</h2><hr noshade='noshade'><p>%s '%s'</p><p>Return Code: %d</p><p>Message: %s</p>", method, url, status, text))
     headers := map[string]string {"Content-Type": "text/html"}
     app.printResponse(status, headers, content)
 }
@@ -138,9 +140,10 @@ func (app Webapp) post() {
     	}
     }
     
+    deadline := Deadline
     var errors []string
     for i := 0; i < FetchMax; i++ {
-    	t := &urlfetch.Transport{Context:appengine.NewContext(app.request), DeadlineSeconds:float64(Deadline)}
+    	t := &urlfetch.Transport{Context:appengine.NewContext(app.request), DeadlineSeconds:float64(deadline), AllowInvalidServerCertificate:true}
     	resp, err := t.RoundTrip(req)
     	if err == nil {
     		status := resp.StatusCode
@@ -163,11 +166,42 @@ func (app Webapp) post() {
     			    header["Set-Cookie"] = strings.Join(cookies, "\r\nSet-Cookie: ")
     			}
     		}
-    		conntent, _ := ioutil.ReadAll(resp.Body)
-    		app.printResponse(status, header, conntent)
+    		content, err := ioutil.ReadAll(resp.Body)
+    		if err == urlfetch.ErrTruncatedBody {
+    		    //app.printNotify(method, url, 502, fmt.Sprintf("ErrTruncatedBody: header=%v, len(content)=%d", resp.Header, len(content)))
+    		    //return 
+            }
+            if status == 206 {
+    		    //contentLength, _ := strconv.Atoi(resp.Header.Get("Content-Length"))
+                //header["Content-Range"] = fmt.Sprintf("bytes 0-%d/%d", len(content)-1, contentLength)
+                header["Accept-Ranges"] = "bytes"
+                header["Content-Length"] = strconv.Itoa(len(content))
+            }
+            header["Connection"] = "close"
+    		//app.printNotify(method, url, 502, fmt.Sprintf("error=[%v] status=%d, header=%v, len(content)=%d", err, status, resp.Header, len(content)))
+    		//return 
+    		app.printResponse(status, header, content)
         	return
     	} else {
-    		errors = append(errors, err.String())
+    	    message := err.String()
+    	    errors = append(errors, message)
+    	    if strings.Contains(message, "DEADLINE_EXCEEDED") {
+    	        log.Printf("URLFetchServiceError_DEADLINE_EXCEEDED(deadline=%s, url=%r)", deadline, url)
+                time.Sleep(1)
+                deadline *= 2
+    	    } else if strings.Contains(message, "FETCH_ERROR") {
+                log.Printf("URLFetchServiceError_FETCH_ERROR(deadline=%s, url=%r)", deadline, url)
+                time.Sleep(1)
+                deadline *= 2
+            } else if strings.Contains(message, "INVALID_URL") {
+                app.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.String()))
+                return
+            } else if strings.Contains(message, "RESPONSE_TOO_LARGE") {
+                log.Printf("URLFetchServiceError_RESPONSE_TOO_LARGE(url=%r)", url)
+                req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
+                deadline *= 2
+    		} else {
+    		}
     	}
     }
 	app.printNotify(method, url, 502, fmt.Sprintf("Fetch Server Failed: %v", errors))

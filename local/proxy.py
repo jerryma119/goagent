@@ -438,7 +438,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
                 data['content'] = raw_data[12+hlen:tlen]
             else:
                 raise ValueError('Data length is short than excepted!')
-            data['headers'] = dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&') if x))
+            data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&') if x))
             return (0, data)
         except Exception, e:
             if on_error:
@@ -584,15 +584,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             return False
                         if end > req_range[1]:
                             end = req_range[1]
-            data['headers']['content-range'] = 'bytes %d-%d/%d' % (start, end, m[2])
+            data['headers']['Content-Range'] = 'bytes %d-%d/%d' % (start, end, m[2])
         elif start == 0:
             data['code'] = 200
-            del data['headers']['content-range']
-        data['headers']['content-length'] = end-start+1
+            del data['headers']['Content-Range']
+        data['headers']['Content-Length'] = end-start+1
         partSize = common.AUTORANGE_MAXSIZE
 
         respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
-        strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
+        strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems())
         self.connection.sendall(respline+strheaders+'\r\n')
 
         if start == m[0]:
@@ -612,12 +612,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.error('Range Fetch fail %d times: retval=%d http_code=%d, retry after %d secs!', failed, retval, data['code'] if not retval else 'Unkown', seconds)
                 time.sleep(seconds)
                 continue
-            m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('content-range',''))
+            m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('Content-Range',''))
             if not m or int(m.group(1))!=start:
                 failed += 1
                 continue
             start = int(m.group(2)) + 1
-            logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['content-range'], end))
+            logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['Content-Range'], end))
             failed = 0
             self.connection.sendall(data['content'])
         logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.headers.get('Host'))
@@ -833,12 +833,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers = data['headers']
             self.log_request(code)
             if code == 206 and self.command=='GET':
-                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('content-range',''))
+                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('Content-Range',''))
                 if m and self.rangefetch(m, data):
                     return
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in headers.iteritems()), data['content'])
             self.connection.sendall(content)
-            if 'close' == headers.get('connection',''):
+            if 'close' == headers.get('Connection',''):
                 self.close_connection = 1
         except socket.error, (err, _):
             # Connection closed before proxy return
