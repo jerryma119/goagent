@@ -457,7 +457,6 @@ class SimpleMessageClass(object):
     def __init__(self, fp, seekable = 0):
         self.fp = fp
         self.dict = dict = {}
-        self.linedict = linedict = {}
         self.headers = []
         headers_append = self.headers.append
         readline = fp.readline
@@ -469,7 +468,6 @@ class SimpleMessageClass(object):
             key = key.lower()
             if value:
                 dict[key] = value.strip()
-                linedict[key] = line
                 headers_append(line)
 
     def getheader(self, name, default=None):
@@ -502,14 +500,23 @@ class SimpleMessageClass(object):
     def __setitem__(self, name, value):
         key = name.lower()
         self.dict[key] = value
-        self.linedict[key] = '%s: %s\r\n' % ('-'.join(x.title() for x in name.split('-')), value)
-        self.headers = None
+        for i, line in enumerate(self.headers):
+            if line.partition(':')[0].lower() == key:
+                break
+        if i == len(self.headers):
+            self.headers.append('%s: %s\r\n' % (name, value))
+        else:
+            self.headers[i] = '%s: %s\r\n' % (name, value)
 
     def __delitem__(self, name):
         key = name.lower()
         del self.dict[key]
-        del self.linedict[key]
-        self.headers = None
+        indexs = []
+        for i, line in enumerate(self.headers):
+            if line.partition(':')[0].lower() == key:
+                indexs.append(i)
+        for i in reversed(indexs):
+            del self.headers[i]
 
     def __contains__(self, name):
         return name.lower() in self.dict
@@ -521,7 +528,7 @@ class SimpleMessageClass(object):
         return iter(self.dict)
 
     def __str__(self):
-        return ''.join(self.headers or self.linedict.itervalues())
+        return ''.join(self.headers)
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
