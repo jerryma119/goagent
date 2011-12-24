@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.7.0 dev';
+$__version__  = '1.7.1 dev';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -63,13 +63,13 @@ class URLFetch {
     function urlfetch_curl_readheader($ch, $header) {
         $kv = array_map('trim', explode(':', $header, 2));
         if ($kv[1]) {
-            $key = strtolower($kv[0]);
+            $key   = join('-', array_map('ucfirst', explode('-', $kv[0])));
             $value = $kv[1];
-            if ($key == 'set-cookie') {
-                if (!array_key_exists('set-cookie', $this->headers)) {
-                    $this->headers['set-cookie'] = $value;
+            if ($key == 'Set-Cookie') {
+                if (!array_key_exists('Set-Cookie', $this->headers)) {
+                    $this->headers['Set-Cookie'] = $value;
                 } else {
-                    $this->headers['set-cookie'] .= "\r\nSet-Cookie: " . $value;
+                    $this->headers['Set-Cookie'] .= "\r\nSet-Cookie: " . $value;
                 }
             } else {
                 $this->headers[$key] = $kv[1];
@@ -158,7 +158,6 @@ class URLFetch {
         $ch = curl_init($url);
         curl_setopt_array($ch, $curl_opt);
         $ret = curl_exec($ch);
-        $this->headers['connection'] = 'close';
         $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $errno = curl_errno($ch);
         if ($errno)
@@ -167,16 +166,17 @@ class URLFetch {
         }
         curl_close($ch);
 
-        $content_length = 1 * $this->headers["content-length"];
+        $content_length = 1 * $this->headers["Content-Length"];
 
         if ($status_code == 200 && $errno == 23 && $content_length && $this->body_size < $content_length) {
             //error_exit($status_code, $this->headers, strlen($this->body));
             $status_code = 206;
             $range_end = $this->body_size - 1;
-            $this->headers["content-range"] = "bytes 0-$range_end/$content_length";
-            $this->headers["accept-ranges"] = "bytes";
-            $this->headers["content-length"] = $this->body_size;
+            $this->headers["Content-Range"] = "bytes 0-$range_end/$content_length";
+            $this->headers["Accept-Ranges"] = "bytes";
+            $this->headers["Content-Length"] = $this->body_size;
         }
+        $this->headers['Connection'] = 'close';
 
         //error_exit('urlfetch result:', array('status_code' => $status_code, 'headers' => $this->headers, 'content-size' => $this->body_size, 'error' => $error));
 
@@ -190,9 +190,9 @@ class URLFetch {
         $this->body_size = 0;
 
         if ($payload) {
-            $headers['content-length'] = strval(strlen($payload));
+            $headers['Content-Length'] = strval(strlen($payload));
         }
-        $headers['connection'] = 'close';
+        $headers['Connection'] = 'close';
 
         $header_string = '';
         foreach ($headers as $key => $value) {
@@ -241,18 +241,18 @@ class URLFetch {
         foreach($meta['wrapper_data'] as $line) {
             $kv = array_map('trim', explode(':', $line, 2));
             if ($kv[1]) {
-                $key = strtolower($kv[0]);
+                $key   = join('-', array_map('ucfirst', explode('-', $kv[0])));
                 $value = $kv[1];
-                if ($key == 'set-cookie') {
-                    if (!array_key_exists('set-cookie', $this->headers)) {
-                        $this->headers['set-cookie'] = $value;
+                if ($key == 'Set-Cookie') {
+                    if (!array_key_exists('Set-Cookie', $this->headers)) {
+                        $this->headers['Set-Cookie'] = $value;
                     } else {
-                        $this->headers['set-cookie'] .= "\r\nset-cookie: " . $value;
+                        $this->headers['Set-Cookie'] .= "\r\nSet-Cookie: " . $value;
                     }
                 } else {
                  $this->headers[$key] = $kv[1];
                 }
-            }
+            }   
         }
         $content = @file_get_contents($url, false, $context);
         if ($content == false) {
@@ -261,16 +261,17 @@ class URLFetch {
         $this->body_size = strlen($content);
         $this->body = $content;
 
-        $content_length = 1 * $this->headers["content-length"];
+        $content_length = 1 * $this->headers["Content-Length"];
 
         if ($status_code == 200 && $this->body_size > $this->body_maxsize && $content_length && $this->body_size < $content_length) {
             //error_exit($status_code, $this->headers, strlen($this->body));
             $status_code = 206;
             $range_end = $this->body_size - 1;
-            $this->headers["content-range"] = "bytes 0-$range_end/$content_length";
-            $this->headers["accept-ranges"] = "bytes";
-            $this->headers["content-length"] = $this->body_size;
+            $this->headers["Content-Range"] = "bytes 0-$range_end/$content_length";
+            $this->headers["Accept-Ranges"] = "bytes";
+            $this->headers["Content-Length"] = $this->body_size;
         }
+        $this->headers['Connection'] = 'close';
 
         //error_exit('urlfetch result:', array('status_code' => $status_code, 'headers' => $this->headers, 'content-size' => $this->body_size, 'error' => $error));
 
@@ -320,13 +321,13 @@ function post()
     $headers = array();
     foreach (explode("\r\n", $request['headers']) as $line) {
         $pair = explode(':', $line, 2);
-        $headers[trim($pair[0])] = trim($pair[1]);
+        $headers[join('-', array_map('ucfirst', explode('-', trim($pair[0]))))] = trim($pair[1]);
     }
-    $headers['connection'] = 'close';
+    $headers['Connection'] = 'close';
 
     $fetchrange = 'bytes=0-' . strval($FetchMaxSize - 1);
     if (array_key_exists('range', $headers)) {
-        preg_match('/(\d+)?-(\d+)?/', $headers['range'], $matches, PREG_OFFSET_CAPTURE);
+        preg_match('/(\d+)?-(\d+)?/', $headers['Range'], $matches, PREG_OFFSET_CAPTURE);
         $start = $matches[1][0];
         $end = $matches[2][0];
         if ($start || $end) {
