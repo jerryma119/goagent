@@ -49,6 +49,14 @@ func decodeData(qs []byte) map[string]string {
 	return m
 }
 
+func stringMap(f func(string) string, ss []string) []string{
+    ss2 := make([]string, len(ss))
+    for i, s := range ss {
+        ss2[i] = f(s)
+    }
+    return ss2
+}
+
 type Webapp struct {
 	response http.ResponseWriter
 	request  *http.Request
@@ -139,7 +147,9 @@ func (app Webapp) post() {
 	for _, line := range strings.Split(headers, "\r\n") {
 		kv := strings.SplitN(line, ":", 2)
 		if len(kv) == 2 {
-			req.Header.Set(strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
+		    k := strings.Join(stringMap(strings.Title, strings.Split(strings.TrimSpace(kv[0]), "-")), "-")
+		    v := strings.TrimSpace(kv[1])
+			req.Header.Set(k, v)
 		}
 	}
 
