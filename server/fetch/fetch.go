@@ -3,16 +3,16 @@
 package fetch
 
 import (
+    "fmt"
 	"bytes"
+	"strings"
+	"strconv"
+	"regexp"
+	"time"
+    "io/ioutil"
 	"compress/zlib"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
-	"io/ioutil"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
 
 	"appengine"
 	"appengine/urlfetch"
@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version  = "1.7.0"
+	Version  = "1.7.1 dev"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
@@ -67,7 +67,7 @@ func (app Webapp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app Webapp) printResponse(status int, header map[string]string, content []byte) {
-	headerBytes := encodeData(header)
+	headerEncoded := encodeData(header)
 
 	app.response.WriteHeader(200)
 	app.response.Header().Set("Content-Type", "image/gif")
@@ -81,16 +81,16 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 		}
 		defer w.Close()
 		binary.Write(w, binary.BigEndian, uint32(status))
-		binary.Write(w, binary.BigEndian, uint32(len(headerBytes)))
+		binary.Write(w, binary.BigEndian, uint32(len(headerEncoded)))
 		binary.Write(w, binary.BigEndian, uint32(len(content)))
-		w.Write(headerBytes)
+		w.Write(headerEncoded)
 		w.Write(content)
 	} else {
 		app.response.Write([]byte("0"))
 		binary.Write(app.response, binary.BigEndian, uint32(status))
-		binary.Write(app.response, binary.BigEndian, uint32(len(headerBytes)))
+		binary.Write(app.response, binary.BigEndian, uint32(len(headerEncoded)))
 		binary.Write(app.response, binary.BigEndian, uint32(len(content)))
-		app.response.Write(headerBytes)
+		app.response.Write(headerEncoded)
 		app.response.Write(content)
 	}
 }
@@ -143,9 +143,19 @@ func (app Webapp) post() {
 		}
 	}
 
+	fetchmax := FetchMax
+	if fetchmaxString, ok := request["fetchmax"] ; ok {
+	    fetchmax, err = strconv.Atoi(fetchmaxString)
+	    if err != nil {
+	        app.context.Errorf("strconv.Atoi(fetchmaxString=%v) error=%v", fetchmaxString, err)
+	        fetchmax = FetchMax
+	    }
+	}
+	
 	deadline := float64(Deadline)
+	
 	var errors []string
-	for i := 0; i < FetchMax; i++ {
+	for i := 0; i < fetchmax; i++ {
 		t := &urlfetch.Transport{app.context, deadline, true}
 		resp, err := t.RoundTrip(req)
 		if err != nil {
@@ -187,7 +197,7 @@ func (app Webapp) post() {
 						cookies[i] = fmt.Sprintf("%s, %s", cookies[i], sc)
 					} else {
 						cookies = append(cookies, sc)
-						i += 1
+						i++
 					}
 				}
 				header["Set-Cookie"] = strings.Join(cookies, "\r\nSet-Cookie: ")
