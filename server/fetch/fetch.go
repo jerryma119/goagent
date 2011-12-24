@@ -143,8 +143,14 @@ func (app Webapp) post() {
     	t := &urlfetch.Transport{Context:appengine.NewContext(app.request), DeadlineSeconds:float64(Deadline)}
     	resp, err := t.RoundTrip(req)
     	if err == nil {
-        	//app.printResponse(resp.StatusCode, resp.Header, ioutil.ReadAll(resp.Body));
-        	app.printNotify(method, url, 200, fmt.Sprintf("resp.StatusCode=%v resp.Header=%v resp.ContentLength=%v", resp.StatusCode, resp.Header, resp.ContentLength))
+    		status := resp.StatusCode
+    		header := make(map [string]string)
+    		for k, vv := range resp.Header {
+    			header[k] = vv[0]
+    		}
+    		conntent, _ := ioutil.ReadAll(resp.Body)
+    		app.printResponse(status, header, conntent)
+        	//app.printNotify(method, url, 200, fmt.Sprintf("resp.StatusCode=%v resp.Header=%v resp.ContentLength=%v", resp.StatusCode, resp.Header, resp.ContentLength))
         	return
     	} else {
     		errors = append(errors, err.String())
