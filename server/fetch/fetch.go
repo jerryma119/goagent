@@ -32,9 +32,9 @@ const (
 func encodeData(dic map[string]string) []byte {
 	w := bytes.NewBufferString("")
 	for k, v := range dic {
-		fmt.Fprintf(w, "%s=%s&", k, hex.EncodeToString([]byte(v)))
+		fmt.Fprintf(w, "&%s=%s", k, hex.EncodeToString([]byte(v)))
 	}
-	return w.Bytes()
+	return w.Bytes()[1:]
 }
 
 func decodeData(qs []byte) map[string]string {

@@ -438,7 +438,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
                 data['content'] = raw_data[12+hlen:tlen]
             else:
                 raise ValueError('Data length is short than excepted!')
-            data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&') if x))
+            data['headers'] = dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
             return (0, data)
         except Exception, e:
             if on_error:
@@ -836,7 +836,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('Content-Range',''))
                 if m and self.rangefetch(m, data):
                     return
-            content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in headers.iteritems()), data['content'])
+            content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
             self.connection.sendall(content)
             if 'close' == headers.get('Connection',''):
                 self.close_connection = 1
