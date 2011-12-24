@@ -167,7 +167,8 @@ func (app Webapp) post() {
 				req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
 				deadline *= 2
 			} else {
-				app.context.Errorf("A Unkown Error(url=%v, error=%v)", url, err)
+				app.context.Errorf("URLFetchServiceError_UNKOWN(url=%v, error=%v)", url, err)
+				time.Sleep(4)
 			}
 			continue
 		}
