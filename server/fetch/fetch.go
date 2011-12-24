@@ -4,7 +4,6 @@ package fetch
 
 import (
 	"fmt"
-	"log"
 	"bytes"
 	"strings"
 	"strconv"
@@ -53,11 +52,13 @@ func decodeData(qs []byte) map[string]string {
 type Webapp struct {
 	response http.ResponseWriter
 	request  *http.Request
+	context  appengine.Context
 }
 
 func (app Webapp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	app.response = w
 	app.request = r
+	app.context = appengine.NewContext(app.request)
 	if r.Method == "POST" {
         app.post()
     } else {
@@ -71,11 +72,12 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 	app.response.WriteHeader(200)
 	app.response.Header().Set("Content-Type", "image/gif")
 
-    if contentType, ok := header["content-type"]; ok && strings.HasPrefix(contentType, "text/") {
+    if contentType, ok := header["Content-Type"]; ok && strings.HasPrefix(contentType, "text/") {
     	app.response.Write([]byte("1"))
     	w, err := zlib.NewWriter(app.response)	
     	if err != nil {
-    		log.Fatalf("zlib.NewWriter(app.response) Error: %v", err)
+    		app.context.Criticalf("zlib.NewWriter(app.response) Error: %v", err)
+    		return
     	}
     	defer w.Close()
     	binary.Write(w, binary.BigEndian, uint32(status))
@@ -102,12 +104,14 @@ func (app Webapp) printNotify(method string, url string, status int, text string
 func (app Webapp) post() {
 	r, err := zlib.NewReader(app.request.Body)
 	if err != nil {
-		log.Fatalf("zlib.NewReader(app.request.Body) Error: %v", err)
+		app.context.Criticalf("zlib.NewReader(app.request.Body) Error: %v", err)
+		return
     }
     defer r.Close()
     data, err := ioutil.ReadAll(r)
 	if err != nil {
-		log.Fatalf("io.ReadFull(r) Error: %v", err)
+		app.context.Criticalf("ioutil.ReadAll(r) Error: %v", err)
+		return
     }    
     request := decodeData(data)
      
@@ -138,31 +142,32 @@ func (app Webapp) post() {
     		req.Header.Set(strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
     	}
     }
-    
-    deadline := Deadline
+
+    deadline := float64(Deadline)
     var errors []string
     for i := 0; i < FetchMax; i++ {
-    	t := &urlfetch.Transport{Context:appengine.NewContext(app.request), DeadlineSeconds:float64(deadline), AllowInvalidServerCertificate:true}
+    	t := &urlfetch.Transport{app.context, deadline, true}
     	resp, err := t.RoundTrip(req)
     	if err != nil {
     	    message := err.String()
     	    errors = append(errors, message)
     	    if strings.Contains(message, "DEADLINE_EXCEEDED") {
-    	        log.Printf("URLFetchServiceError_DEADLINE_EXCEEDED(deadline=%s, url=%r)", deadline, url)
+    	        app.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(deadline=%s, url=%v)", deadline, url)
                 time.Sleep(1)
                 deadline *= 2
     	    } else if strings.Contains(message, "FETCH_ERROR") {
-                log.Printf("URLFetchServiceError_FETCH_ERROR(deadline=%s, url=%r)", deadline, url)
+                app.context.Errorf("URLFetchServiceError_FETCH_ERROR(deadline=%s, url=%v)", deadline, url)
                 time.Sleep(1)
                 deadline *= 2
             } else if strings.Contains(message, "INVALID_URL") {
                 app.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.String()))
                 return
             } else if strings.Contains(message, "RESPONSE_TOO_LARGE") {
-                log.Printf("URLFetchServiceError_RESPONSE_TOO_LARGE(url=%r)", url)
+                app.context.Errorf("URLFetchServiceError_RESPONSE_TOO_LARGE(url=%v)", url)
                 req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
                 deadline *= 2
     		} else {
+    		    app.context.Errorf("A Unkown Error(url=%v, error=%v)", url, err)
     		}
     		continue
     	}
@@ -190,7 +195,7 @@ func (app Webapp) post() {
     	
     	content, err := ioutil.ReadAll(resp.Body)
     	if err == urlfetch.ErrTruncatedBody {
-    	    log.Printf("ioutil.ReadAll(resp.Body) return urlfetch.ErrTruncatedBody")
+    	    app.context.Criticalf("ioutil.ReadAll(resp.Body) return urlfetch.ErrTruncatedBody")
         }
         if status == 206 {
             header["Accept-Ranges"] = "bytes"
