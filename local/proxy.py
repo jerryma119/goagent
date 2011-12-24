@@ -556,6 +556,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, on_error=self.handle_fetch_error)
 
     def rangefetch(self, m, data):
+        data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
         m = map(int, m.groups())
         start = m[0]
         end = m[2] - 1
@@ -584,7 +585,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         partSize = common.AUTORANGE_MAXSIZE
 
         respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
-        strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
+        strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems())
         self.connection.sendall(respline+strheaders+'\r\n')
 
         if start == m[0]:
@@ -598,10 +599,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
             retval, data = self.fetch(self.path, '', self.command, self.headers)
+            data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
             if retval != 0 or data['code'] >= 400:
                 failed += 1
                 seconds = random.randint(2*failed, 2*(failed+1))
-                logging.error('Range Fetch fail %d times: retval=%d http_code=%d, retry after %d secs!', failed, retval, data['code'] if not retval else 'Unkown', seconds)
+                logging.error('Range Fetch fail %d times, retry after %d secs!', failed, seconds)
                 time.sleep(seconds)
                 continue
             m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('Content-Range',''))
