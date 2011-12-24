@@ -533,7 +533,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # seems that current appid is over qouta, swith to next appid
             if error.code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                logging.info('APPSPOT 503 Error, switch to next fetchserver: %r', common.common.GAE_APPIDS[0])
+                logging.info('APPSPOT 503 Error, switch to next fetchserver: %r', common.GAE_APPIDS[0])
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
