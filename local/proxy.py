@@ -533,32 +533,24 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # seems that current appid is over qouta, swith to next appid
             if error.code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                common.build_gae_fetchserver()
-                logging.info('Appspot 503 Error, switch to new fetchserver: %r', common.GAE_FETCHSERVER)
-                sys.stdout.write(common.info())
-                return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
+                logging.info('APPSPOT 503 Error, switch to next fetchserver: %r', common.common.GAE_APPIDS[0])
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
                 #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
-                common.build_gae_fetchserver()
-                sys.stdout.write(common.info())
-                return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
         elif isinstance(error, urllib2.URLError):
             if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
                 # it seems that google.cn is reseted, switch to https
                 common.GOOGLE_MODE = 'https'
                 #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
-                common.build_gae_fetchserver()
-                sys.stdout.write(common.info())
-                return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
         elif isinstance(error, httplib.HTTPException):
             common.GOOGLE_MODE = 'https'
-            common.build_gae_fetchserver()
-            sys.stdout.write(common.info())
-            return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
         else:
             logging.warning('LocalProxyHandler.handle_fetch_error Exception %s', error, exc_info=True)
+            return {}
+        common.build_gae_fetchserver()
+        sys.stdout.write(common.info())
+        return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
 
     def fetch(self, url, payload, method, headers):
         return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, on_error=self.handle_fetch_error)
@@ -624,7 +616,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return True
 
     def address_string(self):
-        return '%s:%s' % (self.client_address[0], self.client_address[1])
+        return '%s:%s' % self.client_address[:2]
 
     def send_response(self, code, message=None):
         self.log_request(code)
