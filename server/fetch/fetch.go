@@ -1,5 +1,4 @@
 // Copyright 2011 Phus Lu. All rights reserved.
-// Use of this source code is governed by the Apache 2.0
 
 package fetch
 
@@ -70,8 +69,8 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 	headerBytes := encodeData(header)
 
 	app.response.WriteHeader(200)
-	app.response.Header().Set("Content-Type", "image/gif")    
-   
+	app.response.Header().Set("Content-Type", "image/gif")
+
     if contentType, ok := header["content-type"]; ok && strings.HasPrefix(contentType, "text/") {
     	app.response.Write([]byte("1"))
     	w, err := zlib.NewWriter(app.response)	
@@ -145,44 +144,7 @@ func (app Webapp) post() {
     for i := 0; i < FetchMax; i++ {
     	t := &urlfetch.Transport{Context:appengine.NewContext(app.request), DeadlineSeconds:float64(deadline), AllowInvalidServerCertificate:true}
     	resp, err := t.RoundTrip(req)
-    	if err == nil {
-    		status := resp.StatusCode
-    		header := make(map [string]string)
-    		for k, vv := range resp.Header {
-    		    if strings.ToLower(k) != "set-cookie" {
-    			    header[k] = vv[0]
-    			} else {
-    			    var cookies []string
-    			    i := -1
-					regex, _ := regexp.Compile("^[^ =]+ ")
-					for _, sc := range strings.Split(vv[0], ", ") {
-						if 0 <= i && regex.MatchString(sc){
-							cookies[i] = fmt.Sprintf("%s, %s", cookies[i], sc)
-						} else {
-							cookies = append(cookies, sc)
-							i += 1
-						}
-					}
-    			    header["Set-Cookie"] = strings.Join(cookies, "\r\nSet-Cookie: ")
-    			}
-    		}
-    		content, err := ioutil.ReadAll(resp.Body)
-    		if err == urlfetch.ErrTruncatedBody {
-    		    //app.printNotify(method, url, 502, fmt.Sprintf("ErrTruncatedBody: header=%v, len(content)=%d", resp.Header, len(content)))
-    		    //return 
-            }
-            if status == 206 {
-    		    //contentLength, _ := strconv.Atoi(resp.Header.Get("Content-Length"))
-                //header["Content-Range"] = fmt.Sprintf("bytes 0-%d/%d", len(content)-1, contentLength)
-                header["Accept-Ranges"] = "bytes"
-                header["Content-Length"] = strconv.Itoa(len(content))
-            }
-            header["Connection"] = "close"
-    		//app.printNotify(method, url, 502, fmt.Sprintf("error=[%v] status=%d, header=%v, len(content)=%d", err, status, resp.Header, len(content)))
-    		//return 
-    		app.printResponse(status, header, content)
-        	return
-    	} else {
+    	if err != nil {
     	    message := err.String()
     	    errors = append(errors, message)
     	    if strings.Contains(message, "DEADLINE_EXCEEDED") {
@@ -202,7 +164,43 @@ func (app Webapp) post() {
                 deadline *= 2
     		} else {
     		}
+    		continue
     	}
+    	
+    	status := resp.StatusCode
+    	header := make(map [string]string)
+    	for k, vv := range resp.Header {
+    	    if strings.ToLower(k) != "set-cookie" {
+    		    header[k] = vv[0]
+    		} else {
+    		    var cookies []string
+    		    i := -1
+				regex, _ := regexp.Compile("^[^ =]+ ")
+				for _, sc := range strings.Split(vv[0], ", ") {
+					if 0 <= i && regex.MatchString(sc){
+						cookies[i] = fmt.Sprintf("%s, %s", cookies[i], sc)
+					} else {
+						cookies = append(cookies, sc)
+						i += 1
+					}
+				}
+    		    header["Set-Cookie"] = strings.Join(cookies, "\r\nSet-Cookie: ")
+    		}
+    	}
+    	
+    	content, err := ioutil.ReadAll(resp.Body)
+    	if err == urlfetch.ErrTruncatedBody {
+    	    log.Printf("ioutil.ReadAll(resp.Body) return urlfetch.ErrTruncatedBody")
+        }
+        if status == 206 {
+            header["Accept-Ranges"] = "bytes"
+            header["Content-Length"] = strconv.Itoa(len(content))
+        }
+        header["Connection"] = "close"
+    	
+    	//app.printNotify(method, url, 502, fmt.Sprintf("status=%d, header=%v, len(content)=%d", status, resp.Header, len(content)))
+    	app.printResponse(status, header, content)
+        return
     }
 	app.printNotify(method, url, 502, fmt.Sprintf("Fetch Server Failed: %v", errors))
 }
