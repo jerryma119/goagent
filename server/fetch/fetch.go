@@ -153,11 +153,11 @@ func (app Webapp) post() {
 			errors = append(errors, message)
 			if strings.Contains(message, "DEADLINE_EXCEEDED") {
 				app.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(deadline=%s, url=%v)", deadline, url)
-				time.Sleep(1)
+				time.Sleep(1*1e9)
 				deadline *= 2
 			} else if strings.Contains(message, "FETCH_ERROR") {
 				app.context.Errorf("URLFetchServiceError_FETCH_ERROR(deadline=%s, url=%v)", deadline, url)
-				time.Sleep(1)
+				time.Sleep(1*1e9)
 				deadline *= 2
 			} else if strings.Contains(message, "INVALID_URL") {
 				app.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.String()))
@@ -168,7 +168,7 @@ func (app Webapp) post() {
 				deadline *= 2
 			} else {
 				app.context.Errorf("URLFetchServiceError_UNKOWN(url=%v, error=%v)", url, err)
-				time.Sleep(4)
+				time.Sleep(4*1e9)
 			}
 			continue
 		}
