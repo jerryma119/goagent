@@ -8,7 +8,7 @@ import (
 	"log"
 	"bytes"
 	"strings"
-	//"strconv"
+	"regexp"
 	"encoding/hex"
 	"encoding/binary"
 	"compress/zlib"
@@ -67,7 +67,7 @@ func (app Webapp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (app Webapp) printResponse(status int, header map[string]string, content []byte) {
 	headerBytes := encodeData(header)
 
-	app.response.WriteHeader(status)
+	app.response.WriteHeader(200)
 	app.response.Header().Set("Content-Type", "image/gif")    
    
     if contentType, ok := header["content-type"]; ok && strings.HasPrefix(contentType, "text/") {
@@ -146,11 +146,25 @@ func (app Webapp) post() {
     		status := resp.StatusCode
     		header := make(map [string]string)
     		for k, vv := range resp.Header {
-    			header[k] = vv[0]
+    		    if strings.ToLower(k) != "set-cookie" {
+    			    header[k] = vv[0]
+    			} else {
+    			    var cookies []string
+    			    i := -1
+					regex, _ := regexp.Compile("^[^ =]+ ")
+					for _, sc := range strings.Split(vv[0], ", ") {
+						if 0 <= i && regex.MatchString(sc){
+							cookies[i] = fmt.Sprintf("%s, %s", cookies[i], sc)
+						} else {
+							cookies = append(cookies, sc)
+							i += 1
+						}
+					}
+    			    header["Set-Cookie"] = strings.Join(cookies, "\r\nSet-Cookie: ")
+    			}
     		}
     		conntent, _ := ioutil.ReadAll(resp.Body)
     		app.printResponse(status, header, conntent)
-        	//app.printNotify(method, url, 200, fmt.Sprintf("resp.StatusCode=%v resp.Header=%v resp.ContentLength=%v", resp.StatusCode, resp.Header, resp.ContentLength))
         	return
     	} else {
     		errors = append(errors, err.String())
