@@ -80,7 +80,7 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 	app.response.WriteHeader(200)
 	app.response.Header().Set("Content-Type", "image/gif")
 
-	if contentType, ok := header["Content-Type"]; ok && strings.HasPrefix(contentType, "text/") {
+	if contentType, ok := header["content-type"]; ok && strings.HasPrefix(contentType, "text/") {
 		app.response.Write([]byte("1"))
 		w, err := zlib.NewWriter(app.response)
 		if err != nil {
@@ -105,7 +105,7 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 
 func (app Webapp) printNotify(method string, url string, status int, text string) {
 	content := []byte(fmt.Sprintf("<h2>GAE/GO Fetch Server Info</h2><hr noshade='noshade'><p>%s '%s'</p><p>Return Code: %d</p><p>Message: %s</p>", method, url, status, text))
-	headers := map[string]string{"Content-Type": "text/html"}
+	headers := map[string]string{"content-type": "text/html"}
 	app.printResponse(status, headers, content)
 }
 
@@ -196,8 +196,9 @@ func (app Webapp) post() {
 		status := resp.StatusCode
 		header := make(map[string]string)
 		for k, vv := range resp.Header {
-			if strings.ToLower(k) != "set-cookie" {
-				header[k] = vv[0]
+		    key := strings.ToLower(k)
+			if key != "set-cookie" {
+				header[key] = vv[0]
 			} else {
 				var cookies []string
 				i := -1
@@ -210,7 +211,7 @@ func (app Webapp) post() {
 						i++
 					}
 				}
-				header["Set-Cookie"] = strings.Join(cookies, "\r\nSet-Cookie: ")
+				header["set-cookie"] = strings.Join(cookies, "\r\nset-cookie: ")
 			}
 		}
 
@@ -219,10 +220,10 @@ func (app Webapp) post() {
 			app.context.Criticalf("ioutil.ReadAll(resp.Body) return urlfetch.ErrTruncatedBody")
 		}
 		if status == 206 {
-			header["Accept-Ranges"] = "bytes"
-			header["Content-Length"] = strconv.Itoa(len(content))
+			header["accept-ranges"] = "bytes"
+			header["content-length"] = strconv.Itoa(len(content))
 		}
-		header["Connection"] = "close"
+		header["connection"] = "close"
 
 		//app.printNotify(method, url, 502, fmt.Sprintf("status=%d, header=%v, len(content)=%d", status, resp.Header, len(content)))
 		app.printResponse(status, header, content)

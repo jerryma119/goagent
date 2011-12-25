@@ -438,7 +438,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
                 data['content'] = raw_data[12+hlen:tlen]
             else:
                 raise ValueError('Data length is short than excepted!')
-            data['headers'] = dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
+            data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
             return (0, data)
         except Exception, e:
             if on_error:
@@ -563,7 +563,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, on_error=self.handle_fetch_error)
 
     def rangefetch(self, m, data):
-        data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
         m = map(int, m.groups())
         start = m[0]
         end = m[2] - 1
@@ -606,7 +605,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
             retval, data = self.fetch(self.path, '', self.command, self.headers)
-            data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
             if retval != 0 or data['code'] >= 400:
                 failed += 1
                 seconds = random.randint(2*failed, 2*(failed+1))
@@ -834,7 +832,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers = data['headers']
             self.log_request(code)
             if code == 206 and self.command=='GET':
-                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('Content-Range') or headers.get('content-range') or '')
+                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('Content-Range', ''))
                 if m and self.rangefetch(m, data):
                     return
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
