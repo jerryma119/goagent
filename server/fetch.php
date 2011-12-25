@@ -63,13 +63,13 @@ class URLFetch {
     function urlfetch_curl_readheader($ch, $header) {
         $kv = array_map('trim', explode(':', $header, 2));
         if ($kv[1]) {
-            $key   = join('-', array_map('ucfirst', explode('-', $kv[0])));
+            $key   = strtolower($kv[0]);
             $value = $kv[1];
-            if ($key == 'Set-Cookie') {
-                if (!array_key_exists('Set-Cookie', $this->headers)) {
-                    $this->headers['Set-Cookie'] = $value;
+            if ($key == 'set-cookie') {
+                if (!array_key_exists('set-cookie', $this->headers)) {
+                    $this->headers['set-cookie'] = $value;
                 } else {
-                    $this->headers['Set-Cookie'] .= "\r\nSet-Cookie: " . $value;
+                    $this->headers['set-cookie'] .= "\r\nset-cookie: " . $value;
                 }
             } else {
                 $this->headers[$key] = $kv[1];
@@ -166,17 +166,17 @@ class URLFetch {
         }
         curl_close($ch);
 
-        $content_length = 1 * $this->headers["Content-Length"];
+        $content_length = 1 * $this->headers["content-length"];
 
         if ($status_code == 200 && $errno == 23 && $content_length && $this->body_size < $content_length) {
             //error_exit($status_code, $this->headers, strlen($this->body));
             $status_code = 206;
             $range_end = $this->body_size - 1;
-            $this->headers["Content-Range"] = "bytes 0-$range_end/$content_length";
-            $this->headers["Accept-Ranges"] = "bytes";
-            $this->headers["Content-Length"] = $this->body_size;
+            $this->headers["content-range"] = "bytes 0-$range_end/$content_length";
+            $this->headers["accept-ranges"] = "bytes";
+            $this->headers["content-length"] = $this->body_size;
         }
-        $this->headers['Connection'] = 'close';
+        $this->headers['connection'] = 'close';
 
         //error_exit('urlfetch result:', array('status_code' => $status_code, 'headers' => $this->headers, 'content-size' => $this->body_size, 'error' => $error));
 
@@ -241,16 +241,16 @@ class URLFetch {
         foreach($meta['wrapper_data'] as $line) {
             $kv = array_map('trim', explode(':', $line, 2));
             if ($kv[1]) {
-                $key   = join('-', array_map('ucfirst', explode('-', $kv[0])));
+                $key   = strtolower($kv[0]);
                 $value = $kv[1];
-                if ($key == 'Set-Cookie') {
-                    if (!array_key_exists('Set-Cookie', $this->headers)) {
-                        $this->headers['Set-Cookie'] = $value;
+                if ($key == 'set-cookie') {
+                    if (!array_key_exists('set-cookie', $this->headers)) {
+                        $this->headers['set-cookie'] = $value;
                     } else {
-                        $this->headers['Set-Cookie'] .= "\r\nSet-Cookie: " . $value;
+                        $this->headers['set-cookie'] .= "\r\nset-cookie: " . $value;
                     }
                 } else {
-                 $this->headers[$key] = $kv[1];
+                    $this->headers[$key] = $kv[1];
                 }
             }   
         }
@@ -261,17 +261,17 @@ class URLFetch {
         $this->body_size = strlen($content);
         $this->body = $content;
 
-        $content_length = 1 * $this->headers["Content-Length"];
+        $content_length = 1 * $this->headers["content-length"];
 
         if ($status_code == 200 && $this->body_size > $this->body_maxsize && $content_length && $this->body_size < $content_length) {
             //error_exit($status_code, $this->headers, strlen($this->body));
             $status_code = 206;
             $range_end = $this->body_size - 1;
-            $this->headers["Content-Range"] = "bytes 0-$range_end/$content_length";
-            $this->headers["Accept-Ranges"] = "bytes";
-            $this->headers["Content-Length"] = $this->body_size;
+            $this->headers["content-range"] = "bytes 0-$range_end/$content_length";
+            $this->headers["accept-ranges"] = "bytes";
+            $this->headers["content-length"] = $this->body_size;
         }
-        $this->headers['Connection'] = 'close';
+        $this->headers['connection'] = 'close';
 
         //error_exit('urlfetch result:', array('status_code' => $status_code, 'headers' => $this->headers, 'content-size' => $this->body_size, 'error' => $error));
 
