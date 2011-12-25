@@ -832,7 +832,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers = data['headers']
             self.log_request(code)
             if code == 206 and self.command=='GET':
-                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', headers.get('Content-Range', ''))
+                content_range = headers.get('content-range') or headers.get('Content-Range') or ''
+                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', content_range)
                 if m and self.rangefetch(m, data):
                     return
             content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
