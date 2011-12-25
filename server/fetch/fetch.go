@@ -26,7 +26,7 @@ const (
 
 	FetchMax     = 3
 	FetchMaxSize = 1024 * 1024
-	Deadline     = 30
+	Deadline     = 20
 )
 
 func encodeData(dic map[string]string) []byte {
@@ -171,12 +171,12 @@ func (app Webapp) post() {
 		if err != nil {
 			message := err.String()
 			errors = append(errors, message)
-			if strings.Contains(message, "DEADLINE_EXCEEDED") {
-				app.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(deadline=%s, url=%v)", deadline, url)
+			if strings.Contains(message, "FETCH_ERROR") {
+				app.context.Errorf("URLFetchServiceError_FETCH_ERROR(deadline=%v, url=%v)", deadline, url)
 				time.Sleep(1*1e9)
 				deadline *= 2
-			} else if strings.Contains(message, "FETCH_ERROR") {
-				app.context.Errorf("URLFetchServiceError_FETCH_ERROR(deadline=%s, url=%v)", deadline, url)
+			} else if strings.Contains(message, "DEADLINE_EXCEEDED") {
+				app.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(deadline=%v, url=%v)", deadline, url)
 				time.Sleep(1*1e9)
 				deadline *= 2
 			} else if strings.Contains(message, "INVALID_URL") {
@@ -187,7 +187,7 @@ func (app Webapp) post() {
 				req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
 				deadline *= 2
 			} else {
-				app.context.Errorf("URLFetchServiceError_UNKOWN(url=%v, error=%v)", url, err)
+				app.context.Errorf("URLFetchServiceError UNKOWN(deadline=%v, url=%v, error=%v)", deadline, url, err)
 				time.Sleep(4*1e9)
 			}
 			continue
