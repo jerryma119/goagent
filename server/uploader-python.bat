@@ -2,7 +2,7 @@
 
 cd /d "%~dp0"
 
-cd golang
+cd python
 
 if not exist "../../local/proxy.exe" (
     echo Cannot found "../local/proxy.exe", may be you need extract it.

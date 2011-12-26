@@ -1,4 +1,4 @@
-application: your_appid
+application: goagentb
 version: 1
 runtime: go
 api_version: 3
