@@ -158,7 +158,6 @@ class URLFetch {
         $ch = curl_init($url);
         curl_setopt_array($ch, $curl_opt);
         $ret = curl_exec($ch);
-        $this->headers['connection'] = 'close';
         $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $errno = curl_errno($ch);
         if ($errno)
@@ -166,7 +165,8 @@ class URLFetch {
             $error =  $errno . ': ' .curl_error($ch);
         }
         curl_close($ch);
-
+        
+        $this->headers['connection'] = 'close';
         $content_length = 1 * $this->headers["content-length"];
 
         if ($status_code == 200 && $errno == 23 && $content_length && $this->body_size < $content_length) {
@@ -260,7 +260,8 @@ class URLFetch {
         }
         $this->body_size = strlen($content);
         $this->body = $content;
-
+        
+        $this->headers['connection'] = 'close';
         $content_length = 1 * $this->headers["content-length"];
 
         if ($status_code == 200 && $this->body_size > $this->body_maxsize && $content_length && $this->body_size < $content_length) {
