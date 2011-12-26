@@ -5,7 +5,7 @@ cd /d "%~dp0"
 if "%uploaddir%" == "" (
     cd golang
 ) else (
-    cd %uploaddir%"
+    cd "%uploaddir%"
 )
 
 if not exist "../../local/proxy.exe" (
