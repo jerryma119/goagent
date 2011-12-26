@@ -395,7 +395,7 @@ function get() {
     <table width="800" border="0" align="center">
         <tr><td align="center"><hr></td></tr>
         <tr><td align="center">
-            <b><h1>GoAgent PHP ${__version__} &#x5DF2;&#x7ECF;&#x5728;&#x5DE5;&#x4F5C;&#x4E86;</h1></b>
+            <b><h1>GoAgent PHP Server ${__version__} &#x5DF2;&#x7ECF;&#x5728;&#x5DE5;&#x4F5C;&#x4E86;</h1></b>
         </td></tr>
         <tr><td align="center"><hr></td></tr>
 
