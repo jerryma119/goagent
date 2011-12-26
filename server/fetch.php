@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.7.1 dev';
+$__version__  = '1.7.1';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -63,13 +63,13 @@ class URLFetch {
     function urlfetch_curl_readheader($ch, $header) {
         $kv = array_map('trim', explode(':', $header, 2));
         if ($kv[1]) {
-            $key   = strtolower($kv[0]);
+            $key = strtolower($kv[0]);
             $value = $kv[1];
             if ($key == 'set-cookie') {
                 if (!array_key_exists('set-cookie', $this->headers)) {
                     $this->headers['set-cookie'] = $value;
                 } else {
-                    $this->headers['set-cookie'] .= "\r\nset-cookie: " . $value;
+                    $this->headers['set-cookie'] .= "\r\nSet-Cookie: " . $value;
                 }
             } else {
                 $this->headers[$key] = $kv[1];
@@ -158,6 +158,7 @@ class URLFetch {
         $ch = curl_init($url);
         curl_setopt_array($ch, $curl_opt);
         $ret = curl_exec($ch);
+        $this->headers['connection'] = 'close';
         $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $errno = curl_errno($ch);
         if ($errno)
@@ -176,7 +177,6 @@ class URLFetch {
             $this->headers["accept-ranges"] = "bytes";
             $this->headers["content-length"] = $this->body_size;
         }
-        $this->headers['connection'] = 'close';
 
         //error_exit('urlfetch result:', array('status_code' => $status_code, 'headers' => $this->headers, 'content-size' => $this->body_size, 'error' => $error));
 
@@ -190,9 +190,9 @@ class URLFetch {
         $this->body_size = 0;
 
         if ($payload) {
-            $headers['Content-Length'] = strval(strlen($payload));
+            $headers['content-length'] = strval(strlen($payload));
         }
-        $headers['Connection'] = 'close';
+        $headers['connection'] = 'close';
 
         $header_string = '';
         foreach ($headers as $key => $value) {
@@ -241,7 +241,7 @@ class URLFetch {
         foreach($meta['wrapper_data'] as $line) {
             $kv = array_map('trim', explode(':', $line, 2));
             if ($kv[1]) {
-                $key   = strtolower($kv[0]);
+                $key = strtolower($kv[0]);
                 $value = $kv[1];
                 if ($key == 'set-cookie') {
                     if (!array_key_exists('set-cookie', $this->headers)) {
@@ -250,9 +250,9 @@ class URLFetch {
                         $this->headers['set-cookie'] .= "\r\nset-cookie: " . $value;
                     }
                 } else {
-                    $this->headers[$key] = $kv[1];
+                 $this->headers[$key] = $kv[1];
                 }
-            }   
+            }
         }
         $content = @file_get_contents($url, false, $context);
         if ($content == false) {
@@ -271,7 +271,6 @@ class URLFetch {
             $this->headers["accept-ranges"] = "bytes";
             $this->headers["content-length"] = $this->body_size;
         }
-        $this->headers['connection'] = 'close';
 
         //error_exit('urlfetch result:', array('status_code' => $status_code, 'headers' => $this->headers, 'content-size' => $this->body_size, 'error' => $error));
 
@@ -321,13 +320,13 @@ function post()
     $headers = array();
     foreach (explode("\r\n", $request['headers']) as $line) {
         $pair = explode(':', $line, 2);
-        $headers[join('-', array_map('ucfirst', explode('-', trim($pair[0]))))] = trim($pair[1]);
+        $headers[trim($pair[0])] = trim($pair[1]);
     }
-    $headers['Connection'] = 'close';
+    $headers['connection'] = 'close';
 
     $fetchrange = 'bytes=0-' . strval($FetchMaxSize - 1);
     if (array_key_exists('range', $headers)) {
-        preg_match('/(\d+)?-(\d+)?/', $headers['Range'], $matches, PREG_OFFSET_CAPTURE);
+        preg_match('/(\d+)?-(\d+)?/', $headers['range'], $matches, PREG_OFFSET_CAPTURE);
         $start = $matches[1][0];
         $end = $matches[2][0];
         if ($start || $end) {
@@ -383,8 +382,8 @@ function get() {
         exit(-1);
     }
 
-    header('Content-Type: text/html; charset=utf-8');
     echo <<<EOF
+
 <html>
 <head>
     <link rel="icon" type="image/vnd.microsoft.icon" href="http://www.google.cn/favicon.ico">
@@ -412,6 +411,7 @@ function get() {
     </table>
 </body>
 </html>
+
 EOF;
 }
 
