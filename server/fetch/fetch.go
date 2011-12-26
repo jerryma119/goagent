@@ -24,9 +24,9 @@ const (
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
-	FetchMax     = 3
+	FetchMax     = 2
 	FetchMaxSize = 1024 * 1024
-	Deadline     = 20
+	Deadline     = 30
 )
 
 func encodeData(dic map[string]string) []byte {
