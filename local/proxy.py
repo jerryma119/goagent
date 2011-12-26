@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.1 dev'
+__version__ = '1.7.1'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -410,7 +410,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
         params['useragent'] = common.USERAGENT_STRING
     if dns:
         params['dns'] = dns
-    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+    params =  '&'.join(['%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems()])
     for i in xrange(common.FETCHMAX_LOCAL):
         try:
             logging.debug('urlfetch %r by %r', url, fetchserver)
@@ -438,7 +438,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
                 data['content'] = raw_data[12+hlen:tlen]
             else:
                 raise ValueError('Data length is short than excepted!')
-            data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
+            data['headers'] = dict([('-'.join([x.title() for x in k.split('-')]), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&'))])
             return (0, data)
         except Exception, e:
             if on_error:
@@ -591,7 +591,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         partSize = common.AUTORANGE_MAXSIZE
 
         respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
-        strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems())
+        strheaders = ''.join(['%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems()])
         self.connection.sendall(respline+strheaders+'\r\n')
 
         if start == m[0]:
@@ -686,7 +686,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
+                data += ''.join(['%s: %s\r\n' % ('-'.join([x.title() for x in k.split('-')]), v) for k, v in self.headers.iteritems() if k != 'host'])
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
                 data += '\r\n'
@@ -774,7 +774,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     sock = socket.create_connection((host, port))
                 self.headers['Connection'] = 'close'
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
+                data += ''.join(['%s: %s\r\n' % ('-'.join([x.title() for x in k.split('-')]), v) for k, v in self.headers.iteritems() if k != 'host'])
                 data += '\r\n'
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
@@ -784,7 +784,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     host = common.HOSTS.get(host, host)
                 url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
                 data ='%s %s %s\r\n'  % (self.command, url, self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
+                data += ''.join(['%s: %s\r\n' % ('-'.join([x.title() for x in k.split('-')]), v) for k, v in self.headers.iteritems() if k != 'host'])
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
@@ -815,7 +815,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             payload = ''
 
-        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in self.skip_headers)
+        skip_headers = self.skip_headers
+        headers = ''.join(['%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in skip_headers])
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
@@ -836,7 +837,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', content_range)
                 if m and self.rangefetch(m, data):
                     return
-            content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
+            content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join(['%s: %s\r\n' % (k, v) for k, v in headers.iteritems()]), data['content'])
             self.connection.sendall(content)
             if 'close' == headers.get('Connection',''):
                 self.close_connection = 1
