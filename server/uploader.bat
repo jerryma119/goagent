@@ -2,6 +2,11 @@
 
 cd /d "%~dp0"
 
+if not exist "../local/proxy.exe" (
+    echo Cannot found "../local/proxy.exe", may be you need extract it.
+    pause && exit /b 1
+)
+
 cmd.exe /c tasklist | findstr "goagent.exe" >NUL && (
     rem echo find goagent.exe is running, set proxy to 127.0.0.1
     set HTTP_PROXY=http://127.0.0.1:8087
