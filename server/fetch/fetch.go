@@ -185,6 +185,7 @@ func (app Webapp) post() {
 			} else if strings.Contains(message, "RESPONSE_TOO_LARGE") {
 				app.context.Errorf("URLFetchServiceError_RESPONSE_TOO_LARGE(url=%v)", url)
 				req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
+				//app.context.Infof("req.Header=%v", req.Header)
 				deadline *= 2
 			} else {
 				app.context.Errorf("URLFetchServiceError UNKOWN(deadline=%v, url=%v, error=%v)", deadline, url, err)
