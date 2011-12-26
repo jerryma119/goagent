@@ -2,7 +2,11 @@
 
 cd /d "%~dp0"
 
-cd golang
+if "%uploaddir%" == "" (
+    cd golang
+) else (
+    cd %uploaddir%"
+)
 
 if not exist "../../local/proxy.exe" (
     echo Cannot found "../local/proxy.exe", may be you need extract it.
