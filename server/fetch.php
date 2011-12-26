@@ -400,7 +400,7 @@ function get() {
         <tr><td align="center"><hr></td></tr>
 
         <tr><td align="center">
-            GoAgent&#x662F;&#x4E00;&#x4E2A;&#x5F00;&#x6E90;&#x7684;HTTP Proxy&#x8F6F;&#x4EF6;, &#x4F7F;&#x7528;Go/Python&#x7F16;&#x5199;, &#x8FD0;&#x884C;&#x4E8E;Google App Engine&#x5E73;&#x53F0;&#x4E0A;.
+            GoAgent&#x662F;&#x4E00;&#x4E2A;&#x5F00;&#x6E90;&#x7684;HTTP Proxy&#x8F6F;&#x4EF6;, &#x4F7F;&#x7528;PHP/Python&#x7F16;&#x5199;, &#x8FD0;&#x884C;&#x4E8E;PHP Hosting&#x5E73;&#x53F0;&#x4E0A;.
         </td></tr>
         <tr><td align="center"><hr></td></tr>
 
