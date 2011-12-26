@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version  = "1.7.1 dev"
+	Version  = "1.7.1"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
@@ -80,7 +80,7 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 	app.response.WriteHeader(200)
 	app.response.Header().Set("Content-Type", "image/gif")
 
-	if contentType, ok := header["content-type"]; ok && strings.HasPrefix(contentType, "text/") {
+	if contentType, ok := header["content-type"]; ok && contentType[:5] == "text/" {
 		app.response.Write([]byte("1"))
 		w, err := zlib.NewWriter(app.response)
 		if err != nil {
@@ -134,12 +134,12 @@ func (app Webapp) post() {
 		}
 	}
 
-	if !strings.HasPrefix(url, "http") {
+	if url[:4] != "http" {
 		app.printNotify(method, url, 501, "Unsupported Scheme")
 	}
 
-	payload := strings.NewReader(request["payload"])
-	req, err := http.NewRequest(method, url, payload)
+	payload := request["payload"]
+	req, err := http.NewRequest(method, url, bytes.NewBufferString(payload))
 	if err != nil {
 		app.printNotify(method, url, 500, "http.NewRequest(method, url, payload) failed")
 	}
@@ -246,7 +246,7 @@ func (app Webapp) get() {
     <table width="800" border="0" align="center">
         <tr><td align="center"><hr></td></tr>
         <tr><td align="center">
-            <b><h1>GoAgent GAE/Go %s &#x5DF2;&#x7ECF;&#x5728;&#x5DE5;&#x4F5C;&#x4E86;</h1></b>
+            <b><h1>GoAgent GAE/GO %s &#x5DF2;&#x7ECF;&#x5728;&#x5DE5;&#x4F5C;&#x4E86;</h1></b>
         </td></tr>
         <tr><td align="center"><hr></td></tr>
 
