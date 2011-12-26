@@ -9,7 +9,7 @@ cmd.exe /c tasklist | findstr "goagent.exe" >NUL && (
 )
 
 (
-    cmd.exe /c "set PYTHONSCRIPT=appid=raw_input('APPID:').strip();yaml=__import__('re').sub(r'application:\s*\w*', 'application: '+appid, open('app.yaml', 'rb').read());open('app.yaml', 'wb').write(yaml);print yaml && ..\local\proxy.exe"
+    cmd.exe /c "set PYTHONSCRIPT=appid=raw_input('APPID:').strip();yaml=__import__('re').sub(r'application:\s*\S+', 'application: '+appid, open('app.yaml', 'rb').read());open('app.yaml', 'wb').write(yaml);print yaml && ..\local\proxy.exe"
 ) && (
     set PYTHONSCRIPT=appcfg.zip && "..\local\proxy.exe" rollback . && "..\local\proxy.exe" update . && ping -n 5 0.0.0.0 >NUL 
 ) || (
