@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.6.13'
+__version__ = '1.7.2'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -12,7 +12,7 @@ import webapp2
 from google.appengine.api import urlfetch
 from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 
-FetchMax = 2
+FetchMax = 3
 FetchMaxSize = 1024*1024*2
 Deadline = 30
 
