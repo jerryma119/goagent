@@ -21,10 +21,6 @@ try:
     import OpenSSL
 except ImportError:
     OpenSSL = None
-try:
-    import ntlm, ntlm.HTTPNtlmAuthHandler
-except ImportError:
-    ntlm = None
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
 
@@ -55,7 +51,6 @@ class Common(object):
         self.PROXY_PORT           = self.CONFIG.getint('proxy', 'port')
         self.PROXY_USERNAME       = self.CONFIG.get('proxy', 'username')
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
-        self.PROXY_NTLM           = bool(self.CONFIG.getint('proxy', 'ntlm')) if self.CONFIG.has_option('proxy', 'ntlm') else '\\' in self.PROXY_USERNAME
 
         self.GOOGLE_MODE          = self.CONFIG.get('google', 'mode')
         self.GOOGLE_SITES         = tuple(self.CONFIG.get('google', 'sites').split('|'))
@@ -104,14 +99,6 @@ class Common(object):
         if self.PROXY_ENABLE:
             proxy = '%s:%s@%s:%d'%(self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
             handlers = [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
-            if self.PROXY_NTLM:
-                if ntlm is None:
-                    logging.critical('You need install python-ntlm to support windows domain proxy! "%s:%s"', self.PROXY_HOST, self.PROXY_PORT)
-                    sys.exit(-1)
-                passman = urllib2.HTTPPasswordMgrWithDefaultRealm()
-                passman.add_password(None, '%s:%s' % (self.PROXY_HOST, self.PROXY_PORT), self.PROXY_USERNAME, self.PROXY_PASSWROD)
-                auth_NTLM = ntlm.HTTPNtlmAuthHandler.HTTPNtlmAuthHandler(passman)
-                handlers.append(auth_NTLM)
         else:
             handlers = [urllib2.ProxyHandler({})]
         opener = urllib2.build_opener(*handlers)
@@ -523,12 +510,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
-                #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
         elif isinstance(error, urllib2.URLError):
             if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
                 # it seems that google.cn is reseted, switch to https
                 common.GOOGLE_MODE = 'https'
-                #common.GOOGLE_APPSPOT = common.GOOGLE_HOSTS_HK
         elif isinstance(error, httplib.HTTPException):
             common.GOOGLE_MODE = 'https'
         else:
