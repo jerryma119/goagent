@@ -406,8 +406,6 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
         params['password'] = common.GAE_PASSWORD
     if common.FETCHMAX_SERVER:
         params['fetchmax'] = common.FETCHMAX_SERVER
-    if common.USERAGENT_ENABLE:
-        params['useragent'] = common.USERAGENT_STRING
     if dns:
         params['dns'] = dns
     params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
@@ -789,6 +787,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             payload = self.rfile.read(payload_len)
         else:
             payload = ''
+
+        if common.USERAGENT_ENABLE:
+            self.headers['user-agent'] = common.USERAGENT_STRING
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:

@@ -61,8 +61,6 @@ class MainPage(webapp2.RequestHandler):
 
         headers = dict(('-'.join(x.title() for x in k.split('-')), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
         headers['Connection'] = 'close'
-        if 'useragent' in request:
-            headers['User-Agent'] = request['useragent']
 
         errors = []
         for i in xrange(int(request.get('fetchmax', FetchMax))):
@@ -75,12 +73,12 @@ class MainPage(webapp2.RequestHandler):
                 errors.append(str(e))
                 logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
                 time.sleep(1)
-                deadline *= 2
+                deadline = Deadline * 2
             except urlfetch.DownloadError, e:
                 errors.append(str(e))
                 logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
                 time.sleep(1)
-                deadline *= 2
+                deadline = Deadline * 2
             except urlfetch.InvalidURLError, e:
                 return self.send_notify(method, url, 501, 'Invalid URL: %s' % e)
             except urlfetch.ResponseTooLargeError, e:
@@ -93,11 +91,11 @@ class MainPage(webapp2.RequestHandler):
                     break
                 else:
                     headers['Range'] = 'bytes=0-%d' % FetchMaxSize
-                deadline *= 2
+                deadline = Deadline * 2
             except Exception, e:
                 errors.append(str(e))
                 if i==0 and method=='GET':
-                    deadline *= 2
+                    deadline = Deadline * 2
         else:
             return self.send_notify(method, url, 500, 'Urlfetch error: %s' % errors)
 
