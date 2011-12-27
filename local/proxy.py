@@ -603,7 +603,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         while start <= end:
             if failed > 5:
                 break
-            self.headers['Range'] = 'bytes=%d-%d' % (start, min(start + partSize - 1, end))
+            self.headers['Range'] = 'bytes=%d-%d' % (start, min(start+partSize-1, end-1))
             retval, data = self.fetch(self.path, '', self.command, self.headers)
             if retval != 0 or data['code'] >= 400:
                 failed += 1
