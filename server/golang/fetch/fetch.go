@@ -20,11 +20,11 @@ import (
 )
 
 const (
-	Version  = "1.7.1"
+	Version  = "1.7.2"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
-	FetchMax     = 2
+	FetchMax     = 3
 	FetchMaxSize = 1024 * 1024
 	Deadline     = 30
 )
@@ -174,11 +174,11 @@ func (app Webapp) post() {
 			if strings.Contains(message, "FETCH_ERROR") {
 				app.context.Errorf("URLFetchServiceError_FETCH_ERROR(deadline=%v, url=%v)", deadline, url)
 				time.Sleep(1*1e9)
-				deadline *= 2
+				deadline = float64(Deadline*2)
 			} else if strings.Contains(message, "DEADLINE_EXCEEDED") {
 				app.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(deadline=%v, url=%v)", deadline, url)
 				time.Sleep(1*1e9)
-				deadline *= 2
+				deadline = float64(Deadline*2)
 			} else if strings.Contains(message, "INVALID_URL") {
 				app.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.String()))
 				return
@@ -186,7 +186,7 @@ func (app Webapp) post() {
 				app.context.Errorf("URLFetchServiceError_RESPONSE_TOO_LARGE(url=%v)", url)
 				req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
 				//app.context.Infof("req.Header=%v", req.Header)
-				deadline *= 2
+				deadline = float64(Deadline*2)
 			} else {
 				app.context.Errorf("URLFetchServiceError UNKOWN(deadline=%v, url=%v, error=%v)", deadline, url, err)
 				time.Sleep(4*1e9)
