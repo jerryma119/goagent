@@ -400,7 +400,7 @@ class CertUtil(object):
 
 def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on_error=None):
     errors = []
-    params = {'url':url, 'method':method, 'headers':str(headers), 'payload':payload}
+    params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
     logging.debug('urlfetch params %s', params)
     if common.GAE_PASSWORD:
         params['password'] = common.GAE_PASSWORD
@@ -457,18 +457,14 @@ class SimpleMessageClass(object):
     def __init__(self, fp, seekable = 0):
         self.fp = fp
         self.dict = dict = {}
-        self.headers = []
-        headers_append = self.headers.append
         readline = fp.readline
         while 1:
             line = readline(8192)
             if not line or line == '\r\n':
                 break
             key, _, value = line.partition(':')
-            key = key.lower()
             if value:
-                dict[key] = value.strip()
-                headers_append(line)
+                dict[key.lower()] = value.strip()
 
     def getheader(self, name, default=None):
         return self.dict.get(name.lower(), default)
@@ -498,25 +494,10 @@ class SimpleMessageClass(object):
         return self.dict[name.lower()]
 
     def __setitem__(self, name, value):
-        key = name.lower()
-        self.dict[key] = value
-        for i, line in enumerate(self.headers):
-            if line.partition(':')[0].lower() == key:
-                break
-        if i == len(self.headers):
-            self.headers.append('%s: %s\r\n' % (name, value))
-        else:
-            self.headers[i] = '%s: %s\r\n' % (name, value)
+        self.dict[name.lower()] = value
 
     def __delitem__(self, name):
-        key = name.lower()
-        del self.dict[key]
-        indexs = []
-        for i, line in enumerate(self.headers):
-            if line.partition(':')[0].lower() == key:
-                indexs.append(i)
-        for i in reversed(indexs):
-            del self.headers[i]
+        del self.dict[name.lower()]
 
     def __contains__(self, name):
         return name.lower() in self.dict
@@ -528,7 +509,7 @@ class SimpleMessageClass(object):
         return iter(self.dict)
 
     def __str__(self):
-        return ''.join(self.headers)
+        return ''.join('%s: %s' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in self.dict.iteritems())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
@@ -604,7 +585,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if failed > 5:
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, min(start+partSize-1, end-1))
-            retval, data = self.fetch(self.path, '', self.command, self.headers)
+            retval, data = self.fetch(self.path, '', self.command, str(self.headers))
             if retval != 0 or data['code'] >= 400:
                 failed += 1
                 seconds = random.randint(2*failed, 2*(failed+1))
@@ -821,7 +802,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    headers += 'Range: bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
+                    headers += 'range: bytes=0-%d\r\n' % common.AUTORANGE_MAXSIZE
                     break
 
         retval, data = self.fetch(self.path, payload, self.command, headers)
