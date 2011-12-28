@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version  = "1.7.2"
+	Version  = "1.7.3"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
