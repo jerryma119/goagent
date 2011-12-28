@@ -198,7 +198,7 @@ def socket_create_connection((host, port), timeout=None, source_address=None):
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
             return sock
         except socket.error, msg:
-            logging.error('socket_create_connection connect fail: (%r, %r)', common.GOOGLE_HOSTS, port)
+            logging.error('socket_create_connection connect fail: (%r, %r)', common.GOOGLE_APPSPOT, port)
             sock = None
         if not sock:
             raise socket.error, msg
