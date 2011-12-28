@@ -321,7 +321,7 @@ function post()
     $headers = array();
     foreach (explode("\r\n", $request['headers']) as $line) {
         $pair = explode(':', $line, 2);
-        $headers[trim($pair[0])] = trim($pair[1]);
+        $headers[trim(strtolower($pair[0]))] = trim($pair[1]);
     }
     $headers['connection'] = 'close';
 
