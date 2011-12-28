@@ -59,7 +59,7 @@ class MainPage(webapp2.RequestHandler):
 
         deadline = Deadline
 
-        headers = dict(('-'.join(x.title() for x in k.split('-')), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+        headers = dict((k.title(), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
         headers['Connection'] = 'close'
 
         errors = []
