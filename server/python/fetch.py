@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.3'
+__version__ = '1.7.4'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -13,7 +13,7 @@ from google.appengine.api import urlfetch
 from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 
 FetchMax = 3
-FetchMaxSize = 1024*1024*2
+FetchMaxSize = 1024*1024
 Deadline = 30
 
 def encode_data(dic):
@@ -36,7 +36,7 @@ class MainPage(webapp2.RequestHandler):
 
     def send_notify(self, method, url, status, content):
         logging.warning('%r Failed: url=%r, status=%r', method, url, status)
-        content = '<h2>Fetch Server Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
+        content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
         self.send_response(status, {'content-type':'text/html'}, content)
 
     def post(self):
@@ -97,7 +97,7 @@ class MainPage(webapp2.RequestHandler):
                 if i==0 and method=='GET':
                     deadline = Deadline * 2
         else:
-            return self.send_notify(method, url, 500, 'Urlfetch error: %s' % errors)
+            return self.send_notify(method, url, 500, 'Python Server: Urlfetch error: %s' % errors)
 
         headers = response.headers
         if 'set-cookie' in headers:
