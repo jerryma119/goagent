@@ -566,7 +566,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             pass
 
-        self.connection.sendall('%s %d %s\r\n%s\r\n%s' % (self.protocol_version, data['code'], 'OK', ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems()), data['content']))
+        self.wfile.write('%s %d %s\r\n%s\r\n%s' % (self.protocol_version, data['code'], 'OK', ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems()), data['content']))
 
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
@@ -588,7 +588,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             start = int(m.group(2)) + 1
             logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['Content-Range'], end+1))
             failed = 0
-            self.connection.sendall(data['content'])
+            self.wfile.write(data['content'])
         logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.headers.get('Host'))
         return True
 
