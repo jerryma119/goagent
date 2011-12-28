@@ -1,30 +1,23 @@
 @echo off
 
-cd /d "%~dp0"
+set uploaddir=golang
 
-if "%uploaddir%" == "" (
-    cd golang
-) else (
-    cd "%uploaddir%"
-)
-
-if not exist "../../local/proxy.exe" (
-    echo Cannot found "../local/proxy.exe", may be you need extract it.
-    pause && exit /b 1
-)
-
-cmd.exe /c tasklist | findstr "goagent.exe" >NUL && (
-    rem echo find goagent.exe is running, set proxy to 127.0.0.1
-    set HTTP_PROXY=http://127.0.0.1:8087
-    set HTTPS_PROXY=http://127.0.0.1:8087
-)
-
-(
-    cmd.exe /c "set PYTHONSCRIPT=import sys,re;appid=raw_input('APPID:').strip();appid=appid if appid else (sys.stderr.write('APPID is not vaild!!!\n'), sys.exit(-1));yaml=re.sub(r'application:\s*\S+', 'application: '+appid, open('app.yaml', 'rb').read());open('app.yaml', 'wb').write(yaml);print yaml && ..\..\local\proxy.exe"
+( 
+    echo ===============================================================
+    echo 开始上传GoAgent %uploaddir% Server
+    echo 如果需要上传python server, 请修改本文件的uploaddir的值为python
+    echo ===============================================================
+    echo.
+    echo 请输入您的appid, 多个appid请用^|号隔开
 ) && (
-    set PYTHONSCRIPT=appcfg.zip && "..\..\local\proxy.exe" rollback . && "..\..\local\proxy.exe" update . && ping -n 5 0.0.0.0 >NUL 
+    @cd /d "%~dp0" 
+) && (
+    set PYTHONSCRIPT=uploader.py
+) && (
+    "..\local\proxy.exe"
 ) || (
     pause
 )
-
-@echo on
+  
+  
+@echo off
