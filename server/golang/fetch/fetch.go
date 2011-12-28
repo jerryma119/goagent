@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version  = "1.7.3"
+	Version  = "1.7.4"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
@@ -96,7 +96,7 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 }
 
 func (app Webapp) printNotify(method string, url string, status int, text string) {
-	content := []byte(fmt.Sprintf("<h2>GAE/GO Fetch Server Info</h2><hr noshade='noshade'><p>%s '%s'</p><p>Return Code: %d</p><p>Message: %s</p>", method, url, status, text))
+	content := []byte(fmt.Sprintf("<h2>Go Server Fetch Info</h2><hr noshade='noshade'><p>%s '%s'</p><p>Return Code: %d</p><p>Message: %s</p>", method, url, status, text))
 	headers := map[string]string{"content-type": "text/html"}
 	app.printResponse(status, headers, content)
 }
@@ -122,7 +122,7 @@ func (app Webapp) post() {
 	if Password != "" {
 		password, ok := request["password"]
 		if !ok || password != Password {
-			app.printNotify(method, url, 403, "Wrong Password.")
+			app.printNotify(method, url, 403, " Wrong Password.")
 		}
 	}
 
@@ -220,7 +220,7 @@ func (app Webapp) post() {
 		app.printResponse(status, header, content)
 		return
 	}
-	app.printNotify(method, url, 502, fmt.Sprintf("Fetch Server Failed: %v", errors))
+	app.printNotify(method, url, 502, fmt.Sprintf("Go Server Fetch Failed: %v", errors))
 }
 
 func (app Webapp) get() {
