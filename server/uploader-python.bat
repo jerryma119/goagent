@@ -1,1 +1,0 @@
-@set uploaddir=python && @call uploader.bat
