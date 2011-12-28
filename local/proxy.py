@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.3'
+__version__ = '1.7.4'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -461,13 +461,13 @@ class SimpleMessageClass(object):
                 break
             key, _, value = line.partition(':')
             if value:
-                dict[key.lower()] = value.strip()
+                dict[key.title()] = value.strip()
 
     def getheader(self, name, default=None):
-        return self.dict.get(name.lower(), default)
+        return self.dict.get(name.title(), default)
 
     def get(self, name, default=None):
-        return self.dict.get(name.lower(), default)
+        return self.dict.get(name.title(), default)
 
     def iteritems(self):
         return self.dict.iteritems()
@@ -488,16 +488,16 @@ class SimpleMessageClass(object):
         return self.dict.items()
 
     def __getitem__(self, name):
-        return self.dict[name.lower()]
+        return self.dict[name.title()]
 
     def __setitem__(self, name, value):
-        self.dict[name.lower()] = value
+        self.dict[name.title()] = value
 
     def __delitem__(self, name):
-        del self.dict[name.lower()]
+        del self.dict[name.title()]
 
     def __contains__(self, name):
-        return name.lower() in self.dict
+        return name.title() in self.dict
 
     def __len__(self):
         return len(self.dict)
@@ -506,10 +506,10 @@ class SimpleMessageClass(object):
         return iter(self.dict)
 
     def __str__(self):
-        return ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.dict.iteritems())
+        return ''.join('%s: %s\r\n' % (k, v) for k, v in self.dict.iteritems())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
+    skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
 
@@ -546,8 +546,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data['code'] = 200
             del data['headers']['Content-Range']
             data['headers']['Content-Length'] = m[2]
-        elif 'range' in self.headers:
-            req_range = re.search(r'(\d+)?-(\d+)?', self.headers['range'])
+        elif 'Range' in self.headers:
+            req_range = re.search(r'(\d+)?-(\d+)?', self.headers['Range'])
             if req_range:
                 req_range = [u and int(u) for u in req_range.groups()]
                 if req_range[0] is None and req_range[1] is not None:
@@ -656,7 +656,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
-                data += ''.join('%s: %s\r\n' % (k.title(), self.headers[k]) for k in self.headers if k != 'host')
+                data += ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k != 'Host')
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
                 data += '\r\n'
@@ -705,7 +705,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection = self._realconnection
 
     def do_METHOD(self):
-        host = self.headers['host']
+        host = self.headers['Host']
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if host in common.GOOGLE_FORCEHTTPS:
                 self.send_response(301)
@@ -744,7 +744,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     sock = socket.create_connection((host, port))
                 self.headers['Connection'] = 'close'
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
-                data += ''.join('%s: %s\r\n' % (k.title(), self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
+                data += ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if not k.startswith('Proxy-'))
                 data += '\r\n'
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
@@ -754,7 +754,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     host = common.HOSTS.get(host, host)
                 url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
                 data ='%s %s %s\r\n'  % (self.command, url, self.request_version)
-                data += ''.join('%s: %s\r\n' % (k.title(), self.headers[k]) for k in self.headers if k != 'host')
+                data += ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k != 'Host')
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
@@ -776,7 +776,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 pass
 
     def do_METHOD_Thunnel(self):
-        host = self.headers.dict.get('host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
+        host = self.headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
         payload_len = int(self.headers.get('Content-Length', 0))
@@ -786,13 +786,13 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             payload = ''
 
         if common.USERAGENT_ENABLE:
-            self.headers['user-agent'] = common.USERAGENT_STRING
+            self.headers['User-Agent'] = common.USERAGENT_STRING
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    self.headers['range'] = 'bytes=0-%d' % (common.AUTORANGE_MAXSIZE-1)
+                    self.headers['Range'] = 'bytes=0-%d' % (common.AUTORANGE_MAXSIZE-1)
                     break
 
         headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in self.skip_headers)
@@ -824,7 +824,7 @@ class PHPProxyHandler(LocalProxyHandler):
         logging.error('PHPProxyHandler handle_fetch_error %s', error)
 
     def fetch(self, url, payload, method, headers):
-        dns = common.HOSTS.get(self.headers.get('host'))
+        dns = common.HOSTS.get(self.headers.get('Host'))
         return urlfetch(url, payload, method, headers, common.PHP_FETCHHOST, common.PHP_FETCHSERVER, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
