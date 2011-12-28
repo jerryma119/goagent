@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.7.1';
+$__version__  = '1.7.4';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -35,7 +35,7 @@ function print_response($status, $headers, $content) {
 }
 
 function print_notify($method, $url, $status, $content) {
-    $content = "<h2>PHP Fetch Server Info</h2><hr noshade='noshade'><p>$method '$url'</p><p>Return Code: $status</p><p>Message: $content</p>";
+    $content = "<h2>PHP Server Fetch Info</h2><hr noshade='noshade'><p>$method '$url'</p><p>Return Code: $status</p><p>Message: $content</p>";
     $headers = array('content-type' => 'text/html');
     print_response($status, $headers, $content);
 }
@@ -43,7 +43,7 @@ function print_notify($method, $url, $status, $content) {
 function error_exit() {
     $status = 200;
     $headers = array('content-type' => 'text/html');
-    $content = "<h2>PHP Fetch Server Debug Info</h2><hr noshade='noshade'>";
+    $content = "<h2>PHP Server Debug Info</h2><hr noshade='noshade'>";
     foreach (func_get_args() as $key => $value) {
         $content .= '<p>' . var_export($value, true) . '</p>';
     }
@@ -367,7 +367,7 @@ function post()
         }
     }
 
-    print_notify($request['method'], $request['url'], 502, 'PHP Fetch Server Failed: ' . var_export($errors, true));
+    print_notify($request['method'], $request['url'], 502, 'PHP Server Fetch Failed: ' . var_export($errors, true));
 }
 
 function get() {
@@ -389,7 +389,7 @@ function get() {
 <head>
     <link rel="icon" type="image/vnd.microsoft.icon" href="http://www.google.cn/favicon.ico">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>GoAgent PHP ${__version__} &#x5DF2;&#x7ECF;&#x5728;&#x5DE5;&#x4F5C;&#x4E86;</title>
+    <title>GoAgent PHP Server ${__version__} &#x5DF2;&#x7ECF;&#x5728;&#x5DE5;&#x4F5C;&#x4E86;</title>
 </head>
 <body>
     <table width="800" border="0" align="center">
