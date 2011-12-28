@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.2'
+__version__ = '1.7.3'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -435,7 +435,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
                 data['content'] = raw_data[12+hlen:tlen]
             else:
                 raise ValueError('Data length is short than excepted!')
-            data['headers'] = dict(('-'.join(x.title() for x in k.split('-')), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
+            data['headers'] = dict((k.title(), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
             return (0, data)
         except Exception, e:
             if on_error:
@@ -506,7 +506,7 @@ class SimpleMessageClass(object):
         return iter(self.dict)
 
     def __str__(self):
-        return ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in self.dict.iteritems())
+        return ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.dict.iteritems())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['host', 'vary', 'via', 'x-forwarded-for', 'proxy-authorization', 'proxy-connection', 'upgrade', 'keep-alive'])
@@ -656,7 +656,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
+                data += ''.join('%s: %s\r\n' % (k.title(), self.headers[k]) for k in self.headers if k != 'host')
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
                 data += '\r\n'
@@ -744,7 +744,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     sock = socket.create_connection((host, port))
                 self.headers['Connection'] = 'close'
                 data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
+                data += ''.join('%s: %s\r\n' % (k.title(), self.headers[k]) for k in self.headers if not k.startswith('proxy-'))
                 data += '\r\n'
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
@@ -754,7 +754,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     host = common.HOSTS.get(host, host)
                 url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
                 data ='%s %s %s\r\n'  % (self.command, url, self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, self.headers[k]) for k in self.headers if k != 'host')
+                data += ''.join('%s: %s\r\n' % (k.title(), self.headers[k]) for k in self.headers if k != 'host')
                 data += 'Host: %s\r\n' % netloc
                 if common.PROXY_USERNAME and not common.PROXY_NTLM:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
