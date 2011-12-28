@@ -65,9 +65,20 @@ class MultiplexConnection(object):
                 pass
         del self._sockets
 
-class common(object):
-    GOOGLE_APPSPOT = '203.208.46.1|203.208.46.2|203.208.46.3|203.208.46.4|203.208.46.5|203.208.46.6|203.208.46.7|203.208.46.8'.split('|')
-    HOSTS = {}
+class Common(object):
+    def __init__(self):
+        self.HOSTS = {}
+        self.GOOGLE_APPSPOT = []
+        self.GOOGLE_APPSPOT += ['203.208.46.1', '203.208.46.2', '203.208.46.3', '203.208.46.4']
+        self.GOOGLE_APPSPOT += ['74.125.71.83', '74.125.71.18', '74.125.71.17', '74.125.71.19']
+        for host in ('www.g.cn', 'mail.google.com'):
+            try:
+                self.GOOGLE_APPSPOT += [x[-1][0] for x in socket.getaddrinfo(host, 443)]
+            except Exception:
+                logging.error('ssocket.getaddrinfo host=%r', host)
+        self.GOOGLE_APPSPOT = list(set(self.GOOGLE_APPSPOT))
+
+common = Common()
 
 def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
