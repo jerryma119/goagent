@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.4'
+__version__ = '1.7.5'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -416,26 +416,22 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
             if common.PROXY_ENABLE:
                 request.add_header('Host', fetchhost)
             response = urllib2.urlopen(request)
-            data = response.read()
-            response.close()
+            compressed = response.read(1)
 
-            if data[0] == '0':
-                raw_data = data[1:]
-            elif data[0] == '1':
-                raw_data = zlib.decompress(data[1:])
+            data = {}
+            if compressed == '0':
+                data['code'], hlen, clen = struct.unpack('>3I', response.read(12))
+                data['headers'] = dict((k.title(), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in response.read(hlen).split('&')))
+                data['response'] = response
+            elif compressed == '1':
+                rawdata = zlib.decompress(response.read())
+                data['code'], hlen, clen = struct.unpack('>3I', rawdata[:12])
+                data['headers'] = dict((k.title(), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in rawdata[12:12+hlen].split('&')))
+                data['content'] = rawdata[12+hlen:12+hlen+clen]
+                response.close()
             else:
                 raise ValueError('Data format not match(%s)' % url)
-            data = {}
-            data['code'], hlen, clen = struct.unpack('>3I', raw_data[:12])
-            tlen = 12+hlen+clen
-            realtlen = len(raw_data)
-            if realtlen == tlen:
-                data['content'] = raw_data[12+hlen:]
-            elif realtlen > tlen:
-                data['content'] = raw_data[12+hlen:tlen]
-            else:
-                raise ValueError('Data length is short than excepted!')
-            data['headers'] = dict((k.title(), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in raw_data[12:12+hlen].split('&')))
+
             return (0, data)
         except Exception, e:
             if on_error:
@@ -512,6 +508,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
+    rangefetch_bufsize = 8192
 
     def handle_fetch_error(self, error):
         if isinstance(error, urllib2.HTTPError):
@@ -566,7 +563,17 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             pass
 
-        self.wfile.write('%s %d %s\r\n%s\r\n%s' % (self.protocol_version, data['code'], 'OK', ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems()), data['content']))
+        self.connection.sendall('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems())))
+        if 'content' in data:
+            self.connection.sendall(data['content'])
+        else:
+            response = data['response']
+            while 1:
+                content = response.read(self.rangefetch_bufsize)
+                if not content:
+                    response.close()
+                    break
+                self.connection.sendall(content)
 
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
@@ -588,7 +595,16 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             start = int(m.group(2)) + 1
             logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['Content-Range'], end+1))
             failed = 0
-            self.wfile.write(data['content'])
+            if 'response' in data:
+                response = data['response']
+                while 1:
+                    content = response.read(self.rangefetch_bufsize)
+                    if not content:
+                        response.close()
+                        break
+                    self.connection.sendall(content)
+            else:
+                self.connection.sendall(data['content'])
         logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.headers.get('Host'))
         return True
 
@@ -809,8 +825,18 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', content_range)
                 if m and self.rangefetch(m, data):
                     return
-            content = '%s %d %s\r\n%s\r\n%s' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()), data['content'])
+            content = '%s %d %s\r\n%s\r\n' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()))
             self.connection.sendall(content)
+            try:
+                self.connection.sendall(data['content'])
+            except KeyError:
+                response = data['response']
+                while 1:
+                    content = response.read(self.rangefetch_bufsize)
+                    if not content:
+                        response.close()
+                        break
+                    self.connection.sendall(content)
             if 'close' == headers.get('Connection',''):
                 self.close_connection = 1
         except socket.error, (err, _):

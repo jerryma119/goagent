@@ -25,7 +25,7 @@ const (
 	Password = ""
 
 	FetchMax     = 3
-	FetchMaxSize = 1024 * 1024
+	FetchMaxSize = 1024 * 1024 * 2
 	Deadline     = 30
 )
 
