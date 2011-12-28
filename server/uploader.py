@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 # coding:utf-8
-# Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
-# Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
 __version__ = '1.0'
 __author__ = "phus.lu@gmail.com"

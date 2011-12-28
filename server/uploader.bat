@@ -4,8 +4,8 @@ set uploaddir=golang
 
 ( 
     echo ===============================================================
-    echo 开始上传GoAgent %uploaddir% Server
-    echo 如果需要上传python server, 请修改本文件的uploaddir的值为python
+    echo  GoAgent服务端部署程序, 开始上传%uploaddir%服务端
+    echo  如果需要上传python服务端, 请修改本文件的uploaddir的值为python
     echo ===============================================================
     echo.
     echo 请输入您的appid, 多个appid请用^|号隔开
