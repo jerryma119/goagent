@@ -12,7 +12,7 @@ set uploaddir=golang
 ) && (
     @cd /d "%~dp0" 
 ) && (
-    set PYTHONSCRIPT=uploader.py
+    set PYTHONSCRIPT=uploader.zip
 ) && (
     "..\local\proxy.exe"
 ) || (
