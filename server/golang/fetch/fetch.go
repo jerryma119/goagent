@@ -72,7 +72,14 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 	app.response.WriteHeader(200)
 	app.response.Header().Set("Content-Type", "image/gif")
 
-	if contentType, ok := header["content-type"]; ok && contentType[:5] == "text/" {
+    compressed := false
+	if contentType, ok := header["content-type"]; ok {
+	    if contentType[:5] == "text/" || contentType == "application/json" || contentType == "application/x-javascript" {
+	        compressed = true
+	    }
+	}
+
+	if compressed {
 		app.response.Write([]byte("1"))
 		w, err := zlib.NewWriter(app.response)
 		if err != nil {
