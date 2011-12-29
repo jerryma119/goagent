@@ -98,18 +98,6 @@ class Common(object):
     def install_opener(self):
         if self.PROXY_ENABLE:
             proxy = '%s:%s@%s:%d'%(self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
-            if '\\' in self.PROXY_USERNAME:
-                if not os.path.isfile('ntlmaps.zip'):
-                    logging.critical('ntlmaps.zip not found!')
-                    sys.exit(-1)
-                os.environ['NTLMAPS-GENERAL-PARENT_PROXY'] = common.PROXY_HOST
-                os.environ['NTLMAPS-GENERAL-PARENT_PROXY_PORT'] = str(common.PROXY_PORT)
-                os.environ['NTLMAPS-NTLM_AUTH-NT_DOMAIN'] = self.PROXY_USERNAME.split('\\')[0]
-                os.environ['NTLMAPS-NTLM_AUTH-USER'] = self.PROXY_USERNAME.split('\\')[1]
-                os.environ['NTLMAPS-NTLM_AUTH-PASSWORD'] = common.PROXY_PASSWROD
-                os.environ['PYTHONSCRIPT'] = 'ntlmaps.zip'
-                ret = os.startfile('proxy.exe') if os.name == 'nt' else os.system('python ntlmaps.zip &')
-                proxy = '127.0.0.1:5865'
             handlers = [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
         else:
             handlers = [urllib2.ProxyHandler({})]
