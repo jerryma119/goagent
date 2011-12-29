@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.5'
+__version__ = '1.7.7'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -27,7 +27,7 @@ class MainPage(webapp2.RequestHandler):
     def send_response(self, status, headers, content):
         strheaders = encode_data(headers)
         #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
-        if 'text' == headers.get('content-type', 'text/plain')[:4]:
+        if headers.get('content-type', '').startswith('text/', 'application/json', 'application/javascript'):
             data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
         else:
             data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
