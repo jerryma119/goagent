@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '1.0'
+__version__ = '1.1'
 __author__ = "phus.lu@gmail.com"
 
 import sys, os, re, time
 import socket
 import random
+import logging
 sys.path.extend(['.', 'appcfg.zip'])
 
 import fancy_urllib
