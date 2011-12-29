@@ -74,7 +74,7 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 
     compressed := false
 	if contentType, ok := header["content-type"]; ok {
-	    if contentType[:5] == "text/" || contentType[:16] == "application/json" || contentType[:22] == "application/javascript" {
+	    if strings.HasPrefix(contentType, "text/") || strings.HasPrefix(contentType, "application/json") || strings.HasPrefix(contentType, "application/javascript") {
 	        compressed = true
 	    }
 	}
