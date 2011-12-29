@@ -5,9 +5,7 @@ __version__ = '1.1'
 __author__ = "phus.lu@gmail.com"
 
 import sys, os, re, time
-import socket
-import random
-import logging
+import logging, random, socket, select
 sys.path.extend(['.', 'appcfg.zip'])
 
 import fancy_urllib
