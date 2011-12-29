@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version  = "1.7.6"
+	Version  = "1.7.7"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
@@ -133,7 +133,7 @@ func (app Webapp) post() {
 		}
 	}
 
-	if url[:4] != "http" {
+	if !strings.HasPrefix(url, "http") {
 		app.printNotify(method, url, 501, "Unsupported Scheme")
 	}
 
