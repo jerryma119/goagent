@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version  = "1.7.5"
+	Version  = "1.7.6"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
@@ -74,7 +74,7 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 
     compressed := false
 	if contentType, ok := header["content-type"]; ok {
-	    if contentType[:5] == "text/" || contentType == "application/json" || contentType == "application/x-javascript" {
+	    if contentType[:5] == "text/" || contentType[:16] == "application/json" || contentType[:22] == "application/javascript" {
 	        compressed = true
 	    }
 	}
