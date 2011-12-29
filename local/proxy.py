@@ -673,7 +673,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
                 data += ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k != 'Host')
-                if common.PROXY_USERNAME and not common.PROXY_NTLM:
+                if common.PROXY_USERNAME:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
                 data += '\r\n'
                 sock.sendall(data)
@@ -772,7 +772,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data ='%s %s %s\r\n'  % (self.command, url, self.request_version)
                 data += ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k != 'Host')
                 data += 'Host: %s\r\n' % netloc
-                if common.PROXY_USERNAME and not common.PROXY_NTLM:
+                if common.PROXY_USERNAME:
                     data += '%s\r\n' % common.proxy_basic_auth_header()
                 data += 'Proxy-Connection: close\r\n'
                 data += '\r\n'
