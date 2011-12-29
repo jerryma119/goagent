@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.6'
+__version__ = '1.7.7'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -564,16 +564,18 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             pass
 
         self.connection.sendall('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems())))
-        if 'content' in data:
-            self.connection.sendall(data['content'])
-        else:
+        if 'response' in data:
             response = data['response']
+            bufsize = -1 if data['headers'].get('Content-Type', '').startswith('video/') else self.rangefetch_bufsize
+            #logging.debug('bufsize=%r, Content-Type=%r' % (bufsize, data['headers'].get('Content-Type')))
             while 1:
-                content = response.read(self.rangefetch_bufsize)
+                content = response.read(bufsize)
                 if not content:
                     response.close()
                     break
                 self.connection.sendall(content)
+        else:
+            self.connection.sendall(data['content'])
 
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
