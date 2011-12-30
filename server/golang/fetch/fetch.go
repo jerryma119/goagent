@@ -53,6 +53,7 @@ type Webapp struct {
 	response http.ResponseWriter
 	request  *http.Request
 	context  appengine.Context
+	http.Handler
 }
 
 func (app Webapp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
