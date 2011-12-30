@@ -169,23 +169,23 @@ func (app Webapp) post() {
 			message := err.String()
 			errors = append(errors, message)
 			if strings.Contains(message, "FETCH_ERROR") {
-				app.context.Errorf("URLFetchServiceError_FETCH_ERROR(deadline=%v, url=%v)", deadline, url)
+				app.context.Errorf("URLFetchServiceError_FETCH_ERROR(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				time.Sleep(1*1e9)
 				deadline = float64(Deadline*2)
 			} else if strings.Contains(message, "DEADLINE_EXCEEDED") {
-				app.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(deadline=%v, url=%v)", deadline, url)
+				app.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				time.Sleep(1*1e9)
 				deadline = float64(Deadline*2)
 			} else if strings.Contains(message, "INVALID_URL") {
 				app.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.String()))
 				return
 			} else if strings.Contains(message, "RESPONSE_TOO_LARGE") {
-				app.context.Errorf("URLFetchServiceError_RESPONSE_TOO_LARGE(url=%v)", url)
+				app.context.Errorf("URLFetchServiceError_RESPONSE_TOO_LARGE(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
 				//app.context.Infof("req.Header=%v", req.Header)
 				deadline = float64(Deadline*2)
 			} else {
-				app.context.Errorf("URLFetchServiceError UNKOWN(deadline=%v, url=%v, error=%v)", deadline, url, err)
+				app.context.Errorf("URLFetchServiceError UNKOWN(type=%T, deadline=%v, url=%v, error=%v)", err, deadline, url, err)
 				time.Sleep(4*1e9)
 			}
 			continue
