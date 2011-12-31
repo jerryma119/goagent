@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.7'
+__version__ = '1.7.8'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -568,7 +568,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
         while start < end:
-            if failed > 5:
+            if failed > 8:
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, min(start+common.AUTORANGE_MAXSIZE-1, end))
             retval, data = self.fetch(self.path, '', self.command, str(self.headers))
@@ -579,8 +579,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 time.sleep(seconds)
                 continue
             m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('Content-Range',''))
-            if not m or int(m.group(1))!=start:
+            if not m:
                 failed += 1
+                logging.error('Range Fetch fail %d times, data[\'headers\']=%s', failed, data['headers'])
                 continue
             start = int(m.group(2)) + 1
             logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['Content-Range'], end+1))
