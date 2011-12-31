@@ -27,7 +27,7 @@ class MainPage(webapp2.RequestHandler):
     def send_response(self, status, headers, content):
         strheaders = encode_data(headers)
         #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
-        if headers.get('content-type', '').startswith('text/', 'application/json', 'application/javascript'):
+        if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
             data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
         else:
             data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
