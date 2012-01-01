@@ -1,3 +1,4 @@
+// WARNING: If you want to edit this file, please use notepad.exe!
 // Copyright 2011 Phus Lu. All rights reserved.
 
 package fetch
@@ -49,29 +50,29 @@ func decodeData(qs []byte) map[string]string {
 	return m
 }
 
-type Webapp struct {
+type Handler struct {
 	response http.ResponseWriter
 	request  *http.Request
 	context  appengine.Context
 	http.Handler
 }
 
-func (app Webapp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	app.response = w
-	app.request = r
-	app.context = appengine.NewContext(app.request)
+func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.response = w
+	h.request = r
+	h.context = appengine.NewContext(r)
 	if r.Method == "POST" {
-		app.post()
+		h.post()
 	} else {
-		app.get()
+		h.get()
 	}
 }
 
-func (app Webapp) printResponse(status int, header map[string]string, content []byte) {
+func (h Handler) printResponse(status int, header map[string]string, content []byte) {
 	headerEncoded := encodeData(header)
 
-	app.response.WriteHeader(200)
-	app.response.Header().Set("Content-Type", "image/gif")
+	h.response.WriteHeader(200)
+	h.response.Header().Set("Content-Type", "image/gif")
 
     compressed := false
 	if contentType, ok := header["content-type"]; ok {
@@ -81,10 +82,10 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 	}
 
 	if compressed {
-		app.response.Write([]byte("1"))
-		w, err := zlib.NewWriter(app.response)
+		h.response.Write([]byte("1"))
+		w, err := zlib.NewWriter(h.response)
 		if err != nil {
-			app.context.Criticalf("zlib.NewWriter(app.response) Error: %v", err)
+			h.context.Criticalf("zlib.NewWriter(h.response) Error: %v", err)
 			return
 		}
 		defer w.Close()
@@ -94,31 +95,31 @@ func (app Webapp) printResponse(status int, header map[string]string, content []
 		w.Write(headerEncoded)
 		w.Write(content)
 	} else {
-		app.response.Write([]byte("0"))
-		binary.Write(app.response, binary.BigEndian, uint32(status))
-		binary.Write(app.response, binary.BigEndian, uint32(len(headerEncoded)))
-		binary.Write(app.response, binary.BigEndian, uint32(len(content)))
-		app.response.Write(headerEncoded)
-		app.response.Write(content)
+		h.response.Write([]byte("0"))
+		binary.Write(h.response, binary.BigEndian, uint32(status))
+		binary.Write(h.response, binary.BigEndian, uint32(len(headerEncoded)))
+		binary.Write(h.response, binary.BigEndian, uint32(len(content)))
+		h.response.Write(headerEncoded)
+		h.response.Write(content)
 	}
 }
 
-func (app Webapp) printNotify(method string, url string, status int, text string) {
+func (h Handler) printNotify(method string, url string, status int, text string) {
 	content := []byte(fmt.Sprintf("<h2>Go Server Fetch Info</h2><hr noshade='noshade'><p>%s '%s'</p><p>Return Code: %d</p><p>Message: %s</p>", method, url, status, text))
 	headers := map[string]string{"content-type": "text/html"}
-	app.printResponse(status, headers, content)
+	h.printResponse(status, headers, content)
 }
 
-func (app Webapp) post() {
-	r, err := zlib.NewReader(app.request.Body)
+func (h Handler) post() {
+	r, err := zlib.NewReader(h.request.Body)
 	if err != nil {
-		app.context.Criticalf("zlib.NewReader(app.request.Body) Error: %v", err)
+		h.context.Criticalf("zlib.NewReader(h.request.Body) Error: %v", err)
 		return
 	}
 	defer r.Close()
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
-		app.context.Criticalf("ioutil.ReadAll(r) Error: %v", err)
+		h.context.Criticalf("ioutil.ReadAll(r) Error: %v", err)
 		return
 	}
 	request := decodeData(data)
@@ -130,18 +131,18 @@ func (app Webapp) post() {
 	if Password != "" {
 		password, ok := request["password"]
 		if !ok || password != Password {
-			app.printNotify(method, url, 403, " Wrong Password.")
+			h.printNotify(method, url, 403, " Wrong Password.")
 		}
 	}
 
 	if !strings.HasPrefix(url, "http") {
-		app.printNotify(method, url, 501, "Unsupported Scheme")
+		h.printNotify(method, url, 501, "Unsupported Scheme")
 	}
 
 	payload := request["payload"]
 	req, err := http.NewRequest(method, url, bytes.NewBufferString(payload))
 	if err != nil {
-		app.printNotify(method, url, 500, "http.NewRequest(method, url, payload) failed")
+		h.printNotify(method, url, 500, "http.NewRequest(method, url, payload) failed")
 	}
 
 	for _, line := range strings.Split(headers, "\r\n") {
@@ -155,7 +156,7 @@ func (app Webapp) post() {
 	if fetchmaxString, ok := request["fetchmax"] ; ok {
 	    fetchmax, err = strconv.Atoi(fetchmaxString)
 	    if err != nil {
-	        app.context.Errorf("strconv.Atoi(fetchmaxString=%v) error=%v", fetchmaxString, err)
+	        h.context.Errorf("strconv.Atoi(fetchmaxString=%v) error=%v", fetchmaxString, err)
 	        fetchmax = FetchMax
 	    }
 	}
@@ -164,29 +165,29 @@ func (app Webapp) post() {
 	
 	var errors []string
 	for i := 0; i < fetchmax; i++ {
-		t := &urlfetch.Transport{app.context, deadline, true}
+		t := &urlfetch.Transport{h.context, deadline, true}
 		resp, err := t.RoundTrip(req)
 		if err != nil {
 			message := err.String()
 			errors = append(errors, message)
 			if strings.Contains(message, "FETCH_ERROR") {
-				app.context.Errorf("URLFetchServiceError_FETCH_ERROR(type=%T, deadline=%v, url=%v)", err, deadline, url)
+				h.context.Errorf("URLFetchServiceError_FETCH_ERROR(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				time.Sleep(1*1e9)
 				deadline = float64(Deadline*2)
 			} else if strings.Contains(message, "DEADLINE_EXCEEDED") {
-				app.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(type=%T, deadline=%v, url=%v)", err, deadline, url)
+				h.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				time.Sleep(1*1e9)
 				deadline = float64(Deadline*2)
 			} else if strings.Contains(message, "INVALID_URL") {
-				app.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.String()))
+				h.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.String()))
 				return
 			} else if strings.Contains(message, "RESPONSE_TOO_LARGE") {
-				app.context.Errorf("URLFetchServiceError_RESPONSE_TOO_LARGE(type=%T, deadline=%v, url=%v)", err, deadline, url)
+				h.context.Errorf("URLFetchServiceError_RESPONSE_TOO_LARGE(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
-				//app.context.Infof("req.Header=%v", req.Header)
+				//h.context.Infof("req.Header=%v", req.Header)
 				deadline = float64(Deadline*2)
 			} else {
-				app.context.Errorf("URLFetchServiceError UNKOWN(type=%T, deadline=%v, url=%v, error=%v)", err, deadline, url, err)
+				h.context.Errorf("URLFetchServiceError UNKOWN(type=%T, deadline=%v, url=%v, error=%v)", err, deadline, url, err)
 				time.Sleep(4*1e9)
 			}
 			continue
@@ -216,7 +217,7 @@ func (app Webapp) post() {
 
 		content, err := ioutil.ReadAll(resp.Body)
 		if err == urlfetch.ErrTruncatedBody {
-			app.context.Criticalf("ioutil.ReadAll(resp.Body) return urlfetch.ErrTruncatedBody")
+			h.context.Criticalf("ioutil.ReadAll(resp.Body) return urlfetch.ErrTruncatedBody")
 		}
 		if status == 206 {
 			header["accept-ranges"] = "bytes"
@@ -224,17 +225,17 @@ func (app Webapp) post() {
 		}
 		header["connection"] = "close"
 
-		//app.printNotify(method, url, 502, fmt.Sprintf("status=%d, header=%v, len(content)=%d", status, resp.Header, len(content)))
-		app.printResponse(status, header, content)
+		//h.printNotify(method, url, 502, fmt.Sprintf("status=%d, header=%v, len(content)=%d", status, resp.Header, len(content)))
+		h.printResponse(status, header, content)
 		return
 	}
-	app.printNotify(method, url, 502, fmt.Sprintf("Go Server Fetch Failed: %v", errors))
+	h.printNotify(method, url, 502, fmt.Sprintf("Go Server Fetch Failed: %v", errors))
 }
 
-func (app Webapp) get() {
-	app.response.WriteHeader(http.StatusOK)
-	app.response.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(app.response, `
+func (h Handler) get() {
+	h.response.WriteHeader(http.StatusOK)
+	h.response.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(h.response, `
 <html>
 <head>
     <link rel="icon" type="image/vnd.microsoft.icon" href="http://www.google.cn/favicon.ico">
@@ -265,5 +266,5 @@ func (app Webapp) get() {
 }
 
 func init() {
-	http.Handle("/fetch.py", Webapp{})
+	http.Handle("/fetch.py", Handler{})
 }
