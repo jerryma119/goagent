@@ -568,7 +568,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
         while start < end:
-            if failed > 8:
+            if failed > 16:
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, min(start+common.AUTORANGE_MAXSIZE-1, end))
             retval, data = self.fetch(self.path, '', self.command, str(self.headers))
@@ -577,6 +577,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 seconds = random.randint(2*failed, 2*(failed+1))
                 logging.error('Range Fetch fail %d times, retry after %d secs!', failed, seconds)
                 time.sleep(seconds)
+                continue
+            if 'Location' in data['headers']:
+                logging.info('Range Fetch got a redirect location:%r', data['headers']['Location'])
+                self.path = data['headers']['Location']
+                failed += 1
                 continue
             m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('Content-Range',''))
             if not m:
