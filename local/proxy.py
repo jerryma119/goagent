@@ -783,29 +783,32 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 pass
 
     def do_METHOD_Thunnel(self):
-        host = self.headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
+        headers = self.headers
+        host = headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
-        payload_len = int(self.headers.get('Content-Length', 0))
+        payload_len = int(headers.get('Content-Length', 0))
         if payload_len > 0:
             payload = self.rfile.read(payload_len)
         else:
             payload = ''
 
         if common.USERAGENT_ENABLE:
-            self.headers['User-Agent'] = common.USERAGENT_STRING
+            headers['User-Agent'] = common.USERAGENT_STRING
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    self.headers['Range'] = 'bytes=0-%d' % (common.AUTORANGE_MAXSIZE-1)
+                    m = re.search('bytes=(\d+)-', headers.get('Range', ''))
+                    start = int(m.group(1) if m else 0)
+                    headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
                     break
 
         skip_headers = self.skip_headers
-        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in skip_headers)
+        strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
 
-        retval, data = self.fetch(self.path, payload, self.command, headers)
+        retval, data = self.fetch(self.path, payload, self.command, strheaders)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
