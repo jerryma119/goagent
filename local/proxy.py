@@ -345,7 +345,7 @@ class CertUtil(object):
             with CertUtil.CALock:
                 if not os.path.isfile(keyFile):
                     logging.info('CertUtil getCertificate for %r', host)
-                    serial = int(hashlib.md5(host).hexdigest(),16) + int(time.time() * 100)
+                    serial = (int(hashlib.md5(host).hexdigest(),16) + int(time.time() * 100)) % sys.maxint
                     try:
                         key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
                         CertUtil.writeFile(keyFile, key)
