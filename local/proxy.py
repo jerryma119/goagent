@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.7'
+__version__ = '1.7.8'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -567,7 +567,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
         while start < end:
-            if failed > 5:
+            if failed > 16:
                 break
             self.headers['Range'] = 'bytes=%d-%d' % (start, min(start+common.AUTORANGE_MAXSIZE-1, end))
             retval, data = self.fetch(self.path, '', self.command, str(self.headers))
@@ -577,9 +577,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.error('Range Fetch fail %d times, retry after %d secs!', failed, seconds)
                 time.sleep(seconds)
                 continue
-            m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('Content-Range',''))
-            if not m or int(m.group(1))!=start:
+            if 'Location' in data['headers']:
+                logging.info('Range Fetch got a redirect location:%r', data['headers']['Location'])
+                self.path = data['headers']['Location']
                 failed += 1
+                continue
+            m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('Content-Range',''))
+            if not m:
+                failed += 1
+                logging.error('Range Fetch fail %d times, data[\'headers\']=%s', failed, data['headers'])
                 continue
             start = int(m.group(2)) + 1
             logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['Content-Range'], end+1))
@@ -781,29 +787,32 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 pass
 
     def do_METHOD_Thunnel(self):
-        host = self.headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
+        headers = self.headers
+        host = headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
-        payload_len = int(self.headers.get('Content-Length', 0))
+        payload_len = int(headers.get('Content-Length', 0))
         if payload_len > 0:
             payload = self.rfile.read(payload_len)
         else:
             payload = ''
 
         if common.USERAGENT_ENABLE:
-            self.headers['User-Agent'] = common.USERAGENT_STRING
+            headers['User-Agent'] = common.USERAGENT_STRING
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             for pattern in common.AUTORANGE_HOSTS:
                 if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    self.headers['Range'] = 'bytes=0-%d' % (common.AUTORANGE_MAXSIZE-1)
+                    m = re.search('bytes=(\d+)-', headers.get('Range', ''))
+                    start = int(m.group(1) if m else 0)
+                    headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
                     break
 
         skip_headers = self.skip_headers
-        headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k not in skip_headers)
+        strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
 
-        retval, data = self.fetch(self.path, payload, self.command, headers)
+        retval, data = self.fetch(self.path, payload, self.command, strheaders)
         try:
             if retval == -1:
                 return self.end_error(502, str(data))
