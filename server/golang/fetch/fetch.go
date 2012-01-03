@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	Version  = "1.7.8"
+	Version  = "1.7.9 dev"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
@@ -83,9 +83,9 @@ func (h Handler) printResponse(status int, header map[string]string, content []b
 
 	if compressed {
 		h.response.Write([]byte("1"))
-		w, err := zlib.NewWriter(h.response)
+		w, err := zlib.NewWriterDict(h.response, zlib.BestCompression, nil)
 		if err != nil {
-			h.context.Criticalf("zlib.NewWriter(h.response) Error: %v", err)
+			h.context.Criticalf("zlib.NewWriterDict(h.response, zlib.BestCompression, nil) Error: %v", err)
 			return
 		}
 		defer w.Close()
