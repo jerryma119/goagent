@@ -72,6 +72,8 @@ class Common(object):
         self.AUTORANGE_WAITSIZE   = self.CONFIG.getint('autorange', 'waitsize')
         self.AUTORANGE_BUFSIZE    = self.CONFIG.getint('autorange', 'bufsize')
 
+        assert self.AUTORANGE_BUFSIZE <= self.AUTORANGE_WAITSIZE <= self.AUTORANGE_MAXSIZE
+
         self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
 
@@ -565,6 +567,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     response.close()
                     break
                 self.connection.sendall(content)
+                bufsize = common.AUTORANGE_BUFSIZE
         else:
             self.connection.sendall(data['content'])
 
