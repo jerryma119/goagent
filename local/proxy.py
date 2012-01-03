@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.8'
+__version__ = '1.7.9 dev'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -69,6 +69,8 @@ class Common(object):
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_ENDSWITH   = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
+        self.AUTORANGE_WAITSIZE   = self.CONFIG.getint('autorange', 'waitsize')
+        self.AUTORANGE_BUFSIZE    = self.CONFIG.getint('autorange', 'bufsize')
 
         self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
@@ -345,12 +347,13 @@ class CertUtil(object):
             with CertUtil.CALock:
                 if not os.path.isfile(keyFile):
                     logging.info('CertUtil getCertificate for %r', host)
-                    serial = (int(hashlib.md5(host).hexdigest(),16) + int(time.time() * 100)) % sys.maxint
                     try:
+                        # FIXME: howto generate a suitable serial number?
+                        serial = int(time.time()) + (binascii.crc32(host)<<32)
                         key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
-                        CertUtil.writeFile(keyFile, key)
                         CertUtil.writeFile(crtFile, crt)
-                    except:
+                        CertUtil.writeFile(keyFile, key)
+                    except Exception:
                         logging.exception('CertUtil.makeCert failed: host=%r, serial=%r', host, serial)
                     else:
                         keyFile = os.path.join(basedir, 'CA.key')
@@ -495,7 +498,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
-    rangefetch_bufsize = 8192
 
     def handle_fetch_error(self, error):
         if isinstance(error, urllib2.HTTPError):
@@ -553,8 +555,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.connection.sendall('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems())))
         if 'response' in data:
             response = data['response']
-            bufsize = -1 if data['headers'].get('Content-Type', '').startswith('video/') else self.rangefetch_bufsize
-            #logging.debug('bufsize=%r, Content-Type=%r' % (bufsize, data['headers'].get('Content-Type')))
+            bufsize = common.AUTORANGE_BUFSIZE
+            if data['headers'].get('Content-Type', '').startswith('video/'):
+                bufsize = common.AUTORANGE_WAITSIZE
             while 1:
                 content = response.read(bufsize)
                 if not content:
@@ -593,7 +596,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if 'response' in data:
                 response = data['response']
                 while 1:
-                    content = response.read(self.rangefetch_bufsize)
+                    content = response.read(common.AUTORANGE_BUFSIZE)
                     if not content:
                         response.close()
                         break
@@ -832,7 +835,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 #logging.info('OOPS, KeyError! Content-Type=%r', headers.get('Content-Type'))
                 response = data['response']
                 while 1:
-                    content = response.read(self.rangefetch_bufsize)
+                    content = response.read(common.AUTORANGE_BUFSIZE)
                     if not content:
                         response.close()
                         break
