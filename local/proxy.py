@@ -347,14 +347,15 @@ class CertUtil(object):
             with CertUtil.CALock:
                 if not os.path.isfile(keyFile):
                     logging.info('CertUtil getCertificate for %r', host)
-                    try:
-                        # FIXME: howto generate a suitable serial number?
-                        serial = int(time.time()) + (binascii.crc32(host)<<32)
-                        key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
-                        CertUtil.writeFile(crtFile, crt)
-                        CertUtil.writeFile(keyFile, key)
-                    except Exception:
-                        logging.exception('CertUtil.makeCert failed: host=%r, serial=%r', host, serial)
+                    # FIXME: howto generate a suitable serial number?
+                    for serial in (int(hashlib.md5(host).hexdigest(), 16), int(time.time()*100)):
+                        try:
+                            key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
+                            CertUtil.writeFile(crtFile, crt)
+                            CertUtil.writeFile(keyFile, key)
+                            break
+                        except Exception:
+                            logging.exception('CertUtil.makeCert failed: host=%r, serial=%r', host, serial)
                     else:
                         keyFile = os.path.join(basedir, 'CA.key')
                         crtFile = os.path.join(basedir, 'CA.crt')
