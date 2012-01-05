@@ -42,8 +42,7 @@ class Common(object):
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
 
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
-        self.PHP_IP               = self.CONFIG.get('php', 'ip')
-        self.PHP_PORT             = self.CONFIG.getint('php', 'port')
+        self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
         self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
 
         self.PROXY_ENABLE         = self.CONFIG.getint('proxy', 'enable')
@@ -86,7 +85,7 @@ class Common(object):
         self.HOSTS_ENDSWITH_TUPLE = tuple(k for k, v in self.CONFIG.items('hosts') if k.startswith('.'))
 
         self.build_gae_fetchserver()
-        self.PHP_FETCHHOST        = re.sub(':\d+$', '', urlparse.urlparse(self.PHP_FETCHSERVER).netloc)
+        self.PHP_FETCH_INFO       = dict(((listen.rpartition(':')[0], int(listen.rpartition(':')[-1])), (re.sub(':\d+$', '', urlparse.urlparse(server).netloc), server)) for listen, server in zip(self.PHP_LISTEN.split('|'), self.PHP_FETCHSERVER.split('|')))
 
     def build_gae_fetchserver(self):
         self.GAE_FETCHHOST = '%s.appspot.com' % self.GAE_APPIDS[0]
@@ -119,8 +118,10 @@ class Common(object):
         info += 'GAE Mode        : %s\n' % self.GOOGLE_MODE if self.GAE_ENABLE else ''
         info += 'GAE Area        : %s\n' % self.CONFIG.get('google', 'appspot')
         info += 'GAE APPID       : %s\n' % '|'.join(self.GAE_APPIDS)
-        info += 'PHP Mode Listen : %s:%d\n' % (self.PHP_IP, self.PHP_PORT) if self.PHP_ENABLE else ''
-        info += 'PHP FetchServer : %s\n' % self.PHP_FETCHSERVER if self.PHP_ENABLE else ''
+        if common.PHP_ENABLE:
+            for (ip, port),(fetchhost, fetchserver) in common.PHP_FETCH_INFO.iteritems():
+                info += 'PHP Mode Listen : %s:%d\n' % (ip, port)
+                info += 'PHP FetchServer : %s\n' % fetchserver
         info += '------------------------------------------------------\n'
         return info
 
@@ -857,23 +858,25 @@ class PHPProxyHandler(LocalProxyHandler):
         logging.error('PHPProxyHandler handle_fetch_error %s', error)
 
     def fetch(self, url, payload, method, headers):
+        fetchhost, fetchserver = common.PHP_FETCH_INFO[self.server.server_address]
         dns = common.HOSTS.get(self.headers.get('Host'))
-        return urlfetch(url, payload, method, headers, common.PHP_FETCHHOST, common.PHP_FETCHSERVER, dns=dns, on_error=self.handle_fetch_error)
+        return urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
         if common.PROXY_ENABLE:
             logging.info('Local Proxy is enable, PHPProxyHandler dont resole DNS')
         else:
-            logging.info('PHPProxyHandler.setup check %s is in common.HOSTS', common.PHP_FETCHHOST)
-            if common.PHP_FETCHHOST not in common.HOSTS:
-                with LocalProxyHandler.SetupLock:
-                    if common.PHP_FETCHHOST not in common.HOSTS:
-                        try:
-                            logging.info('Resole php fetchserver address.')
-                            common.HOSTS[common.PHP_FETCHHOST] = socket.gethostbyname(common.PHP_FETCHHOST)
-                            logging.info('Resole php fetchserver address OK. %s', common.HOSTS[common.PHP_FETCHHOST])
-                        except Exception, e:
-                            logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
+            for fetchhost, _ in common.PHP_FETCH_INFO.itervalues():
+                logging.info('PHPProxyHandler.setup check %s is in common.HOSTS', fetchhost)
+                if fetchhost not in common.HOSTS:
+                    with LocalProxyHandler.SetupLock:
+                        if fetchhost not in common.HOSTS:
+                            try:
+                                logging.info('Resole php fetchserver address.')
+                                common.HOSTS[fetchhost] = socket.gethostbyname(fetchhost)
+                                logging.info('Resole php fetchserver address OK. %s', common.HOSTS[fetchhost])
+                            except Exception, e:
+                                logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
         PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Thunnel
         PHPProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Thunnel
         PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Thunnel
@@ -922,8 +925,9 @@ def main():
     LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
 
     if common.PHP_ENABLE:
-        httpd = LocalProxyServer((common.PHP_IP, common.PHP_PORT), PHPProxyHandler)
-        thread.start_new_thread(httpd.serve_forever, ())
+        for address in common.PHP_FETCH_INFO:
+            httpd = LocalProxyServer(address, PHPProxyHandler)
+            thread.start_new_thread(httpd.serve_forever, ())
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyHandler)
     httpd.serve_forever()
 
