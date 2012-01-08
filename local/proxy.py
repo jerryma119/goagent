@@ -95,9 +95,6 @@ class Common(object):
         else:
             self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_APPSPOT), self.GAE_PATH)
 
-    def proxy_basic_auth_header(self):
-        return 'Proxy-Authorization: Basic %s' + base64.b64encode('%s:%s'%(self.PROXY_USERNAME, self.PROXY_PASSWROD))
-
     def install_opener(self):
         if self.PROXY_ENABLE:
             proxy = '%s:%s@%s:%d'%(self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
@@ -692,11 +689,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     ip = random.choice(common.GOOGLE_HOSTS)
                 else:
                     ip = random.choice(common.HOSTS.get(host, host)[0])
-                data = '%s %s:%s %s\r\n' % (self.command, ip, port, self.protocol_version)
-                data += ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k != 'Host')
+                if 'Host' in self.headers:
+                    del self.headers['Host']
                 if common.PROXY_USERNAME:
-                    data += '%s\r\n' % common.proxy_basic_auth_header()
-                data += '\r\n'
+                    self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
+                data = '%s %s:%s %s\r\n%s\r\b' % (self.command, ip, port, self.protocol_version, self.headers)
                 sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except:
@@ -790,13 +787,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     host = common.HOSTS.get(host, host)
                 url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
-                data ='%s %s %s\r\n'  % (self.command, url, self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if k != 'Host')
-                data += 'Host: %s\r\n' % netloc
+                self.headers['Host'] = netloc
+                self.headers['Proxy-Connection'] = 'close'
                 if common.PROXY_USERNAME:
-                    data += '%s\r\n' % common.proxy_basic_auth_header()
-                data += 'Proxy-Connection: close\r\n'
-                data += '\r\n'
+                    self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
+                data ='%s %s %s\r\n%s\r\n'  % (self.command, url, self.request_version, self.headers)
 
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
