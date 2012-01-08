@@ -13,7 +13,6 @@ import thread, threading
 import socket, ssl, select
 import httplib, urllib2, urlparse
 import BaseHTTPServer, SocketServer
-import cStringIO
 try:
     import ctypes
 except ImportError:
