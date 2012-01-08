@@ -392,57 +392,9 @@ class CertUtil(object):
             cacrt = CertUtil.readFile(crtFile)
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
 
-def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on_error=None):
-    errors = []
-    params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
-    logging.debug('urlfetch params %s', params)
-    if common.GAE_PASSWORD:
-        params['password'] = common.GAE_PASSWORD
-    if common.FETCHMAX_SERVER:
-        params['fetchmax'] = common.FETCHMAX_SERVER
-    if dns:
-        params['dns'] = dns
-    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-    for i in xrange(common.FETCHMAX_LOCAL):
-        try:
-            logging.debug('urlfetch %r by %r', url, fetchserver)
-            request = urllib2.Request(fetchserver, zlib.compress(params, 9))
-            request.add_header('Content-Type', '')
-            if common.PROXY_ENABLE:
-                request.add_header('Host', fetchhost)
-            response = urllib2.urlopen(request)
-            compressed = response.read(1)
-
-            data = {}
-            if compressed == '0':
-                data['code'], hlen, clen = struct.unpack('>3I', response.read(12))
-                data['headers'] = SimpleMessageClass((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in response.read(hlen).split('&')))
-                data['response'] = response
-            elif compressed == '1':
-                rawdata = zlib.decompress(response.read())
-                data['code'], hlen, clen = struct.unpack('>3I', rawdata[:12])
-                data['headers'] = SimpleMessageClass((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in rawdata[12:12+hlen].split('&')))
-                data['content'] = rawdata[12+hlen:12+hlen+clen]
-                response.close()
-            else:
-                raise ValueError('Data format not match(%s)' % url)
-
-            return (0, data)
-        except Exception, e:
-            if on_error:
-                logging.info('urlfetch error=%s on_error=%s', str(e), str(on_error))
-                data = on_error(e)
-                if data:
-                    fetchhost = data.get('fetchhost', fetchhost)
-                    fetchserver = data.get('fetchserver', fetchserver)
-            errors.append(str(e))
-            time.sleep(i+1)
-            continue
-    return (-1, errors)
-
 class SimpleMessageClass(object):
 
-    def __init__(self, fp = None, seekable = 0):
+    def __init__(self, fp, seekable = 0):
         self.dict = dict = {}
         self.headers = headers = []
         readline = getattr(fp, 'readline', None)
@@ -511,6 +463,54 @@ class SimpleMessageClass(object):
 
     def __str__(self):
         return ''.join(self.headers)
+
+def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on_error=None):
+    errors = []
+    params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
+    logging.debug('urlfetch params %s', params)
+    if common.GAE_PASSWORD:
+        params['password'] = common.GAE_PASSWORD
+    if common.FETCHMAX_SERVER:
+        params['fetchmax'] = common.FETCHMAX_SERVER
+    if dns:
+        params['dns'] = dns
+    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+    for i in xrange(common.FETCHMAX_LOCAL):
+        try:
+            logging.debug('urlfetch %r by %r', url, fetchserver)
+            request = urllib2.Request(fetchserver, zlib.compress(params, 9))
+            request.add_header('Content-Type', '')
+            if common.PROXY_ENABLE:
+                request.add_header('Host', fetchhost)
+            response = urllib2.urlopen(request)
+            compressed = response.read(1)
+
+            data = {}
+            if compressed == '0':
+                data['code'], hlen, clen = struct.unpack('>3I', response.read(12))
+                data['headers'] = SimpleMessageClass((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in response.read(hlen).split('&')))
+                data['response'] = response
+            elif compressed == '1':
+                rawdata = zlib.decompress(response.read())
+                data['code'], hlen, clen = struct.unpack('>3I', rawdata[:12])
+                data['headers'] = SimpleMessageClass((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in rawdata[12:12+hlen].split('&')))
+                data['content'] = rawdata[12+hlen:12+hlen+clen]
+                response.close()
+            else:
+                raise ValueError('Data format not match(%s)' % url)
+
+            return (0, data)
+        except Exception, e:
+            if on_error:
+                logging.info('urlfetch error=%s on_error=%s', str(e), str(on_error))
+                data = on_error(e)
+                if data:
+                    fetchhost = data.get('fetchhost', fetchhost)
+                    fetchserver = data.get('fetchserver', fetchserver)
+            errors.append(str(e))
+            time.sleep(i+1)
+            continue
+    return (-1, errors)
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
