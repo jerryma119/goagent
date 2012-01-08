@@ -492,7 +492,6 @@ class SimpleMessageClass(object):
     def __setitem__(self, name, value):
         name = name.title()
         self.dict[name] = value
-        headers = self.headers
         self.headers = [line for line in self.headers if line.partition(':')[0].title() != name]
         self.headers.append('%s: %s\r\n' % (name, value))
 
