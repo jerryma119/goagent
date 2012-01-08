@@ -444,7 +444,9 @@ class SimpleMessageClass(object):
 
     def __init__(self, fp = None, seekable = 0):
         self.dict = dict = {}
+        self.headers = headers = []
         readline = getattr(fp, 'readline', None)
+        headers_append = headers.append
         if readline:
             while 1:
                 line = readline(8192)
@@ -452,43 +454,58 @@ class SimpleMessageClass(object):
                     break
                 key, _, value = line.partition(':')
                 if value:
-                    dict.setdefault(key.title(), []).append(value.strip())
+                    headers_append(line)
+                    dict[key.title()] = value.strip()
         else:
             for key, value in fp:
-                dict.setdefault(key.title(), []).append(value.strip())
+                key = key.title()
+                dict[key] = value
+                headers_append('%s: %s\r\n' % (key, value))
 
     def getheader(self, name, default=None):
-        return ', '.join(self.dict.get(name.title(), [])) or default
+        return self.dict.get(name.title(), default)
 
     def get(self, name, default=None):
-        return ', '.join(self.dict.get(name.title(), [])) or default
+        return self.dict.get(name.title(), default)
 
     def iteritems(self):
-        return ((k, ', '.join(v)) for k,v in self.dict.iteritems())
+        return self.dict.iteritems()
 
     def iterkeys(self):
         return self.dict.iterkeys()
 
     def itervalues(self):
-        return (', '.join(value) for key in self.dict.itervalues())
+        return self.dict.itervalues()
 
     def keys(self):
         return self.dict.keys()
 
     def values(self):
-        return [', '.join(value) for key in self.dict.itervalues()]
+        return self.dict.values()
 
     def items(self):
-        return [(key, ', '.join(value)) for key in self.dict.iteritems()]
+        return self.dict.items()
 
     def __getitem__(self, name):
-        return ', '.join(self.dict[name.title()])
+        return self.dict[name.title()]
 
     def __setitem__(self, name, value):
-        self.dict[name.title()] = [value]
+        name = name.title()
+        self.dict[name] = value
+        headers = self.headers
+        for i in reversed(xrange(len(headers))):
+            key, _, value = headers[i].partition(':')
+            if key == name:
+                del headers[i]
+        headers.append('%s: %s\r\n' % (name, value))
 
     def __delitem__(self, name):
-        del self.dict[name.title()]
+        name = name.title()
+        del self.dict[name]
+        for i in reversed(xrange(len(headers))):
+            key, _, value = headers[i].partition(':')
+            if key == name:
+                del headers[i]
 
     def __contains__(self, name):
         return name.title() in self.dict
@@ -500,7 +517,7 @@ class SimpleMessageClass(object):
         return iter(self.dict)
 
     def __str__(self):
-        return ''.join('%s: %s\r\n' % (k, ', '.join(v)) for k, v in self.dict.iteritems())
+        return ''.join(self.headers)
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
