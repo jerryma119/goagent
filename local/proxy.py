@@ -13,6 +13,7 @@ import thread, threading
 import socket, ssl, select
 import httplib, urllib2, urlparse
 import BaseHTTPServer, SocketServer
+import cStringIO
 try:
     import ctypes
 except ImportError:
@@ -415,12 +416,12 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
             data = {}
             if compressed == '0':
                 data['code'], hlen, clen = struct.unpack('>3I', response.read(12))
-                data['headers'] = dict((k.title(), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in response.read(hlen).split('&')))
+                data['headers'] = SimpleMessageClass(cStringIO.StringIO(''.join('%s:%s\r\n' % (k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in response.read(hlen).split('&')))))
                 data['response'] = response
             elif compressed == '1':
                 rawdata = zlib.decompress(response.read())
                 data['code'], hlen, clen = struct.unpack('>3I', rawdata[:12])
-                data['headers'] = dict((k.title(), binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in rawdata[12:12+hlen].split('&')))
+                data['headers'] = SimpleMessageClass(cStringIO.StringIO(''.join('%s:%s\r\n' % (k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in rawdata[12:12+hlen].split('&')))))
                 data['content'] = rawdata[12+hlen:12+hlen+clen]
                 response.close()
             else:
@@ -451,37 +452,37 @@ class SimpleMessageClass(object):
                 break
             key, _, value = line.partition(':')
             if value:
-                dict[key.title()] = value.strip()
+                dict.setdefault(key.title(), []).append(value.strip())
 
     def getheader(self, name, default=None):
-        return self.dict.get(name.title(), default)
+        return ', '.join(self.dict.get(name.title(), [])) or default
 
     def get(self, name, default=None):
-        return self.dict.get(name.title(), default)
+        return ', '.join(self.dict.get(name.title(), [])) or default
 
     def iteritems(self):
-        return self.dict.iteritems()
+        return ((k, ', '.join(v)) for k,v in self.dict.iteritems())
 
     def iterkeys(self):
         return self.dict.iterkeys()
 
     def itervalues(self):
-        return self.dict.itervalues()
+        return (', '.join(value) for key in self.dict.itervalues())
 
     def keys(self):
         return self.dict.keys()
 
     def values(self):
-        return self.dict.values()
+        return [', '.join(value) for key in self.dict.itervalues()]
 
     def items(self):
-        return self.dict.items()
+        return [(key, ', '.join(value)) for key in self.dict.iteritems()]
 
     def __getitem__(self, name):
-        return self.dict[name.title()]
+        return ', '.join(self.dict[name.title()])
 
     def __setitem__(self, name, value):
-        self.dict[name.title()] = value
+        self.dict[name.title()] = [value]
 
     def __delitem__(self, name):
         del self.dict[name.title()]
@@ -496,7 +497,7 @@ class SimpleMessageClass(object):
         return iter(self.dict)
 
     def __str__(self):
-        return ''.join('%s: %s\r\n' % (k, v) for k, v in self.dict.iteritems())
+        return ''.join('%s: %s\r\n' % (k, ', '.join(v)) for k, v in self.dict.iteritems())
 
 class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
@@ -535,7 +536,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if m[0] == 0:
             data['code'] = 200
             del data['headers']['Content-Range']
-            data['headers']['Content-Length'] = m[2]
+            data['headers']['Content-Length'] = str(m[2])
         elif 'Range' in self.headers:
             req_range = re.search(r'(\d+)?-(\d+)?', self.headers['Range'])
             if req_range:
@@ -556,7 +557,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             pass
 
-        self.connection.sendall('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', ''.join('%s: %s\r\n' % (k, v) for k, v in data['headers'].iteritems())))
+        self.connection.sendall('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', data['headers']))
         if 'response' in data:
             response = data['response']
             bufsize = common.AUTORANGE_BUFSIZE
@@ -832,7 +833,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', content_range)
                 if m and self.rangefetch(m, data):
                     return
-            content = '%s %d %s\r\n%s\r\n' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems()))
+            content = '%s %d %s\r\n%s\r\n' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], headers)
             self.connection.sendall(content)
             try:
                 self.connection.sendall(data['content'])
