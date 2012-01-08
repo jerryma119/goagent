@@ -444,7 +444,7 @@ class SimpleMessageClass(object):
         name = name.title()
         self.dict[name] = value
         headers = self.headers
-        for i in [i for i, line in enumerate(headers) if line.partition(':')[0].title() != name]:
+        for i in [i for i, line in enumerate(headers) if line.partition(':')[0].title() == name]:
             headers[i] = '%s: %s\r\n' % (name, value)
         else:
             headers.append('%s: %s\r\n' % (name, value))
@@ -453,7 +453,7 @@ class SimpleMessageClass(object):
         name = name.title()
         del self.dict[name]
         headers = self.headers
-        for i in reversed([i for i, line in enumerate(headers) if line.partition(':')[0].title() != name]):
+        for i in reversed([i for i, line in enumerate(headers) if line.partition(':')[0].title() == name]):
             del headers[i]
 
     def __contains__(self, name):
