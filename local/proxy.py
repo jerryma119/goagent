@@ -416,12 +416,12 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
             data = {}
             if compressed == '0':
                 data['code'], hlen, clen = struct.unpack('>3I', response.read(12))
-                data['headers'] = SimpleMessageClass(cStringIO.StringIO(''.join('%s:%s\r\n' % (k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in response.read(hlen).split('&')))))
+                data['headers'] = SimpleMessageClass((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in response.read(hlen).split('&')))
                 data['response'] = response
             elif compressed == '1':
                 rawdata = zlib.decompress(response.read())
                 data['code'], hlen, clen = struct.unpack('>3I', rawdata[:12])
-                data['headers'] = SimpleMessageClass(cStringIO.StringIO(''.join('%s:%s\r\n' % (k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in rawdata[12:12+hlen].split('&')))))
+                data['headers'] = SimpleMessageClass((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in rawdata[12:12+hlen].split('&')))
                 data['content'] = rawdata[12+hlen:12+hlen+clen]
                 response.close()
             else:
@@ -442,16 +442,19 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
 
 class SimpleMessageClass(object):
 
-    def __init__(self, fp, seekable = 0):
-        self.fp = fp
+    def __init__(self, fp = None, seekable = 0):
         self.dict = dict = {}
-        readline = fp.readline
-        while 1:
-            line = readline(8192)
-            if not line or line == '\r\n':
-                break
-            key, _, value = line.partition(':')
-            if value:
+        readline = getattr(fp, 'readline', None)
+        if readline:
+            while 1:
+                line = readline(8192)
+                if not line or line == '\r\n':
+                    break
+                key, _, value = line.partition(':')
+                if value:
+                    dict.setdefault(key.title(), []).append(value.strip())
+        else:
+            for key, value in fp:
                 dict.setdefault(key.title(), []).append(value.strip())
 
     def getheader(self, name, default=None):
