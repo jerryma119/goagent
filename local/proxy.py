@@ -444,13 +444,18 @@ class SimpleMessageClass(object):
     def __setitem__(self, name, value):
         name = name.title()
         self.dict[name] = value
-        self.headers = [line for line in self.headers if line.partition(':')[0].title() != name]
-        self.headers.append('%s: %s\r\n' % (name, value))
+        headers = self.headers
+        for i in reversed([i for i, line in enumerate(headers) if line.partition(':')[0].title() != name]):
+            headers[i] = '%s: %s\r\n' % (name, value)
+        else:
+            headers.append('%s: %s\r\n' % (name, value))
 
     def __delitem__(self, name):
         name = name.title()
         del self.dict[name]
-        self.headers = [line for line in self.headers if line.partition(':')[0].title() != name]
+        headers = self.headers
+        for i in reversed([i for i, line in enumerate(headers) if line.partition(':')[0].title() != name]):
+            del headers[i]
 
     def __contains__(self, name):
         return name.title() in self.dict
