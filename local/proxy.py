@@ -493,19 +493,13 @@ class SimpleMessageClass(object):
         name = name.title()
         self.dict[name] = value
         headers = self.headers
-        for i in reversed(xrange(len(headers))):
-            key, _, value = headers[i].partition(':')
-            if key == name:
-                del headers[i]
-        headers.append('%s: %s\r\n' % (name, value))
+        self.headers = [line for line in self.headers if line.partition(':')[0].title() != name]
+        self.headers.append('%s: %s\r\n' % (name, value))
 
     def __delitem__(self, name):
         name = name.title()
         del self.dict[name]
-        for i in reversed(xrange(len(headers))):
-            key, _, value = headers[i].partition(':')
-            if key == name:
-                del headers[i]
+        self.headers = [line for line in self.headers if line.partition(':')[0].title() != name]
 
     def __contains__(self, name):
         return name.title() in self.dict
