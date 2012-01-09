@@ -96,6 +96,7 @@ class Common(object):
             self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_APPSPOT), self.GAE_PATH)
 
     def install_opener(self):
+        httplib.HTTPMessage = SimpleMessageClass
         if self.PROXY_ENABLE:
             proxy = '%s:%s@%s:%d'%(self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
             handlers = [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
@@ -412,6 +413,9 @@ class SimpleMessageClass(object):
 
     def getheader(self, name, default=None):
         return self.dict.get(name.title(), default)
+
+    def addheader(self, key, value):
+        self[key] = value
 
     def get(self, name, default=None):
         return self.dict.get(name.title(), default)
