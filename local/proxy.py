@@ -506,8 +506,10 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on
                 logging.info('urlfetch error=%s on_error=%s', str(e), str(on_error))
                 data = on_error(e)
                 if data:
-                    fetchhost = data.get('fetchhost', fetchhost)
-                    fetchserver = data.get('fetchserver', fetchserver)
+                    newfetch = (data.get('fetchhost'), data.get('fetchserver'))
+                    if newfetch != (fetchhost, fetchserver):
+                        (fetchhost, fetchserver) = newfetch
+                        sys.stdout.write(common.info())
             errors.append(str(e))
             time.sleep(i+1)
             continue
@@ -537,7 +539,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.warning('LocalProxyHandler.handle_fetch_error Exception %s', error, exc_info=True)
             return {}
         common.build_gae_fetchserver()
-        sys.stdout.write(common.info())
         return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
 
     def fetch(self, url, payload, method, headers):
@@ -777,9 +778,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     sock = socket.create_connection((host, port))
                 self.headers['Connection'] = 'close'
-                data = '%s %s %s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version)
-                data += ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems() if not k.startswith('Proxy-'))
-                data += '\r\n'
+                data = '%s %s %s\r\n%s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version, ''.join(line for line in self.headers.headers if not line.startswith('Proxy-')))
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host.endswith(common.GOOGLE_SITES):
