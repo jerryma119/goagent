@@ -12,7 +12,7 @@ set uploaddir=golang
 ) && (
     @cd /d "%~dp0" 
 ) && (
-    set PYTHONSCRIPT=uploader.zip
+    set PYTHONSCRIPT="import sys;sys.path.insert(0, 'uploader.zip');import appcfg;appcfg.main()"
 ) && (
     "..\local\proxy.exe"
 ) || (
