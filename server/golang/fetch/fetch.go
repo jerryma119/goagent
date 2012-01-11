@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	Version  = "1.7.9 dev"
+	Version  = "1.7.9"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
@@ -211,7 +211,7 @@ func (h Handler) post() {
 						i++
 					}
 				}
-				header["set-cookie"] = strings.Join(cookies, "\r\nset-cookie: ")
+				header["set-cookie"] = strings.Join(cookies, "\r\nSet-Cookie: ")
 			}
 		}
 

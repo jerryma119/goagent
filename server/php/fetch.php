@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.7.4';
+$__version__  = '1.7.9';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -24,7 +24,7 @@ function decode_data($qs) {
 function print_response($status, $headers, $content) {
     $strheaders = encode_data($headers);
     $content_type = $headers['content-type'];
-    if ($content_type && substr($content_type, 0, 4) == 'text') {
+    if ($content_type && (substr($content_type, 0, 5) == 'text/' || substr($content_type, 0, 16) == 'application/json' || substr($content_type, 0, 22) == 'application/javascript')) {
         $data = '1' . gzcompress(pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content);
     } else {
         $data = '0' . pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content;

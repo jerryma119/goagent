@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.8'
+__version__ = '1.7.9'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -86,7 +86,8 @@ class MainPage(webapp2.RequestHandler):
                 logging.error('DownloadError(deadline=%s, url=%r) response(%s)', deadline, url, response and response.headers)
                 if response and response.headers.get('content-length'):
                     response.status_code = 206
-                    response.headers['content-range'] = 'bytes 0-%d/%s' % (len(response.content)-1, response.headers['content-length'])
+                    response.headers['accept-ranges']  = 'bytes'
+                    response.headers['content-range']  = 'bytes 0-%d/%s' % (len(response.content)-1, response.headers['content-length'])
                     response.headers['content-length'] = len(response.content)
                     break
                 else:
@@ -113,7 +114,7 @@ class MainPage(webapp2.RequestHandler):
                 else:
                     cookies.append(sc)
                     i += 1
-            headers['set-cookie'] = '\r\nset-cookie: '.join(cookies)
+            headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
         headers['connection'] = 'close'
         return self.send_response(response.status_code, headers, response.content)
 
