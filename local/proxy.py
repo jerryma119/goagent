@@ -63,7 +63,6 @@ class Common(object):
 
         self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
-        self.AUTORANGE_ENDSWITH   = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
         self.AUTORANGE_WAITSIZE   = self.CONFIG.getint('autorange', 'waitsize')
         self.AUTORANGE_BUFSIZE    = self.CONFIG.getint('autorange', 'bufsize')
