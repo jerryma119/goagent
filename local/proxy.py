@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.9'
+__version__ = '1.7.10 dev'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -38,8 +38,9 @@ class Common(object):
         self.GAE_ENABLE           = self.CONFIG.getint('gae', 'enable')
         self.GAE_APPIDS           = self.CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
-        self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel')
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
+        self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
+        self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
         self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
@@ -51,15 +52,11 @@ class Common(object):
         self.PROXY_USERNAME       = self.CONFIG.get('proxy', 'username')
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
 
-        self.GOOGLE_MODE          = self.CONFIG.get('google', 'mode')
-        self.GOOGLE_SITES         = tuple(self.CONFIG.get('google', 'sites').split('|'))
-        self.GOOGLE_FORCEHTTPS    = frozenset(self.CONFIG.get('google', 'forcehttps').split('|'))
-        self.GOOGLE_WITHGAE       = frozenset(self.CONFIG.get('google', 'withgae').split('|'))
-        self.GOOGLE_HOSTS_CN      = tuple(self.CONFIG.get('google', 'cn').split('|'))
-        self.GOOGLE_HOSTS_HK      = tuple(self.CONFIG.get('google', 'hk').split('|'))
-        self.GOOGLE_HOSTS_IPV6    = tuple(self.CONFIG.get('google', 'ipv6').split('|'))
-        self.GOOGLE_APPSPOT       = {'cn':self.GOOGLE_HOSTS_CN,'hk':self.GOOGLE_HOSTS_HK,'ipv6':self.GOOGLE_HOSTS_IPV6}[self.CONFIG.get('google', 'appspot')]
-        self.GOOGLE_HOSTS         = {'cn':self.GOOGLE_HOSTS_CN,'hk':self.GOOGLE_HOSTS_HK,'ipv6':self.GOOGLE_HOSTS_IPV6}[self.CONFIG.get('google', 'hosts')]
+        self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
+        self.GOOGLE_HOSTS         = self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|')
+        self.GOOGLE_SITES         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|'))
+        self.GOOGLE_FORCEHTTPS    = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|'))
+        self.GOOGLE_WITHGAE       = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'withgae').split('|'))
 
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
@@ -93,7 +90,7 @@ class Common(object):
             # append '?' to url, it can avoid china telicom/unicom AD
             self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
         else:
-            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_APPSPOT), self.GAE_PATH)
+            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_HOSTS), self.GAE_PATH)
 
     def install_opener(self):
         httplib.HTTPMessage = SimpleMessageClass
@@ -114,7 +111,7 @@ class Common(object):
         info += 'Local Proxy     : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'Debug Level     : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
         info += 'GAE Mode        : %s\n' % self.GOOGLE_MODE if self.GAE_ENABLE else ''
-        info += 'GAE Area        : %s\n' % self.CONFIG.get('google', 'appspot')
+        info += 'GAE Profile     : %s\n' % self.GAE_PROFILE
         info += 'GAE APPID       : %s\n' % '|'.join(self.GAE_APPIDS)
         if common.PHP_ENABLE:
             for (ip, port),(fetchhost, fetchserver) in common.PHP_FETCH_INFO.iteritems():
@@ -184,12 +181,12 @@ def socket_create_connection((host, port), timeout=None, source_address=None):
     if host == common.GAE_FETCHHOST:
         msg = 'socket_create_connection returns an empty list'
         try:
-            conn = MultiplexConnection(common.GOOGLE_APPSPOT, port)
+            conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
             sock = conn.socket
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
             return sock
         except socket.error, msg:
-            logging.error('socket_create_connection connect fail: (%r, %r)', common.GOOGLE_APPSPOT, port)
+            logging.error('socket_create_connection connect fail: (%r, %r)', common.GOOGLE_HOSTS, port)
             sock = None
         if not sock:
             raise socket.error, msg
@@ -529,7 +526,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # seems that current appid is over qouta, swith to next appid
             if error.code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                logging.info('APPSPOT 503 Error, switch to next fetchserver: %r', common.GAE_APPIDS[0])
+                logging.info('GAE 503 Error, switch to next fetchserver: %r', common.GAE_APPIDS[0])
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
