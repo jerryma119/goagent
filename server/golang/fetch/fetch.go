@@ -57,7 +57,7 @@ type Handler struct {
 	http.Handler
 }
 
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.response = w
 	h.request = r
 	h.context = appengine.NewContext(r)
@@ -68,7 +68,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) printResponse(status int, header map[string]string, content []byte) {
+func (h Handler) printResponse(status int, header map[string]string, content []byte) {
 	headerEncoded := encodeData(header)
 
 	h.response.WriteHeader(200)
@@ -104,13 +104,13 @@ func (h *Handler) printResponse(status int, header map[string]string, content []
 	}
 }
 
-func (h *Handler) printNotify(method string, url string, status int, text string) {
+func (h Handler) printNotify(method string, url string, status int, text string) {
 	content := []byte(fmt.Sprintf("<h2>Go Server Fetch Info</h2><hr noshade='noshade'><p>%s '%s'</p><p>Return Code: %d</p><p>Message: %s</p>", method, url, status, text))
 	headers := map[string]string{"content-type": "text/html"}
 	h.printResponse(status, headers, content)
 }
 
-func (h *Handler) post() {
+func (h Handler) post() {
 	r, err := zlib.NewReader(h.request.Body)
 	if err != nil {
 		h.context.Criticalf("zlib.NewReader(h.request.Body) Error: %v", err)
@@ -232,7 +232,7 @@ func (h *Handler) post() {
 	h.printNotify(method, url, 502, fmt.Sprintf("Go Server Fetch Failed: %v", errors))
 }
 
-func (h *Handler) get() {
+func (h Handler) get() {
 	h.response.WriteHeader(http.StatusOK)
 	h.response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(h.response, `
@@ -266,5 +266,5 @@ func (h *Handler) get() {
 }
 
 func init() {
-	http.Handle("/fetch.py", &Handler{})
+	http.Handle("/fetch.py", Handler{})
 }
