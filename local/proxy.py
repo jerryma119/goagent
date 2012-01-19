@@ -692,7 +692,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     ip = random.choice(common.HOSTS.get(host, host)[0])
                 if 'Host' in self.headers:
                     del self.headers['Host']
-                if common.PROXY_USERNAME:
+                if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
                 data = '%s %s:%s %s\r\n%s\r\b' % (self.command, ip, port, self.protocol_version, self.headers)
                 sock.sendall(data)
@@ -788,7 +788,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
                 self.headers['Host'] = netloc
                 self.headers['Proxy-Connection'] = 'close'
-                if common.PROXY_USERNAME:
+                if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
                 data ='%s %s %s\r\n%s\r\n'  % (self.command, url, self.request_version, self.headers)
 
