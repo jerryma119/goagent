@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.10 dev'
+__version__ = '1.7.10'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys, os, re, time, errno, binascii, zlib
@@ -125,7 +125,10 @@ class MultiplexConnection(object):
     '''multiplex tcp connection class'''
 
     retry = 3
-    timeout = 5
+    timeout = 8
+    timeout_min = 4
+    timeout_max = 60
+    timeout_ack = 0
     window = 8
     window_min = 4
     window_max = 60
@@ -158,13 +161,21 @@ class MultiplexConnection(object):
                     if MultiplexConnection.window_ack > 10:
                         MultiplexConnection.window = window - 1
                         MultiplexConnection.window_ack = 0
-                        logging.info('MultiplexConnection CONNECT port=%s OK 10 times, switch new window=%d', port, MultiplexConnection.window)
+                        log('MultiplexConnection CONNECT port=%s OK 10 times, switch new window=%d', port, MultiplexConnection.window)
+                if timeout > MultiplexConnection.timeout_min:
+                    MultiplexConnection.timeout_ack += 1
+                    if MultiplexConnection.timeout_ack > 10:
+                        MultiplexConnection.timeout = timeout - 1
+                        MultiplexConnection.timeout_ack = 0
+                        log('MultiplexConnection CONNECT port=%s OK 10 times, switch new timeout=%d', port, MultiplexConnection.timeout)
                 break
             else:
                 logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
             MultiplexConnection.window = min(int(round(window*1.5)), len(hostlist), self.window_max)
             MultiplexConnection.window_ack = 0
+            MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
+            MultiplexConnection.timeout_ack = 0
             raise RuntimeError(r'MultiplexConnection Connect hosts %s:%s fail %d times!' % (hosts, port, MultiplexConnection.retry))
     def close(self):
         for sock in self._sockets:
