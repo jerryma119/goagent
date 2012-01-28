@@ -161,13 +161,13 @@ class MultiplexConnection(object):
                     if MultiplexConnection.window_ack > 10:
                         MultiplexConnection.window = window - 1
                         MultiplexConnection.window_ack = 0
-                        log('MultiplexConnection CONNECT port=%s OK 10 times, switch new window=%d', port, MultiplexConnection.window)
+                        logging.info('MultiplexConnection CONNECT port=%s OK 10 times, switch new window=%d', port, MultiplexConnection.window)
                 if timeout > MultiplexConnection.timeout_min:
                     MultiplexConnection.timeout_ack += 1
                     if MultiplexConnection.timeout_ack > 10:
                         MultiplexConnection.timeout = timeout - 1
                         MultiplexConnection.timeout_ack = 0
-                        log('MultiplexConnection CONNECT port=%s OK 10 times, switch new timeout=%d', port, MultiplexConnection.timeout)
+                        logging.info('MultiplexConnection CONNECT port=%s OK 10 times, switch new timeout=%d', port, MultiplexConnection.timeout)
                 break
             else:
                 logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
