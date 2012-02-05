@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.7.9';
+$__version__  = '1.7.10';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -321,7 +321,7 @@ function post()
     $headers = array();
     foreach (explode("\r\n", $request['headers']) as $line) {
         $pair = explode(':', $line, 2);
-        if (count($pair[1]) == 2) {
+        if (count($pair) == 2) {
             $headers[trim(strtolower($pair[0]))] = trim($pair[1]);
         }
     }
