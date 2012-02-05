@@ -1,6 +1,6 @@
 @echo off
 
-set uploaddir=golang
+set uploaddir=python
 
 ( 
     echo ===============================================================
