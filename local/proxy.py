@@ -267,6 +267,15 @@ class CertUtil(object):
 
     CA = None
     CALock = threading.Lock()
+    subj_alts = \
+            'DNS: twitter.com, DNS: facebook.com, \
+            DNS: *.twitter.com, DNS: *.twimg.com, \
+            DNS: *.akamaihd.net, DNS: *.google.com, \
+            DNS: *.facebook.com, DNS: *.ytimg.com, \
+            DNS: *.appspot.com, DNS: *.google.com, \
+            DNS: *.youtube.com, DNS: *.googleusercontent.com, \
+            DNS: *.gstatic.com, DNS: *.live.com, \
+            DNS: *.android.com, DNS: *.fbcdn.net'	
 
     @staticmethod
     def readFile(filename):
@@ -301,12 +310,15 @@ class CertUtil(object):
     @staticmethod
     def createCertificate(req, (issuerKey, issuerCert), serial, (notBefore, notAfter), digest='sha1'):
         cert = OpenSSL.crypto.X509()
+        cert.set_version(3)		
         cert.set_serial_number(serial)
         cert.gmtime_adj_notBefore(notBefore)
         cert.gmtime_adj_notAfter(notAfter)
         cert.set_issuer(issuerCert.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
+        cert.add_extensions([OpenSSL.crypto.X509Extension("subjectAltName",
+            True, CertUtil.subj_alts)])
         cert.sign(issuerKey, digest)
         return cert
 
@@ -737,7 +749,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.parse_request()
             if self.path[0] == '/':
                 if (self.headers.get('Host')):
-                    self.path = 'https://%s:%s%s' % (self.headers['Host'], port, self.path)
+                    self.path = 'https://%s:%s%s' % (self.headers['Host'], port or 443, self.path)
                 else:
                     self.path = 'https://%s%s' % (self._realpath, self.path)
                 self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
