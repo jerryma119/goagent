@@ -259,7 +259,7 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    self._output('\r\n')
+    #self._output('\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
