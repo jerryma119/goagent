@@ -963,6 +963,9 @@ def main():
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     if common.GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
+    if common.GAE_APPIDS[0] == 'goagent':
+        logging.critical('please edit proxy.ini to add your appid to [gae] !')
+        sys.exit(-1)
     CertUtil.checkCA()
     common.install_opener()
     sys.stdout.write(common.info())
