@@ -276,7 +276,7 @@ class CertUtil(object):
             DNS: *.youtube.com, DNS: *.googleusercontent.com, \
             DNS: *.gstatic.com, DNS: *.live.com, \
             DNS: *.ak.fbcdn.net, DNS: *.ak.facebook.com, \
-            DNS: *.android.com, DNS: *.fbcdn.net'	
+            DNS: *.android.com, DNS: *.fbcdn.net'
 
     @staticmethod
     def readFile(filename):
@@ -312,7 +312,7 @@ class CertUtil(object):
     def createCertificate(req, (issuerKey, issuerCert), serial, (notBefore,
         notAfter), digest='sha1', host=None):
         cert = OpenSSL.crypto.X509()
-        cert.set_version(3)		
+        cert.set_version(3)
         cert.set_serial_number(serial)
         cert.gmtime_adj_notBefore(notBefore)
         cert.gmtime_adj_notAfter(notAfter)
@@ -551,10 +551,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def handle_fetch_error(self, error):
         if isinstance(error, urllib2.HTTPError):
-            # seems that current appid is over qouta, swith to next appid
-            if error.code == 503:
+            # seems that current appid is nonexists or overqouta, swith to next appid
+            if error.code in (404, 503):
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                logging.info('GAE 503 Error, switch to next fetchserver: %r', common.GAE_APPIDS[0])
+                logging.error('GAE 404/503 Error, switch to next fetchserver: %r', common.GAE_APPIDS[0])
             # seems that www.google.cn:80 is down, switch to https
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
