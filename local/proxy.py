@@ -41,7 +41,6 @@ class Common(object):
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
-        self.GAE_CRLF             = self.CONFIG.getint('gae', 'crlf') if self.CONFIG.has_option('gae', 'crlf') else 0
 
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
         self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
@@ -54,6 +53,7 @@ class Common(object):
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
 
         self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
+        self.GOOGLE_CRLF          = self.CONFIG.getint(self.GAE_PROFILE, 'crlf') if self.CONFIG.has_option(self.GAE_PROFILE, 'crlf') else 0
         self.GOOGLE_HOSTS         = self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|')
         self.GOOGLE_SITES         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS    = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|'))
@@ -260,7 +260,7 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    if common.GAE_CRLF and self.host.endswith('.appspot.com'):
+    if common.GOOGLE_CRLF and self.host.endswith('.appspot.com'):
         self._output('\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
