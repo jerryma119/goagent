@@ -961,7 +961,7 @@ def main():
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
-            print(u'\u53cc\u51fb addto-startup.vbs \u53ef\u4ee5\u628agoagent.exe\u52a0\u5165\u5230\u542f\u52a8\u9879\u3002'.encode('mbcs'))
+            sys.stdout.write('Double click addto-startup.vbs could add goagent to autorun programs. :)')
         try_show_love()
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
