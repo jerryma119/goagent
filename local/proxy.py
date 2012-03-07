@@ -6,6 +6,9 @@
 __version__ = '1.7.10'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
+import sys
+sys.version[:3] in ('2.6', ) or sys.exit(sys.stderr.write('Must python 2.6/2.7'))
+
 import sys, os, re, time, errno, binascii, zlib
 import struct, random, hashlib
 import fnmatch, base64, logging, ConfigParser
