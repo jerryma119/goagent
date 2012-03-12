@@ -86,8 +86,6 @@ class Common(object):
         self.WEST_DNS             = self.CONFIG.get('west', 'dns')
         self.WEST_SITES           = tuple(self.CONFIG.get('west', 'sites').split('|'))
 
-        assert DNS is not None if self.WEST_ENABLE else True
-
         # 伪装浏览器的相关options
         self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
@@ -141,6 +139,8 @@ class Common(object):
             for (ip, port),(fetchhost, fetchserver) in common.PHP_FETCH_INFO.iteritems():
                 info += 'PHP Mode Listen : %s:%d\n' % (ip, port)
                 info += 'PHP FetchServer : %s\n' % fetchserver
+        if common.WEST_ENABLE:
+            info += 'West Mode Sites : %s\n' % '|'.join(self.WEST_SITES)
         info += '------------------------------------------------------\n'
         return info
 
@@ -298,18 +298,31 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
 
 def dns_resolve(host, dnsserver):
     assert isinstance(host, basestring) and isinstance(dnsserver, basestring)
-##    index = os.urandom(2)
-##    data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03%s\x00\x00\x01\x00\x01' % (index, host)
-##    data = struct.pack('!H', len(data)) + data
-##    sock = socket.socket(family={True:socket.AF_INET6, False:socket.AF_INET}[':' in dnsserver])
-##    sock.connect((dnsserver, 53))
-##    sock.sendall(data)
-##    rfile = sock.makefile('rb')
-##    data = rfile.read(struct.unpack('!H', rfile.read(2)))
-    return [socket.gethostbyname(host)]
+    index = os.urandom(2)
+    hoststr = ''.join(chr(len(x))+x for x in host.split('.'))
+    data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, hoststr)
+    data = struct.pack('!H', len(data)) + data
+    address_family = {True:socket.AF_INET6, False:socket.AF_INET}[':' in dnsserver]
+    sock = None
+    try:
+        sock = socket.socket(family=address_family)
+        sock.connect((dnsserver, 53))
+        sock.sendall(data)
+        rfile = sock.makefile('rb')
+        size = struct.unpack('!H', rfile.read(2))[0]
+        data = rfile.read(size)
+        iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
+        return ['.'.join(str(ord(x)) for x in s) for s in iplist]
+    except Exception, e:
+        raise
+    finally:
+        if sock:
+            sock.close()
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
+    if common.WEST_ENABLE:
+        self._output('\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
@@ -741,9 +754,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+        if host in common.HOSTS:
             return self.do_CONNECT_Direct()
-        elif host in common.HOSTS:
+        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+            if host not in common.HOSTS:
+                iplist = dns_resolve(host, common.WEST_DNS)[-1]
+                logging.info('dns_resolve(host=%r) return %s', host, iplist)
+                common.HOSTS[host] = iplist[-1]
+            return self.do_CONNECT_Direct()
+        elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             return self.do_CONNECT_Direct()
         elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
             ip = (ip for p, ip in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
@@ -751,8 +770,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('try resolve %r', host)
                 ip = socket.gethostbyname(host)
             common.HOSTS[host] = ip
-            return self.do_CONNECT_Direct()
-        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
             return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_Thunnel()
@@ -836,22 +853,26 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers['Host']
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+        if host in common.HOSTS:
+            return self.do_METHOD_Direct()
+        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+            if host not in common.HOSTS:
+                iplist = dns_resolve(host, common.WEST_DNS)
+                logging.info('dns_resolve(host=%r) return %s', host, iplist)
+                common.HOSTS[host] = iplist[-1]
+            return self.do_METHOD_Direct()
+        elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if host in common.GOOGLE_FORCEHTTPS:
                 self.send_response(301)
                 self.send_header('Location', self.path.replace('http://', 'https://'))
                 self.end_headers()
                 return
             return self.do_METHOD_Direct()
-        elif host in common.HOSTS:
-            return self.do_METHOD_Direct()
         elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
             ip = (ip for p, ip in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
             if not ip and not common.PROXY_ENABLE:
                 ip = socket.gethostbyname(host)
             common.HOSTS[host] = ip
-            return self.do_METHOD_Direct()
-        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
             return self.do_METHOD_Direct()
         else:
             return self.do_METHOD_Thunnel()
