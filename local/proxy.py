@@ -7,8 +7,8 @@ __version__ = '1.7.10'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys
-# 如果Python的版本不是2.6或者2.7版本，则退出并给出提示信息。
-sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('请确保您的Python版本为2.6或2.7版本。'))
+# 如果Python的版本不是2.6或者2.7版本，则退出并给出提示信息，考虑到多操作系统的字符集，在此使用英文。
+sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/2.7'))
 
 import sys, os, re, time, errno, binascii, zlib
 import struct, random, hashlib
@@ -148,7 +148,7 @@ common = Common()
 
 class MultiplexConnection(object):
     '''multiplex tcp connection class
-    
+
     这个类用来建立并发tcp连接
     '''
 
@@ -511,26 +511,27 @@ class SimpleMessageClass(object):
 
     # 元编程实现下列冗余代码。不过由于由于该SimpleMessageClass是python2.6的新式类，所以
     # 无法用__getattr__获取*操作符重载*函数
-    def __getattr__(self, attrname):
-        return getattr(self.dict, attrname)
+    # 此处可商榷，本来是仿rfc822.py写的 by phus
+    #def __getattr__(self, attrname):
+    #    return getattr(self.dict, attrname)
 
-#    def iteritems(self):
-#        return self.dict.iteritems()
-#
-#    def iterkeys(self):
-#        return self.dict.iterkeys()
-#
-#    def itervalues(self):
-#        return self.dict.itervalues()
-#
-#    def keys(self):
-#        return self.dict.keys()
-#
-#    def values(self):
-#        return self.dict.values()
-#
-#    def items(self):
-#        return self.dict.items()
+    def iteritems(self):
+        return self.dict.iteritems()
+
+    def iterkeys(self):
+        return self.dict.iterkeys()
+
+    def itervalues(self):
+        return self.dict.itervalues()
+
+    def keys(self):
+        return self.dict.keys()
+
+    def values(self):
+        return self.dict.values()
+
+    def items(self):
+        return self.dict.items()
 
     def __getitem__(self, name):
         return self.dict[name.title()]
