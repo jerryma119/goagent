@@ -56,7 +56,6 @@ class Common(object):
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
 
         self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
-        self.GOOGLE_CRLF          = self.CONFIG.getint(self.GAE_PROFILE, 'crlf') if self.CONFIG.has_option(self.GAE_PROFILE, 'crlf') else 0
         self.GOOGLE_HOSTS         = self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|')
         self.GOOGLE_SITES         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS    = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|'))
@@ -72,6 +71,12 @@ class Common(object):
         self.AUTORANGE_BUFSIZE    = self.CONFIG.getint('autorange', 'bufsize')
 
         assert self.AUTORANGE_BUFSIZE <= self.AUTORANGE_WAITSIZE <= self.AUTORANGE_MAXSIZE
+
+        self.WEST_ENABLE          = self.CONFIG.getint('west', 'enable')
+        self.WEST_DNS             = self.CONFIG.get('west', 'dns')
+        self.WEST_SITES           = tuple(self.CONFIG.get('west', 'sites').split('|'))
+
+        assert DNS is not None if self.WEST_ENABLE else True
 
         self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
@@ -261,10 +266,20 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
+def dns_resolve(host, dnsserver):
+    assert isinstance(host, basestring) and isinstance(dnsserver, basestring)
+##    index = os.urandom(2)
+##    data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x03%s\x00\x00\x01\x00\x01' % (index, host)
+##    data = struct.pack('!H', len(data)) + data
+##    sock = socket.socket(family={True:socket.AF_INET6, False:socket.AF_INET}[':' in dnsserver])
+##    sock.connect((dnsserver, 53))
+##    sock.sendall(data)
+##    rfile = sock.makefile('rb')
+##    data = rfile.read(struct.unpack('!H', rfile.read(2)))
+    return [socket.gethostbyname(host)]
+
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    if common.GOOGLE_CRLF and self.host.endswith('.appspot.com'):
-        self._output('\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
@@ -567,8 +582,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif isinstance(error, urllib2.URLError):
             if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
                 # it seems that google.cn is reseted, switch to https
-                if not common.GOOGLE_CRLF:
-                    common.GOOGLE_MODE = 'https'
+                common.GOOGLE_MODE = 'https'
         elif isinstance(error, httplib.HTTPException):
             common.GOOGLE_MODE = 'https'
         else:
@@ -702,7 +716,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('try resolve %r', host)
                 ip = socket.gethostbyname(host)
             common.HOSTS[host] = ip
-            self.do_CONNECT_Direct()
+            return self.do_CONNECT_Direct()
+        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+            return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_Thunnel()
 
@@ -711,6 +727,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.debug('LocalProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
             idlecall = None
+            data = ''
             if not common.PROXY_ENABLE:
                 if host.endswith(common.GOOGLE_SITES):
                     conn = MultiplexConnection(common.GOOGLE_HOSTS, int(port))
@@ -731,7 +748,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
                 data = '%s %s:%s %s\r\n%s\r\b' % (self.command, ip, port, self.protocol_version, self.headers)
-                sock.sendall(data)
+            if data:
+                if common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+                    sock.sendall('\r\n'+data)
+                else:
+                    sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except:
             logging.exception('LocalProxyHandler.do_CONNECT_Direct Error')
@@ -794,7 +815,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not ip and not common.PROXY_ENABLE:
                 ip = socket.gethostbyname(host)
             common.HOSTS[host] = ip
-            self.do_METHOD_Direct()
+            return self.do_METHOD_Direct()
+        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+            return self.do_METHOD_Direct()
         else:
             return self.do_METHOD_Thunnel()
 
@@ -809,6 +832,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             self.log_request()
             idlecall = None
+            data = ''
             if not common.PROXY_ENABLE:
                 if host.endswith(common.GOOGLE_SITES):
                     conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
@@ -830,11 +854,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
                 data ='%s %s %s\r\n%s\r\n'  % (self.command, url, self.request_version, self.headers)
-
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
-            sock.sendall(data)
+            if data:
+                if common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+                    sock.sendall('\r\n'+data)
+                else:
+                    sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception, ex:
             logging.exception('LocalProxyHandler.do_GET Error, %s', ex)
