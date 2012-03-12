@@ -273,14 +273,21 @@ def dns_resolve(host, dnsserver):
     data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, hoststr)
     data = struct.pack('!H', len(data)) + data
     address_family = {True:socket.AF_INET6, False:socket.AF_INET}[':' in dnsserver]
-    sock = socket.socket(family=address_family)
-    sock.connect((dnsserver, 53))
-    sock.sendall(data)
-    rfile = sock.makefile('rb')
-    size = struct.unpack('!H', rfile.read(2))[0]
-    data = rfile.read(size)
-    iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
-    return ['.'.join(str(ord(x)) for x in s) for s in iplist]
+    sock = None
+    try:
+        sock = socket.socket(family=address_family)
+        sock.connect((dnsserver, 53))
+        sock.sendall(data)
+        rfile = sock.makefile('rb')
+        size = struct.unpack('!H', rfile.read(2))[0]
+        data = rfile.read(size)
+        iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
+        return ['.'.join(str(ord(x)) for x in s) for s in iplist]
+    except Exception, e:
+        raise
+    finally:
+        if sock:
+            sock.close()
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
@@ -712,15 +719,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+        if host in common.HOSTS:
+            return self.do_CONNECT_Direct()
+        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
             if host not in common.HOSTS:
                 iplist = dns_resolve(host, common.WEST_DNS)[-1]
                 logging.info('dns_resolve(host=%r) return %s', host, iplist)
                 common.HOSTS[host] = iplist[-1]
             return self.do_CONNECT_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            return self.do_CONNECT_Direct()
-        elif host in common.HOSTS:
             return self.do_CONNECT_Direct()
         elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
             ip = (ip for p, ip in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
@@ -811,7 +818,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers['Host']
-        if common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+        if host in common.HOSTS:
+            return self.do_METHOD_Direct()
+        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
             if host not in common.HOSTS:
                 iplist = dns_resolve(host, common.WEST_DNS)
                 logging.info('dns_resolve(host=%r) return %s', host, iplist)
@@ -823,8 +832,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_header('Location', self.path.replace('http://', 'https://'))
                 self.end_headers()
                 return
-            return self.do_METHOD_Direct()
-        elif host in common.HOSTS:
             return self.do_METHOD_Direct()
         elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
             ip = (ip for p, ip in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
