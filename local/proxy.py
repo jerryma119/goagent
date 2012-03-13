@@ -773,7 +773,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             common.HOSTS[host] = ip
             return self.do_CONNECT_Direct()
         else:
-            return self.do_CONNECT_Thunnel()
+            return self.do_CONNECT_Tunnel()
 
     def do_CONNECT_Direct(self):
         try:
@@ -816,7 +816,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except:
                 pass
 
-    def do_CONNECT_Thunnel(self):
+    def do_CONNECT_Tunnel(self):
         # for ssl proxy
         host, _, port = self.path.rpartition(':')
         keyFile, crtFile = CertUtil.getCertificate(host)
@@ -840,9 +840,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     self.path = 'https://%s%s' % (self._realpath, self.path)
                 self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
-            self.do_METHOD_Thunnel()
+            self.do_METHOD_Tunnel()
         except socket.error, e:
-            logging.exception('do_CONNECT_Thunnel socket.error: %s', e)
+            logging.exception('do_CONNECT_Tunnel socket.error: %s', e)
         finally:
             try:
                 self.connection.shutdown(socket.SHUT_WR)
@@ -876,7 +876,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             common.HOSTS[host] = ip
             return self.do_METHOD_Direct()
         else:
-            return self.do_METHOD_Thunnel()
+            return self.do_METHOD_Tunnel()
 
     def do_METHOD_Direct(self):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(self.path, 'http')
@@ -929,7 +929,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except:
                 pass
 
-    def do_METHOD_Thunnel(self):
+    def do_METHOD_Tunnel(self):
         headers = self.headers
         host = headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
@@ -1012,11 +1012,11 @@ class PHPProxyHandler(LocalProxyHandler):
                                 logging.info('Resole php fetchserver address OK. %s', common.HOSTS[fetchhost])
                             except Exception, e:
                                 logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
-        PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Thunnel
-        PHPProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Thunnel
-        PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Thunnel
-        PHPProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Thunnel
-        PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Thunnel
+        PHPProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Tunnel
+        PHPProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Tunnel
+        PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Tunnel
+        PHPProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Tunnel
+        PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Tunnel
         PHPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
