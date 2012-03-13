@@ -296,28 +296,33 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
-def dns_resolve(host, dnsserver):
+def dns_resolve(host, dnsserver, dnscache={}, dnslock=threading.Lock()):
     assert isinstance(host, basestring) and isinstance(dnsserver, basestring)
     index = os.urandom(2)
     hoststr = ''.join(chr(len(x))+x for x in host.split('.'))
     data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, hoststr)
     data = struct.pack('!H', len(data)) + data
-    address_family = {True:socket.AF_INET6, False:socket.AF_INET}[':' in dnsserver]
-    sock = None
-    try:
-        sock = socket.socket(family=address_family)
-        sock.connect((dnsserver, 53))
-        sock.sendall(data)
-        rfile = sock.makefile('rb')
-        size = struct.unpack('!H', rfile.read(2))[0]
-        data = rfile.read(size)
-        iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
-        return ['.'.join(str(ord(x)) for x in s) for s in iplist]
-    except Exception, e:
-        raise
-    finally:
-        if sock:
-            sock.close()
+    if host not in dnscache:
+        with dnslock:
+            if host not in dnscache:
+                sock = None
+                try:
+                    sock = socket.socket(socket.AF_INET6 if ':' in dnsserver else socket.AF_INET)
+                    sock.connect((dnsserver, 53))
+                    sock.sendall(data)
+                    rfile = sock.makefile('rb')
+                    size = struct.unpack('!H', rfile.read(2))[0]
+                    data = rfile.read(size)
+                    iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
+                    iplist = ['.'.join(str(ord(x)) for x in s) for s in iplist]
+                    logging.info('dns_resolve(host=%r) return %s', host, iplist)
+                    dnscache[host] = iplist
+                except socket.error, e:
+                    logging.exception('dns_resolve(host=%r) fail:%s', host, e)
+                finally:
+                    if sock:
+                        sock.close()
+    return dnscache.get(host, [])
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
@@ -759,9 +764,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_CONNECT_Direct()
         elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
             if host not in common.HOSTS:
-                iplist = dns_resolve(host, common.WEST_DNS)[-1]
-                logging.info('dns_resolve(host=%r) return %s', host, iplist)
-                common.HOSTS[host] = iplist[-1]
+                logging.info('west dns_resolve(host=%r, dnsserver=%r)', host, common.WEST_DNS)
+                common.HOSTS[host] = dns_resolve(host, common.WEST_DNS)[-1]
             return self.do_CONNECT_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             return self.do_CONNECT_Direct()
@@ -858,9 +862,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_METHOD_Direct()
         elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
             if host not in common.HOSTS:
-                iplist = dns_resolve(host, common.WEST_DNS)
-                logging.info('dns_resolve(host=%r) return %s', host, iplist)
-                common.HOSTS[host] = iplist[-1]
+                logging.info('west dns_resolve(host=%r, dnsserver=%r)', host, common.WEST_DNS)
+                common.HOSTS[host] = dns_resolve(host, common.WEST_DNS)[-1]
             return self.do_METHOD_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if host in common.GOOGLE_FORCEHTTPS:
