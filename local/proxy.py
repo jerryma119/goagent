@@ -27,7 +27,9 @@ except ImportError:
     OpenSSL = None
 
 # 此句是在配置logging模块的记录格式。
-logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
+logging.basicConfig(level=logging.INFO,
+                    format='%(levelname)s - - %(asctime)s %(message)s',
+                    datefmt='[%d/%b/%Y %H:%M:%S]')
 
 class Common(object):
     '''全局配置相关的类。'''
@@ -94,7 +96,7 @@ class Common(object):
         self.LOVE_ENABLE          = self.CONFIG.getint('love','enable')
         self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
         # ? 广告的字符串是用unicode编码的16进制方式存储的，在读入Python的时候通过unichr函数转成Python可识别的unicode编码。
-        self.LOVE_TIP             = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m:unichr(int(m.group(1),16)), self.CONFIG.get('love','tip')).split('|')
+        self.LOVE_TIP             = self.CONFIG.get('love','tip').decode('unicode-escape').split('|')
 
         self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('.'))
         self.HOSTS_ENDSWITH_DICT  = dict((k, v) for k, v in self.CONFIG.items('hosts') if k.startswith('.'))
