@@ -762,14 +762,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            return self.do_CONNECT_Direct()
-        elif host in common.HOSTS:
+        if host in common.HOSTS:
             return self.do_CONNECT_Direct()
         elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
             if host not in common.HOSTS:
                 logging.info('west dns_resolve(host=%r, dnsserver=%r)', host, common.WEST_DNS)
                 common.HOSTS[host] = dns_resolve(host, common.WEST_DNS)[-1]
+            return self.do_CONNECT_Direct()
+        elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+            common.HOSTS[host] = common.GOOGLE_HOSTS[0]
             return self.do_CONNECT_Direct()
         elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
             ip = (ip for p, ip in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
@@ -860,19 +861,20 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers['Host']
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            if host in common.GOOGLE_FORCEHTTPS:
-                self.send_response(301)
-                self.send_header('Location', self.path.replace('http://', 'https://'))
-                self.end_headers()
-                return
-            return self.do_METHOD_Direct()
-        elif host in common.HOSTS:
+        if host in common.HOSTS:
             return self.do_METHOD_Direct()
         elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
             if host not in common.HOSTS:
                 logging.info('west dns_resolve(host=%r, dnsserver=%r)', host, common.WEST_DNS)
                 common.HOSTS[host] = dns_resolve(host, common.WEST_DNS)[-1]
+            return self.do_METHOD_Direct()
+        elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+            if host in common.GOOGLE_FORCEHTTPS:
+                self.send_response(301)
+                self.send_header('Location', self.path.replace('http://', 'https://'))
+                self.end_headers()
+                return
+            common.HOSTS[host] = common.GOOGLE_HOSTS[0]
             return self.do_METHOD_Direct()
         elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
             ip = (ip for p, ip in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
