@@ -39,7 +39,7 @@ class Common(object):
         # 其实下面这句是多余的，忽略之。
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
-        self.CONFIG.read(os.path.splitext(__file__)[0] + '.ini')
+        self.CONFIG.read(os.path.splitext(__file__)[0] + '.conf')
 
         self.LISTEN_IP            = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
@@ -57,6 +57,11 @@ class Common(object):
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
         self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
         self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
+
+        self.PAC_ENABLE           = self.CONFIG.getint('pac','enable')
+        self.PAC_IP               = self.CONFIG.get('pac','ip')
+        self.PAC_PORT             = self.CONFIG.getint('pac','port')
+        self.PAC_FILE             = self.CONFIG.get('pac','pacfile')
 
         self.PROXY_ENABLE         = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_HOST           = self.CONFIG.get('proxy', 'host')
@@ -141,6 +146,8 @@ class Common(object):
             for (ip, port),(fetchhost, fetchserver) in common.PHP_FETCH_INFO.iteritems():
                 info += 'PHP Mode Listen : %s:%d\n' % (ip, port)
                 info += 'PHP FetchServer : %s\n' % fetchserver
+        if common.PAC_ENABLE:
+            info += 'Pac Server      : %s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.WEST_ENABLE:
             info += 'West Mode Sites : %s\n' % '|'.join(self.WEST_SITES)
         info += '------------------------------------------------------\n'
@@ -1027,6 +1034,25 @@ class PHPProxyHandler(LocalProxyHandler):
         PHPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
+class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/goagent.pac':
+            with open(common.PAC_FILE,'rb') as fp:
+
+                fs = os.fstat(fp.fileno())
+
+                self.send_response(200)
+                self.send_header('Content-Type','application/x-ns-proxy-autoconfig')
+                self.send_header('Content-Length',str(fs[6]))
+                self.end_headers()
+                self.wfile.write(fp.read())
+
+                fp.close()
+                return
+        else:
+            self.send_response(404)
+            return
+
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -1073,6 +1099,10 @@ def main():
         for address in common.PHP_FETCH_INFO:
             httpd = LocalProxyServer(address, PHPProxyHandler)
             thread.start_new_thread(httpd.serve_forever, ())
+    if common.PAC_ENABLE:
+        httpd = LocalProxyServer(tuple([common.PAC_IP,common.PAC_PORT]),LocalPacHandler)
+        thread.start_new_thread(httpd.serve_forever,())
+
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyHandler)
     httpd.serve_forever()
 
