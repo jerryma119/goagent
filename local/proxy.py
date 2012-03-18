@@ -7,7 +7,7 @@ __version__ = '1.8-dev'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys
-# 如果Python的版本不是2.6或者2.7版本，则退出并给出提示信息，考虑到多操作系统的字符集，在此使用英文。
+# check python 2.6 or 2.7
 sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/2.7'))
 
 import sys, os, re, time, errno, binascii, zlib
@@ -26,17 +26,16 @@ try:
 except ImportError:
     OpenSSL = None
 
-# 此句是在配置logging模块的记录格式。
+# logging format/datefmt config
 logging.basicConfig(level=logging.INFO,
                     format='%(levelname)s - - %(asctime)s %(message)s',
                     datefmt='[%d/%b/%Y %H:%M:%S]')
 
 class Common(object):
-    '''全局配置相关的类。'''
+    """global config object"""
 
     def __init__(self):
-        """会自动从proxy.py所在的目录底下找到proxy.conf，并通过ConfigParser模块来逐个读取。"""
-        # 其实下面这句是多余的，忽略之。
+        """load config from proxy.ini"""
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
         self.CONFIG.read(os.path.splitext(__file__)[0] + '.conf')
@@ -48,10 +47,8 @@ class Common(object):
         self.GAE_ENABLE           = self.CONFIG.getint('gae', 'enable')
         self.GAE_APPIDS           = self.CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
-        self.GAE_PATH             = self.CONFIG.get('gae', 'path')
-        # 判断你是使用google_cn还是google_hk还是google_ipv6的服务器。
+        self.GAE_PATH             = self.CONFIG.get('gae', 'path')。
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
-        # 默认的proxy.conf（基于goagent 1.7.10版本来说）没有设置debuglevel
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
@@ -69,8 +66,6 @@ class Common(object):
         self.PROXY_USERNAME       = self.CONFIG.get('proxy', 'username')
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
 
-        # 以下的options（配置选项）都是基于self.GAE_PROFILE的配置的。因为不同的profile设定的mode或是hosts都不一样。
-        # 可以去proxy.conf里面看看这些profile。
         self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
         self.GOOGLE_HOSTS         = self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|')
         self.GOOGLE_SITES         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|'))
@@ -80,7 +75,6 @@ class Common(object):
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
 
-        # ? 在线视频网站相关的options
         self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
@@ -93,14 +87,11 @@ class Common(object):
         self.WEST_DNS             = self.CONFIG.get('west', 'dns')
         self.WEST_SITES           = tuple(self.CONFIG.get('west', 'sites').split('|'))
 
-        # 伪装浏览器的相关options
         self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
 
-        # 爱心广告
         self.LOVE_ENABLE          = self.CONFIG.getint('love','enable')
         self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
-        # ? 广告的字符串是用unicode编码的16进制方式存储的，在读入Python的时候通过unichr函数转成Python可识别的unicode编码。
         self.LOVE_TIP             = self.CONFIG.get('love','tip').decode('unicode-escape').split('|')
 
         self.HOSTS                = dict((k, v) for k, v in self.CONFIG.items('hosts') if not k.startswith('.'))
@@ -108,11 +99,10 @@ class Common(object):
         self.HOSTS_ENDSWITH_TUPLE = tuple(k for k, v in self.CONFIG.items('hosts') if k.startswith('.'))
 
         self.build_gae_fetchserver()
-        # 将proxy.conf里面的php选项中的listen（本地监听端口）与fetchserver（远程抓取脚本的地址）按次序一一对应起来，存入dict（字典）中方便读取。
         self.PHP_FETCH_INFO       = dict(((listen.rpartition(':')[0], int(listen.rpartition(':')[-1])), (re.sub(r':\d+$', '', urlparse.urlparse(server).netloc), server)) for listen, server in zip(self.PHP_LISTEN.split('|'), self.PHP_FETCHSERVER.split('|')))
 
     def build_gae_fetchserver(self):
-        """根据你的appid来设置你的fetchserver。如http://keepagent.appspot.com/fetch.py"""
+        """rebuild gae fetch server config"""
         self.GAE_FETCHHOST = '%s.appspot.com' % self.GAE_APPIDS[0]
         if not self.PROXY_ENABLE:
             # append '?' to url, it can avoid china telicom/unicom AD
@@ -121,7 +111,7 @@ class Common(object):
             self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_HOSTS), self.GAE_PATH)
 
     def install_opener(self):
-        """如果你在proxy.conf里面设置了[proxy]->enable为True的话，则配置urllib2模块来应用你设置的代理服务器"""
+        """install urllib2 opener"""
         httplib.HTTPMessage = SimpleMessageClass
         if self.PROXY_ENABLE:
             proxy = '%s:%s@%s:%d'%(self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
@@ -156,10 +146,7 @@ class Common(object):
 common = Common()
 
 class MultiplexConnection(object):
-    '''multiplex tcp connection class
-
-    这个类用来建立并发tcp连接
-    '''
+    """multiplex tcp connection class"""
 
     retry = 3
     timeout = 8
@@ -171,12 +158,6 @@ class MultiplexConnection(object):
     window_max = 60
     window_ack = 0
 
-    ## ?
-    # @brief 初始化MultiplexConnection类时自动进行并发连接
-    #
-    # @param hosts 要连接的hosts列表
-    # @param port 端口号，一般为80。需int类型。
-    #
     def __init__(self, hosts, port):
         self.socket = None
         self._sockets = set([])
@@ -186,18 +167,16 @@ class MultiplexConnection(object):
             hosts = random.sample(hostlist, window) if len(hostlist) > window else hostlist
             logging.debug('MultiplexConnection try connect hosts=%s, port=%d', hosts, port)
             socks = []
-            # ? 只需判断一次sock_family，因为hosts要则走ipv4协议要则ipv6协议。
             sock_family = socket.AF_INET6 if ':' in hosts[0] else socket.AF_INET
+            # multiple connect start here
             for host in hosts:
-                # 对于socket编程来说，sock_family一般就在socket.AF_INET或AF_INET6两者间，后者不如前者常见；
-                # 第二个选项的socket.SOCK_STREAM是tcp连接的意思，一般不是用它就是用socket.SOCK_DGRAM，后者代表udp连接。
                 sock = socket.socket(sock_family, socket.SOCK_STREAM)
                 sock.setblocking(0)
                 #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
                 err = sock.connect_ex((host, port))
                 self._sockets.add(sock)
                 socks.append(sock)
-            # TODO
+            # something happens :D
             (_, outs, _) = select.select([], socks, [], timeout)
             if outs:
                 self.socket = outs[0]
@@ -218,14 +197,15 @@ class MultiplexConnection(object):
                 break
             else:
                 logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
-        else: # ? 如果在尝试了`MultiplexConnection.retry`次数后，仍然连接不成功，则抛错。
+        else:
+            # OOOPS, cannot multiple connect
             MultiplexConnection.window = min(int(round(window*1.5)), len(hostlist), self.window_max)
             MultiplexConnection.window_ack = 0
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
             raise RuntimeError(r'MultiplexConnection Connect hosts %s:%s fail %d times!' % (hosts, port, MultiplexConnection.retry))
     def close(self):
-        """遍历关闭所有打开的sockets"""
+        """close all sockets, otherwise CLOSE_WAIT"""
         for sock in self._sockets:
             try:
                 sock.close()
@@ -495,7 +475,7 @@ class CertUtil(object):
 class SimpleMessageClass(object):
 
     def __init__(self, fp, seekable = 0):
-        self.dict = dict = {} # ? 此处把dict关键词给覆盖了，不懂是一种需要还是一个失误。我不确定，所以没改成self.dic = dic = {}
+        self.dict = dict = {}
         self.headers = headers = []
         readline = getattr(fp, 'readline', None)
         headers_append = headers.append
@@ -522,12 +502,6 @@ class SimpleMessageClass(object):
 
     def get(self, name, default=None):
         return self.dict.get(name.title(), default)
-
-    # 元编程实现下列冗余代码。不过由于由于该SimpleMessageClass是python2.6的新式类，所以
-    # 无法用__getattr__获取*操作符重载*函数
-    # 此处可商榷，本来是仿rfc822.py写的 by phus
-    #def __getattr__(self, attrname):
-    #    return getattr(self.dict, attrname)
 
     def iteritems(self):
         return self.dict.iteritems()
