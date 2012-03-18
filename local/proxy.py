@@ -220,7 +220,19 @@ class MultiplexConnection(object):
 
 def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host in common.HOSTS:
+    if host == common.GAE_FETCHSERVER:
+        msg = 'socket_create_connection returns an empty list'
+        try:
+            conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
+            sock = conn.socket
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+            return sock
+        except socket.error, msg:
+            logging.error('socket_create_connection connect fail: (%r, %r)', common.GOOGLE_HOSTS, port)
+            sock = None
+        if not sock:
+            raise socket.error, msg
+    elif host in common.HOSTS:
         msg = 'socket_create_connection returns an empty list'
         try:
             conn = MultiplexConnection(common.HOSTS[host], port)
@@ -774,7 +786,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data = ''
             if not common.PROXY_ENABLE:
                 if host in common.HOSTS:
-                    logging.info('common.HOSTS[host]=%s', common.HOSTS[host])
                     conn = MultiplexConnection(common.HOSTS[host], int(port))
                     sock = conn.socket
                     idlecall=conn.close
