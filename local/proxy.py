@@ -97,7 +97,7 @@ class Common(object):
         self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
         self.LOVE_TIP             = self.CONFIG.get('love','tip').decode('unicode-escape').split('|')
 
-        self.HOSTS                = dict((k, tuple(v.split('|'))) for k, v in self.CONFIG.items('hosts') if not k.startswith('.'))
+        self.HOSTS                = dict((k, tuple(v.split('|')) if v else tuple()) for k, v in self.CONFIG.items('hosts') if not k.startswith('.'))
         self.HOSTS_ENDSWITH_DICT  = dict((k, v) for k, v in self.CONFIG.items('hosts') if k.startswith('.'))
         self.HOSTS_ENDSWITH_TUPLE = tuple(k for k, v in self.CONFIG.items('hosts') if k.startswith('.'))
 
@@ -236,7 +236,11 @@ def socket_create_connection((host, port), timeout=None, source_address=None):
     elif host in common.HOSTS:
         msg = 'socket_create_connection returns an empty list'
         try:
-            conn = MultiplexConnection(common.HOSTS[host], port)
+            iplist = common.HOSTS[host]
+            if not iplist:
+                iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+                common.HOSTS[host] = iplist
+            conn = MultiplexConnection(iplist, port)
             sock = conn.socket
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
             return sock
@@ -787,7 +791,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data = ''
             if not common.PROXY_ENABLE:
                 if host in common.HOSTS:
-                    conn = MultiplexConnection(common.HOSTS[host], int(port))
+                    iplist = common.HOSTS[host]
+                    if not iplist:
+                        iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+                        common.HOSTS[host] = iplist
+                    logging.info('host=%r, common.HOSTS[host]=%s', host, iplist)
+                    conn = MultiplexConnection(iplist, int(port))
                     sock = conn.socket
                     idlecall=conn.close
                 else:
@@ -897,7 +906,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data = ''
             if not common.PROXY_ENABLE:
                 if host in common.HOSTS:
-                    conn = MultiplexConnection(common.HOSTS[host], port)
+                    iplist = common.HOSTS[host]
+                    if not iplist:
+                        iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+                        common.HOSTS[host] = iplist
+                    logging.info('host=%r, common.HOSTS[host]=%s', host, iplist)
+                    conn = MultiplexConnection(iplist, port)
                     sock = conn.socket
                     idlecall = conn.close
                 else:
