@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.10'
+__version__ = '1.8-dev'
 __author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 
 import sys
@@ -35,7 +35,7 @@ class Common(object):
     '''全局配置相关的类。'''
 
     def __init__(self):
-        """会自动从proxy.py所在的目录底下找到proxy.ini，并通过ConfigParser模块来逐个读取。"""
+        """会自动从proxy.py所在的目录底下找到proxy.conf，并通过ConfigParser模块来逐个读取。"""
         # 其实下面这句是多余的，忽略之。
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
@@ -51,7 +51,7 @@ class Common(object):
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         # 判断你是使用google_cn还是google_hk还是google_ipv6的服务器。
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
-        # 默认的proxy.ini（基于goagent 1.7.10版本来说）没有设置debuglevel
+        # 默认的proxy.conf（基于goagent 1.7.10版本来说）没有设置debuglevel
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
@@ -70,7 +70,7 @@ class Common(object):
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
 
         # 以下的options（配置选项）都是基于self.GAE_PROFILE的配置的。因为不同的profile设定的mode或是hosts都不一样。
-        # 可以去proxy.ini里面看看这些profile。
+        # 可以去proxy.conf里面看看这些profile。
         self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
         self.GOOGLE_HOSTS         = self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|')
         self.GOOGLE_SITES         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|'))
@@ -108,7 +108,7 @@ class Common(object):
         self.HOSTS_ENDSWITH_TUPLE = tuple(k for k, v in self.CONFIG.items('hosts') if k.startswith('.'))
 
         self.build_gae_fetchserver()
-        # 将proxy.ini里面的php选项中的listen（本地监听端口）与fetchserver（远程抓取脚本的地址）按次序一一对应起来，存入dict（字典）中方便读取。
+        # 将proxy.conf里面的php选项中的listen（本地监听端口）与fetchserver（远程抓取脚本的地址）按次序一一对应起来，存入dict（字典）中方便读取。
         self.PHP_FETCH_INFO       = dict(((listen.rpartition(':')[0], int(listen.rpartition(':')[-1])), (re.sub(r':\d+$', '', urlparse.urlparse(server).netloc), server)) for listen, server in zip(self.PHP_LISTEN.split('|'), self.PHP_FETCHSERVER.split('|')))
 
     def build_gae_fetchserver(self):
@@ -121,7 +121,7 @@ class Common(object):
             self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_HOSTS), self.GAE_PATH)
 
     def install_opener(self):
-        """如果你在proxy.ini里面设置了[proxy]->enable为True的话，则配置urllib2模块来应用你设置的代理服务器"""
+        """如果你在proxy.conf里面设置了[proxy]->enable为True的话，则配置urllib2模块来应用你设置的代理服务器"""
         httplib.HTTPMessage = SimpleMessageClass
         if self.PROXY_ENABLE:
             proxy = '%s:%s@%s:%d'%(self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
@@ -1066,14 +1066,14 @@ def try_show_love():
             common.LOVE_TIMESTAMP = int(common.LOVE_TIMESTAMP)
         else:
             common.LOVE_TIMESTAMP = int(time.time())
-            with open('proxy.ini', 'w') as fp:
+            with open('proxy.conf', 'w') as fp:
                 common.CONFIG.set('love', 'timestamp', int(time.time()))
                 common.CONFIG.write(fp)
         if time.time() - common.LOVE_TIMESTAMP > 86400 and random.randint(1,10) > 5:
             title = ctypes.create_unicode_buffer(1024)
             GetConsoleTitleW(ctypes.byref(title), len(title)-1)
             SetConsoleTitleW(u'%s %s' % (title.value, random.choice(common.LOVE_TIP)))
-            with open('proxy.ini', 'w') as fp:
+            with open('proxy.conf', 'w') as fp:
                 common.CONFIG.set('love', 'timestamp', int(time.time()))
                 common.CONFIG.write(fp)
 
