@@ -38,7 +38,7 @@ class Common(object):
         """load config from proxy.ini"""
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
-        self.CONFIG.read(os.path.splitext(__file__)[0] + '.conf')
+        self.CONFIG.read(os.path.splitext(__file__)[0] + '.ini')
 
         self.LISTEN_IP            = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
@@ -47,7 +47,7 @@ class Common(object):
         self.GAE_ENABLE           = self.CONFIG.getint('gae', 'enable')
         self.GAE_APPIDS           = self.CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
-        self.GAE_PATH             = self.CONFIG.get('gae', 'path')。
+        self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
@@ -464,7 +464,7 @@ class CertUtil(object):
         #Check CA imported
         cmd = {
                 'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
-                #'darwin' : r'sudo security add-trusted-cert -d –r trustRoot –k /Library/Keychains/System.keychain CA.crt',
+                #'darwin' : r'sudo security add-trusted-cert -d �Cr trustRoot �Ck /Library/Keychains/System.keychain CA.crt',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
