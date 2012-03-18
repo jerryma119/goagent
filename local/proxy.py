@@ -795,7 +795,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if not iplist:
                         iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
                         common.HOSTS[host] = iplist
-                    logging.info('host=%r, common.HOSTS[host]=%s', host, iplist)
                     conn = MultiplexConnection(iplist, int(port))
                     sock = conn.socket
                     idlecall=conn.close
@@ -910,7 +909,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if not iplist:
                         iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
                         common.HOSTS[host] = iplist
-                    logging.info('host=%r, common.HOSTS[host]=%s', host, iplist)
                     conn = MultiplexConnection(iplist, port)
                     sock = conn.socket
                     idlecall = conn.close
