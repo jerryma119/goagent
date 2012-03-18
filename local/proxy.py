@@ -83,9 +83,11 @@ class Common(object):
 
         assert self.AUTORANGE_BUFSIZE <= self.AUTORANGE_WAITSIZE <= self.AUTORANGE_MAXSIZE
 
-        self.WEST_ENABLE          = self.CONFIG.getint('west', 'enable')
-        self.WEST_DNS             = self.CONFIG.get('west', 'dns')
-        self.WEST_SITES           = tuple(self.CONFIG.get('west', 'sites').split('|'))
+        if self.CONFIG.has_section('crlf'):
+            # XXX, cowork with GoAgentX
+            self.CRLF_ENABLE          = self.CONFIG.getint('crlf', 'enable')
+            self.CRLF_DNS             = self.CONFIG.get('crlf', 'dns')
+            self.CRLF_SITES           = tuple(self.CONFIG.get('crlf', 'sites').split('|'))
 
         self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
@@ -137,9 +139,9 @@ class Common(object):
                 info += 'PHP Mode Listen : %s:%d\n' % (ip, port)
                 info += 'PHP FetchServer : %s\n' % fetchserver
         if common.PAC_ENABLE:
-            info += 'Pac Server      : %s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
-        if common.WEST_ENABLE:
-            info += 'West Mode Sites : %s\n' % '|'.join(self.WEST_SITES)
+            info += 'Pac Server      : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
+        if common.CRLF_ENABLE:
+            info += 'CRLF Injection  : %s\n' % '|'.join(self.CRLF_SITES)
         info += '------------------------------------------------------\n'
         return info
 
@@ -315,7 +317,7 @@ def dns_resolve(host, dnsserver, dnscache={}, dnslock=threading.Lock()):
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    if common.WEST_ENABLE:
+    if common.CRLF_ENABLE:
         self._output('\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
@@ -745,10 +747,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host, _, port = self.path.rpartition(':')
         if host in common.HOSTS:
             return self.do_CONNECT_Direct()
-        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+        elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
-                logging.info('west dns_resolve(host=%r, dnsserver=%r)', host, common.WEST_DNS)
-                common.HOSTS[host] = dns_resolve(host, common.WEST_DNS)[-1]
+                logging.info('crlf dns_resolve(host=%r, dnsserver=%r)', host, common.CRLF_DNS)
+                common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS)[-1]
             return self.do_CONNECT_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             common.HOSTS[host] = common.GOOGLE_HOSTS[0]
@@ -790,7 +792,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
                 data = '%s %s:%s %s\r\n%s\r\b' % (self.command, ip, port, self.protocol_version, self.headers)
             if data:
-                if common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+                if common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
                     sock.sendall('\r\n'+data)
                 else:
                     sock.sendall(data)
@@ -844,10 +846,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.headers['Host']
         if host in common.HOSTS:
             return self.do_METHOD_Direct()
-        elif common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+        elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
-                logging.info('west dns_resolve(host=%r, dnsserver=%r)', host, common.WEST_DNS)
-                common.HOSTS[host] = dns_resolve(host, common.WEST_DNS)[-1]
+                logging.info('crlf dns_resolve(host=%r, dnsserver=%r)', host, common.CRLF_DNS)
+                common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS)[-1]
             return self.do_METHOD_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if host in common.GOOGLE_FORCEHTTPS:
@@ -903,7 +905,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if content_length > 0:
                 data += self.rfile.read(content_length)
             if data:
-                if common.WEST_ENABLE and host.endswith(common.WEST_SITES):
+                if common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
                     sock.sendall('\r\n'+data)
                 else:
                     sock.sendall(data)
