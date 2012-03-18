@@ -4,7 +4,8 @@
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
 __version__ = '1.8-dev'
-__author__ = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
+__author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
+__config__  = 'proxy.ini'
 
 import sys
 # check python 2.6 or 2.7
@@ -38,7 +39,7 @@ class Common(object):
         """load config from proxy.ini"""
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
-        self.CONFIG.read(os.path.splitext(__file__)[0] + '.ini')
+        self.CONFIG.read(os.path.splitext(__file__)[0] + __config__)
 
         self.LISTEN_IP            = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
@@ -1056,14 +1057,14 @@ def try_show_love():
             common.LOVE_TIMESTAMP = int(common.LOVE_TIMESTAMP)
         else:
             common.LOVE_TIMESTAMP = int(time.time())
-            with open('proxy.conf', 'w') as fp:
+            with open(__config__, 'w') as fp:
                 common.CONFIG.set('love', 'timestamp', int(time.time()))
                 common.CONFIG.write(fp)
         if time.time() - common.LOVE_TIMESTAMP > 86400 and random.randint(1,10) > 5:
             title = ctypes.create_unicode_buffer(1024)
             GetConsoleTitleW(ctypes.byref(title), len(title)-1)
             SetConsoleTitleW(u'%s %s' % (title.value, random.choice(common.LOVE_TIP)))
-            with open('proxy.conf', 'w') as fp:
+            with open(__config__, 'w') as fp:
                 common.CONFIG.set('love', 'timestamp', int(time.time()))
                 common.CONFIG.write(fp)
 
@@ -1078,7 +1079,7 @@ def main():
     if common.GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
     if common.GAE_APPIDS[0] == 'goagent':
-        logging.critical('please edit proxy.ini to add your appid to [gae] !')
+        logging.critical('please edit %s to add your appid to [gae] !', __config__)
         sys.exit(-1)
     CertUtil.checkCA()
     common.install_opener()
