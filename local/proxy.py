@@ -141,6 +141,7 @@ class Common(object):
         if common.PAC_ENABLE:
             info += 'Pac Server      : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
+            #http://www.acunetix.com/websitesecurity/crlf-injection.htm
             info += 'CRLF Injection  : %s\n' % '|'.join(self.CRLF_SITES)
         info += '------------------------------------------------------\n'
         return info
