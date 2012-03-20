@@ -1042,21 +1042,15 @@ class PHPProxyHandler(LocalProxyHandler):
 class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/goagent.pac':
-            with open(common.PAC_FILE,'rb') as fp:
-
-                fs = os.fstat(fp.fileno())
-
+            with open(common.PAC_FILE, 'rb') as fp:
+                data = fp.read()
                 self.send_response(200)
-                self.send_header('Content-Type','application/x-ns-proxy-autoconfig')
-                self.send_header('Content-Length',str(fs[6]))
+                self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
                 self.end_headers()
-                self.wfile.write(fp.read())
-
-                fp.close()
-                return
+                self.wfile.write(data)
+                self.wfile.close()
         else:
-            self.send_response(404)
-            return
+            self.send_error(404, 'Not Found')
 
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
