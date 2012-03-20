@@ -345,8 +345,8 @@ class CertUtil(object):
 
     CA = None
     CALock = threading.Lock()
-    # XXX: http://bugs.python.org/issue13458
-    subj_alts = \
+
+    SubjectAltNames = \
             'DNS: twitter.com, DNS: facebook.com, \
             DNS: *.twitter.com, DNS: *.twimg.com, \
             DNS: *.akamaihd.net, DNS: *.google.com, \
@@ -355,7 +355,7 @@ class CertUtil(object):
             DNS: *.youtube.com, DNS: *.googleusercontent.com, \
             DNS: *.gstatic.com, DNS: *.live.com, \
             DNS: *.ak.fbcdn.net, DNS: *.ak.facebook.com, \
-            DNS: *.android.com, DNS: *.fbcdn.net' if sys.version_info[:3] > (2,7,3) else ''
+            DNS: *.android.com, DNS: *.fbcdn.net'
 
     @staticmethod
     def readFile(filename):
@@ -398,8 +398,8 @@ class CertUtil(object):
         cert.set_issuer(issuerCert.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
-        if CertUtil.subj_alts:
-            alts = CertUtil.subj_alts
+        if CertUtil.SubjectAltNames:
+            alts = CertUtil.SubjectAltNames
             if host is not None:
                 alts += ", DNS: %s" % host
             cert.add_extensions([OpenSSL.crypto.X509Extension("subjectAltName",
