@@ -93,6 +93,7 @@ class Common(object):
             self.CRLF_ENABLE          = self.CONFIG.getint('crlf', 'enable')
             self.CRLF_DNS             = self.CONFIG.get('crlf', 'dns')
             self.CRLF_SITES           = tuple(self.CONFIG.get('crlf', 'sites').split('|'))
+            self.CRLF_CNAME           = dict(x.split('=') for x in self.CONFIG.get('crlf', 'cname').split('|'))
         else:
             self.CRLF_ENABLE          = 0
 
@@ -776,8 +777,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_CONNECT_Direct()
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
+                host = common.CRLF_CNAME.get(host, host)
                 logging.info('crlf dns_resolve(host=%r, dnsserver=%r)', host, common.CRLF_DNS)
-                common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS)
+                common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,)
             return self.do_CONNECT_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             common.HOSTS[host] = common.GOOGLE_HOSTS
@@ -879,8 +881,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_METHOD_Direct()
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
+                host = common.CRLF_CNAME.get(host, host)
                 logging.info('crlf dns_resolve(host=%r, dnsserver=%r)', host, common.CRLF_DNS)
-                common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS)
+                common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS) if host[-1] not in '1234567890' else host
             return self.do_METHOD_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if host in common.GOOGLE_FORCEHTTPS:
