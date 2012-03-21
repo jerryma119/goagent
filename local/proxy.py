@@ -56,10 +56,14 @@ class Common(object):
         self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
         self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
 
-        self.PAC_ENABLE           = self.CONFIG.getint('pac','enable')
-        self.PAC_IP               = self.CONFIG.get('pac','ip')
-        self.PAC_PORT             = self.CONFIG.getint('pac','port')
-        self.PAC_FILE             = self.CONFIG.get('pac','pacfile')
+        if self.CONFIG.has_section('pac'):
+            # XXX, cowork with GoAgentX
+            self.PAC_ENABLE           = self.CONFIG.getint('pac','enable')
+            self.PAC_IP               = self.CONFIG.get('pac','ip')
+            self.PAC_PORT             = self.CONFIG.getint('pac','port')
+            self.PAC_FILE             = self.CONFIG.get('pac','pacfile')
+        else:
+            self.PAC_ENABLE           = 0
 
         self.PROXY_ENABLE         = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_HOST           = self.CONFIG.get('proxy', 'host')
@@ -89,6 +93,8 @@ class Common(object):
             self.CRLF_ENABLE          = self.CONFIG.getint('crlf', 'enable')
             self.CRLF_DNS             = self.CONFIG.get('crlf', 'dns')
             self.CRLF_SITES           = tuple(self.CONFIG.get('crlf', 'sites').split('|'))
+        else:
+            self.CRLF_ENABLE          = 0
 
         self.USERAGENT_ENABLE     = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING     = self.CONFIG.get('useragent', 'string')
