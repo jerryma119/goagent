@@ -112,7 +112,8 @@ class Common(object):
             # append '?' to url, it can avoid china telicom/unicom AD
             self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
         else:
-            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_HOSTS), self.GAE_PATH)
+            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
+            #self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_HOSTS), self.GAE_PATH)
 
     def install_opener(self):
         """install urllib2 opener"""
@@ -814,7 +815,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     del self.headers['Host']
                 if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
-                data = '%s %s:%s %s\r\n%s\r\b' % (self.command, ip, port, self.protocol_version, self.headers)
+                data = '%s %s:%s %s\r\n%s\r\n' % (self.command, ip, port, self.protocol_version, self.headers)
             if data:
                 if common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
                     sock.sendall('\r\n'+data)
