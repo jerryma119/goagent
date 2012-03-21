@@ -1013,7 +1013,7 @@ class PHPProxyHandler(LocalProxyHandler):
 
     def fetch(self, url, payload, method, headers):
         fetchhost, fetchserver = common.PHP_FETCH_INFO[self.server.server_address]
-        dns = random.choice(common.HOSTS.get(self.headers.get('Host')))
+        dns = random.choice(common.HOSTS.get(self.headers.get('Host'), [None]))
         return urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
