@@ -1023,7 +1023,13 @@ class PHPProxyHandler(LocalProxyHandler):
 
     def fetch(self, url, payload, method, headers):
         fetchhost, fetchserver = common.PHP_FETCH_INFO[self.server.server_address]
-        dns = random.choice(common.HOSTS.get(self.headers.get('Host'), [None]))
+        dns  = None
+        host = self.headers.get('Host')
+        if host in common.HOSTS:
+            if not common.HOSTS[host]:
+                iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+                common.HOSTS[host] = iplist
+            dns = random.choice(common.HOSTS[host])
         return urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
