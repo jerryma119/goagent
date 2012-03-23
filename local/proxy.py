@@ -63,6 +63,7 @@ class Common(object):
             self.PAC_PORT             = self.CONFIG.getint('pac','port')
             self.PAC_FILE             = self.CONFIG.get('pac','file')
             self.PAC_REMOTE           = self.CONFIG.get('pac', 'remote')
+            self.PAC_TIMEOUT          = self.CONFIG.getint('pac', 'timeout')
         else:
             self.PAC_ENABLE           = 0
 
@@ -1069,7 +1070,7 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     netloc = urlparse.urlparse(url).netloc
                     if netloc.endswith(common.GOOGLE_SITES):
                         common.HOSTS[netloc] = common.GOOGLE_HOSTS
-                    content = urllib2.urlopen(url).read()
+                    content = urllib2.urlopen(url, timeout=common.PAC_TIMEOUT).read()
                     with open(common.PAC_FILE, 'wb') as fp:
                         fp.write(content)
                     logging.info('LocalPacHandler end sync remote pac')
