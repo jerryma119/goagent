@@ -61,7 +61,8 @@ class Common(object):
             self.PAC_ENABLE           = self.CONFIG.getint('pac','enable')
             self.PAC_IP               = self.CONFIG.get('pac','ip')
             self.PAC_PORT             = self.CONFIG.getint('pac','port')
-            self.PAC_FILE             = self.CONFIG.get('pac','pacfile')
+            self.PAC_FILE             = self.CONFIG.get('pac','file')
+            self.PAC_REMOTE           = self.CONFIG.get('pac', 'remote')
         else:
             self.PAC_ENABLE           = 0
 
@@ -526,6 +527,9 @@ class SimpleMessageClass(object):
 
     def getheader(self, name, default=None):
         return self.dict.get(name.title(), default)
+
+    def getheaders(self, name, default=None):
+        return [self.getheader(name, default)]
 
     def addheader(self, key, value):
         self[key] = value
@@ -1057,7 +1061,20 @@ class PHPProxyHandler(LocalProxyHandler):
 
 class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/goagent.pac':
+        if self.path == '/'+common.PAC_FILE and os.path.exists(common.PAC_FILE):
+            if time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
+                try:
+                    logging.info('LocalPacHandler begin sync remote pac')
+                    url = common.PAC_REMOTE
+                    netloc = urlparse.urlparse(url).netloc
+                    if netloc.endswith(common.GOOGLE_SITES):
+                        common.HOSTS[netloc] = common.GOOGLE_HOSTS
+                    content = urllib2.urlopen(url).read()
+                    with open(common.PAC_FILE, 'wb') as fp:
+                        fp.write(content)
+                    logging.info('LocalPacHandler end sync remote pac')
+                except Exception, e:
+                    logging.exception('LocalPacHandler sync remote pac failed:%s', e)
             with open(common.PAC_FILE, 'rb') as fp:
                 data = fp.read()
                 self.send_response(200)
