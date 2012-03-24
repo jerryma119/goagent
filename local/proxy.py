@@ -106,9 +106,7 @@ class Common(object):
         self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
         self.LOVE_TIP             = self.CONFIG.get('love','tip').decode('unicode-escape').split('|')
 
-        self.HOSTS                = dict((k, tuple(v.split('|')) if v else tuple()) for k, v in self.CONFIG.items('hosts') if not k.startswith('.'))
-        self.HOSTS_ENDSWITH_DICT  = dict((k, v) for k, v in self.CONFIG.items('hosts') if k.startswith('.'))
-        self.HOSTS_ENDSWITH_TUPLE = tuple(k for k, v in self.CONFIG.items('hosts') if k.startswith('.'))
+        self.HOSTS                = dict((k, tuple(v.split('|')) if v else tuple()) for k, v in self.CONFIG.items('hosts'))
 
         self.build_gae_fetchserver()
         self.PHP_FETCH_INFO       = dict(((listen.rpartition(':')[0], int(listen.rpartition(':')[-1])), (re.sub(r':\d+$', '', urlparse.urlparse(server).netloc), server)) for listen, server in zip(self.PHP_LISTEN.split('|'), self.PHP_FETCHSERVER.split('|')))
@@ -315,33 +313,39 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
-def dns_resolve(host, dnsserver, dnscache=common.HOSTS, dnslock=threading.Lock()):
-    assert isinstance(host, basestring) and isinstance(dnsserver, basestring)
-    index = os.urandom(2)
-    hoststr = ''.join(chr(len(x))+x for x in host.split('.'))
-    data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, hoststr)
-    data = struct.pack('!H', len(data)) + data
-    if host not in dnscache:
-        with dnslock:
-            if host not in dnscache:
-                sock = None
-                try:
-                    sock = socket.socket(socket.AF_INET6 if ':' in dnsserver else socket.AF_INET)
-                    sock.connect((dnsserver, 53))
-                    sock.sendall(data)
-                    rfile = sock.makefile('rb')
-                    size = struct.unpack('!H', rfile.read(2))[0]
-                    data = rfile.read(size)
-                    iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
-                    iplist = tuple('.'.join(str(ord(x)) for x in s) for s in iplist)
-                    logging.info('dns_resolve(host=%r) return %s', host, iplist)
-                    dnscache[host] = iplist
-                except socket.error, e:
-                    logging.exception('dns_resolve(host=%r) fail:%s', host, e)
-                finally:
-                    if sock:
-                        sock.close()
-    return dnscache.get(host, tuple())
+def dns_resolve(host, dnsserver='', dnscache=common.HOSTS, dnslock=threading.Lock()):
+    if not dnsserver:
+        iplist = dnscache.get(host)
+        if not iplist:
+            iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+            dnscache[host] = iplist
+        return iplist
+    else:
+        index = os.urandom(2)
+        hoststr = ''.join(chr(len(x))+x for x in host.split('.'))
+        data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, hoststr)
+        data = struct.pack('!H', len(data)) + data
+        if host not in dnscache:
+            with dnslock:
+                if host not in dnscache:
+                    sock = None
+                    try:
+                        sock = socket.socket(socket.AF_INET6 if ':' in dnsserver else socket.AF_INET)
+                        sock.connect((dnsserver, 53))
+                        sock.sendall(data)
+                        rfile = sock.makefile('rb')
+                        size = struct.unpack('!H', rfile.read(2))[0]
+                        data = rfile.read(size)
+                        iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
+                        iplist = tuple('.'.join(str(ord(x)) for x in s) for s in iplist)
+                        logging.info('dns_resolve(host=%r) return %s', host, iplist)
+                        dnscache[host] = iplist
+                    except socket.error, e:
+                        logging.exception('dns_resolve(host=%r) fail:%s', host, e)
+                    finally:
+                        if sock:
+                            sock.close()
+        return dnscache.get(host, tuple())
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
@@ -789,13 +793,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_CONNECT_Direct()
-        elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
-            iplist = (iplist for p, iplist in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
-            if not iplist and not common.PROXY_ENABLE:
-                logging.info('try resolve %r', host)
-                iplist = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
-            common.HOSTS[host] = iplist
-            return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_Tunnel()
 
@@ -807,10 +804,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data = ''
             if not common.PROXY_ENABLE:
                 if host in common.HOSTS:
-                    iplist = common.HOSTS[host]
-                    if not iplist:
-                        iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
-                        common.HOSTS[host] = iplist
+                    iplist = dns_resolve(host)
                     conn = MultiplexConnection(iplist, int(port))
                     sock = conn.socket
                     idlecall=conn.close
@@ -898,13 +892,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
             common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_METHOD_Direct()
-        elif common.HOSTS_ENDSWITH_TUPLE and host.endswith(common.HOSTS_ENDSWITH_TUPLE):
-            iplist = (iplist for p, iplist in common.HOSTS_ENDSWITH_DICT.iteritems() if host.endswith(p)).next()
-            if not iplist and not common.PROXY_ENABLE:
-                logging.info('try resolve %r', host)
-                iplist = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
-            common.HOSTS[host] = iplist
-            return self.do_METHOD_Direct()
         else:
             return self.do_METHOD_Tunnel()
 
@@ -922,10 +909,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             data = ''
             if not common.PROXY_ENABLE:
                 if host in common.HOSTS:
-                    iplist = common.HOSTS[host]
-                    if not iplist:
-                        iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
-                        common.HOSTS[host] = iplist
+                    iplist = dns_resolve(host)
                     conn = MultiplexConnection(iplist, port)
                     sock = conn.socket
                     idlecall = conn.close
@@ -1028,13 +1012,8 @@ class PHPProxyHandler(LocalProxyHandler):
 
     def fetch(self, url, payload, method, headers):
         fetchhost, fetchserver = common.PHP_FETCH_INFO[self.server.server_address]
-        dns  = None
-        host = self.headers.get('Host')
-        if host in common.HOSTS:
-            if not common.HOSTS[host]:
-                iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
-                common.HOSTS[host] = iplist
-            dns = random.choice(common.HOSTS[host])
+        iplist = dns_resolve(self.headers.get('Host'))
+        dns = random.choice(iplist)
         return urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
@@ -1048,7 +1027,7 @@ class PHPProxyHandler(LocalProxyHandler):
                         if fetchhost not in common.HOSTS:
                             try:
                                 logging.info('Resole php fetchserver address.')
-                                common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
+                                dns_resolve(fetchhost)
                                 logging.info('Resole php fetchserver address OK. %s', common.HOSTS[fetchhost])
                             except Exception, e:
                                 logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
