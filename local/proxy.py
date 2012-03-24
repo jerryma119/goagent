@@ -1007,16 +1007,21 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 class PHPProxyHandler(LocalProxyHandler):
 
+    HOSTS = {}
+
     def handle_fetch_error(self, error):
         logging.error('PHPProxyHandler handle_fetch_error %s', error)
 
     def fetch(self, url, payload, method, headers):
         fetchhost, fetchserver = common.PHP_FETCH_INFO[self.server.server_address]
-        iplist = dns_resolve(self.headers.get('Host'))
-        dns = random.choice(iplist)
+        dns  = None
+        host = self.headers.get('Host')
+        if host in PHPProxyHandler.HOSTS:
+            dns = random.choice(dns_resolve(host))
         return urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
+        PHPProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
         if common.PROXY_ENABLE:
             logging.info('Local Proxy is enable, PHPProxyHandler dont resole DNS')
         else:
