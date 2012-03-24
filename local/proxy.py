@@ -1116,8 +1116,9 @@ def main():
         for address in common.PHP_FETCH_INFO:
             httpd = LocalProxyServer(address, PHPProxyHandler)
             thread.start_new_thread(httpd.serve_forever, ())
+
     if common.PAC_ENABLE:
-        httpd = LocalProxyServer(tuple([common.PAC_IP,common.PAC_PORT]),LocalPacHandler)
+        httpd = LocalProxyServer((common.PAC_IP,common.PAC_PORT),LocalPacHandler)
         thread.start_new_thread(httpd.serve_forever,())
 
     httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyHandler)
