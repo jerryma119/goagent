@@ -17,7 +17,7 @@ import (
 
 	"appengine"
 	"appengine/urlfetch"
-	"http"
+	"net/http"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 
 	FetchMax     = 3
 	FetchMaxSize = 1024 * 1024 * 2
-	Deadline     = 30
+	Deadline int64 = 30 *1e9
 )
 
 func encodeData(dic map[string]string) []byte {
@@ -161,31 +161,31 @@ func (h Handler) post() {
 	    }
 	}
 	
-	deadline := float64(Deadline)
+	deadline := time.Duration(Deadline)
 	
 	var errors []string
 	for i := 0; i < fetchmax; i++ {
 		t := &urlfetch.Transport{h.context, deadline, true}
 		resp, err := t.RoundTrip(req)
 		if err != nil {
-			message := err.String()
+			message := err.Error()
 			errors = append(errors, message)
 			if strings.Contains(message, "FETCH_ERROR") {
 				h.context.Errorf("URLFetchServiceError_FETCH_ERROR(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				time.Sleep(1*1e9)
-				deadline = float64(Deadline*2)
+				deadline = time.Duration(Deadline*2)
 			} else if strings.Contains(message, "DEADLINE_EXCEEDED") {
 				h.context.Errorf("URLFetchServiceError_DEADLINE_EXCEEDED(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				time.Sleep(1*1e9)
-				deadline = float64(Deadline*2)
+				deadline = time.Duration(Deadline*2)
 			} else if strings.Contains(message, "INVALID_URL") {
-				h.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.String()))
+				h.printNotify(method, url, 501, fmt.Sprintf("Invalid URL: %s", err.Error()))
 				return
 			} else if strings.Contains(message, "RESPONSE_TOO_LARGE") {
 				h.context.Errorf("URLFetchServiceError_RESPONSE_TOO_LARGE(type=%T, deadline=%v, url=%v)", err, deadline, url)
 				req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", FetchMaxSize))
 				//h.context.Infof("req.Header=%v", req.Header)
-				deadline = float64(Deadline*2)
+				deadline = time.Duration(Deadline*2)
 			} else {
 				h.context.Errorf("URLFetchServiceError UNKOWN(type=%T, deadline=%v, url=%v, error=%v)", err, deadline, url, err)
 				time.Sleep(4*1e9)
