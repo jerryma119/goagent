@@ -62,6 +62,7 @@ class Common(object):
             self.PAC_IP               = self.CONFIG.get('pac','ip')
             self.PAC_PORT             = self.CONFIG.getint('pac','port')
             self.PAC_FILE             = self.CONFIG.get('pac','file')
+            self.PAC_UPDATE           = self.CONFIG.getint('pac', 'update')
             self.PAC_REMOTE           = self.CONFIG.get('pac', 'remote')
             self.PAC_TIMEOUT          = self.CONFIG.getint('pac', 'timeout')
         else:
@@ -1047,7 +1048,7 @@ class PHPProxyHandler(LocalProxyHandler):
 class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/'+common.PAC_FILE and os.path.exists(common.PAC_FILE):
-            if time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
+            if common.PAC_UPDATE and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
                 try:
                     logging.info('LocalPacHandler begin sync remote pac')
                     url = common.PAC_REMOTE
