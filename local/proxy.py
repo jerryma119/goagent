@@ -786,9 +786,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_CONNECT_Direct()
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
-                host = common.CRLF_CNAME.get(host, host)
-                logging.info('crlf dns_resolve(host=%r, dnsserver=%r)', host, common.CRLF_DNS)
-                common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,)
+                cname = common.CRLF_CNAME.get(host, host)
+                logging.info('crlf dns_resolve(host=%r, cname=%r dnsserver=%r)', host, cname, common.CRLF_DNS)
+                common.HOSTS[host] = dns_resolve(cname, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,)
             return self.do_CONNECT_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             common.HOSTS[host] = common.GOOGLE_HOSTS
