@@ -210,14 +210,14 @@ class MultiplexConnection(object):
                         logging.info('MultiplexConnection CONNECT port=%s OK 10 times, switch new timeout=%d', port, MultiplexConnection.timeout)
                 break
             else:
-                logging.warning('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
+                logging.debug('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
             # OOOPS, cannot multiple connect
             MultiplexConnection.window = min(int(round(window*1.5)), len(hostlist), self.window_max)
             MultiplexConnection.window_ack = 0
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
-            raise RuntimeError(r'MultiplexConnection Connect hosts %s:%s fail %d times!' % (hosts, port, MultiplexConnection.retry))
+            logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hosts, port, MultiplexConnection.retry)
     def close(self):
         """close all sockets, otherwise CLOSE_WAIT"""
         for sock in self._sockets:
@@ -1105,7 +1105,7 @@ def main():
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     if common.GAE_DEBUGLEVEL:
         logging.root.setLevel(logging.DEBUG)
-    if common.GAE_APPIDS[0] == 'goagent':
+    if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', __config__)
         sys.exit(-1)
     CertUtil.checkCA()
