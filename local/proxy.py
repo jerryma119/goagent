@@ -120,8 +120,7 @@ class Common(object):
             # append '?' to url, it can avoid china telicom/unicom AD
             self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
         else:
-            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
-            #self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_HOSTS), self.GAE_PATH)
+            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_HOSTS), self.GAE_PATH)
 
     def install_opener(self):
         """install urllib2 opener"""
@@ -650,12 +649,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_fetch_error(self, error):
         if isinstance(error, urllib2.HTTPError):
             # seems that current appid is nonexists or overqouta, swith to next appid
-            if error.code in (404, 503):
-                common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                logging.error('GAE 404/503 Error, switch to next fetchserver: %r', common.GAE_APPIDS[0])
-            # seems that www.google.cn:80 is down, switch to https
-            if error.code in (502, 504):
+            if error.code in (404, 502, 503, 504):
                 common.GOOGLE_MODE = 'https'
+                common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
+                logging.error('GAE Error(%s) switch to appid(%r)', error, common.GAE_APPIDS[0])
         elif isinstance(error, urllib2.URLError):
             if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
                 # it seems that google.cn is reseted, switch to https
