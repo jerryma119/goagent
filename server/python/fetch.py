@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.7.9'
+__version__ = '1.8.0'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -17,7 +17,7 @@ FetchMaxSize = 1024*1024*2
 Deadline = 30
 
 def encode_data(dic):
-    return '&'.join('%s=%s' % (k, binascii.b2a_hex(str(v))) for k, v in dic.iteritems())
+    return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)
 
 def decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))

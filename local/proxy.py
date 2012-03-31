@@ -775,6 +775,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
         LocalProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD
         LocalProxyHandler.do_OPTIONS = LocalProxyHandler.do_METHOD
+        LocalProxyHandler.do_HEAD    = LocalProxyHandler.do_METHOD
         LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
@@ -1039,6 +1040,7 @@ class PHPProxyHandler(LocalProxyHandler):
         PHPProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Tunnel
         PHPProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Tunnel
         PHPProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Tunnel
+        PHPProxyHandler.do_HEAD    = PHPProxyHandler.do_METHOD
         PHPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
