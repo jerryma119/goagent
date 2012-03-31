@@ -33,7 +33,9 @@ const (
 func encodeData(dic map[string]string) []byte {
 	w := bytes.NewBufferString("")
 	for k, v := range dic {
-		fmt.Fprintf(w, "&%s=%s", k, hex.EncodeToString([]byte(v)))
+	    if len(v) != 0 {
+		    fmt.Fprintf(w, "&%s=%s", k, hex.EncodeToString([]byte(v)))
+		}
 	}
 	return w.Bytes()[1:]
 }
@@ -83,7 +85,7 @@ func (h Handler) printResponse(status int, header map[string]string, content []b
 
 	if compressed {
 		h.response.Write([]byte("1"))
-		w, err := zlib.NewWriterDict(h.response, zlib.BestCompression, nil)
+		w, err := zlib.NewWriterLevel(h.response, zlib.BestCompression)
 		if err != nil {
 			h.context.Criticalf("zlib.NewWriterDict(h.response, zlib.BestCompression, nil) Error: %v", err)
 			return
@@ -165,7 +167,7 @@ func (h Handler) post() {
 	
 	var errors []string
 	for i := 0; i < fetchmax; i++ {
-		t := &urlfetch.Transport{h.context, deadline, true}
+		t := &urlfetch.Transport{Context:h.context, Deadline:deadline, AllowInvalidServerCertificate:true}
 		resp, err := t.RoundTrip(req)
 		if err != nil {
 			message := err.Error()
