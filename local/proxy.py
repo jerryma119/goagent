@@ -50,6 +50,7 @@ class Common(object):
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
+        self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
@@ -216,6 +217,20 @@ class MultiplexConnection(object):
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
             logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hosts, port, MultiplexConnection.retry)
+    def connect_single(self, hostlist, port, timeout, window):
+        for host in hostlist:
+            logging.debug('MultiplexConnection try connect host=%s, port=%d', host, port)
+            sock = None
+            try:
+                sock_family = socket.AF_INET6 if ':' in host else socket.AF_INET
+                sock = socket.socket(sock_family, socket.SOCK_STREAM)
+                sock.settimeout(timeout)
+                sock.connect((host, port))
+                self.socket = sock
+            except socket.error, msg:
+                if sock is not None:
+                    sock.close()
+                raise
     def close(self):
         """close all sockets, otherwise CLOSE_WAIT"""
         for sock in self._sockets:
@@ -766,6 +781,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection.sendall(data)
 
     def setup(self):
+        if not common.GAE_MULCONN:
+            MultiplexConnection.connect = MultiplexConnection.connect_single
         if common.CRLF_ENABLE:
             google_sites = ['www.google.com', 'mail.google.com', 'www.google.com.tw']
             common.GOOGLE_HOSTS = tuple(set(sum((dns_resolve(x) for x in google_sites), ())))
