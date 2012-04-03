@@ -767,7 +767,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def setup(self):
         if common.CRLF_ENABLE:
-            common.GOOGLE_HOSTS = tuple(set(sum((dns_resolve(x) for x in ('www.google.com', 'mail.google.com', 'www.google.com.tw')), ())))
+            google_sites = ['www.google.com', 'mail.google.com', 'www.google.com.tw']
+            common.GOOGLE_HOSTS = tuple(set(sum((dns_resolve(x) for x in google_sites), ())))
         if not common.GAE_ENABLE:
             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
