@@ -878,6 +878,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers['Host']
+        if host in common.GOOGLE_FORCEHTTPS:
+            self.send_response(301)
+            self.send_header('Location', self.path.replace('http://', 'https://'))
+            self.end_headers()
+            return
         if host in common.HOSTS:
             return self.do_METHOD_Direct()
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
@@ -890,11 +895,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS) if host[-1] not in '1234567890' else host
             return self.do_METHOD_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            if host in common.GOOGLE_FORCEHTTPS:
-                self.send_response(301)
-                self.send_header('Location', self.path.replace('http://', 'https://'))
-                self.end_headers()
-                return
             common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_METHOD_Direct()
         else:
