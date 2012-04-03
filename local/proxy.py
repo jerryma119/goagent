@@ -115,7 +115,6 @@ class Common(object):
     def build_gae_fetchserver(self):
         """rebuild gae fetch server config"""
         self.GAE_FETCHHOST = '%s.appspot.com' % self.GAE_APPIDS[0]
-        self.HOSTS[self.GAE_FETCHHOST] = self.GOOGLE_HOSTS
         if not self.PROXY_ENABLE:
             # append '?' to url, it can avoid china telicom/unicom AD
             self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
@@ -229,9 +228,10 @@ class MultiplexConnection(object):
 
 def socket_create_connection((host, port), timeout=None, source_address=None):
     logging.debug('socket_create_connection connect (%r, %r)', host, port)
-    if host == common.GAE_FETCHSERVER:
+    if host == common.GAE_FETCHHOST:
         msg = 'socket_create_connection returns an empty list'
         try:
+            print 'socket_create_connection', common.GOOGLE_HOSTS
             conn = MultiplexConnection(common.GOOGLE_HOSTS, port)
             sock = conn.socket
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
@@ -767,6 +767,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection.sendall(data)
 
     def setup(self):
+        if common.CRLF_ENABLE:
+            common.GOOGLE_HOSTS = tuple(set(sum((dns_resolve(x) for x in ('www.google.com', 'mail.google.com', 'www.google.com.tw')), ())))
+            print 'setup', common.GOOGLE_HOSTS
         if not common.GAE_ENABLE:
             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
