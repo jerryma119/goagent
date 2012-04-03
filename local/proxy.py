@@ -12,7 +12,7 @@ import sys
 sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/2.7'))
 
 import sys, os, re, time, errno, binascii, zlib
-import struct, random, hashlib
+import struct, random, hashlib, itertools
 import fnmatch, base64, logging, ConfigParser
 import thread, threading
 import socket, ssl, select
@@ -785,7 +785,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_CONNECT_Direct()
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
-                cname = common.CRLF_CNAME.get(host, host)
+                try:
+                    cname = common.CRLF_CNAME[itertools.ifilter(host.endswith, common.CRLF_CNAME).next()]
+                except StopIteration:
+                    cname = host
                 logging.info('crlf dns_resolve(host=%r, cname=%r dnsserver=%r)', host, cname, common.CRLF_DNS)
                 common.HOSTS[host] = dns_resolve(cname, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,)
             return self.do_CONNECT_Direct()
@@ -879,7 +882,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_METHOD_Direct()
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
-                host = common.CRLF_CNAME.get(host, host)
+                try:
+                    cname = common.CRLF_CNAME[itertools.ifilter(host.endswith, common.CRLF_CNAME).next()]
+                except StopIteration:
+                    cname = host
                 logging.info('crlf dns_resolve(host=%r, dnsserver=%r)', host, common.CRLF_DNS)
                 common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS) if host[-1] not in '1234567890' else host
             return self.do_METHOD_Direct()
