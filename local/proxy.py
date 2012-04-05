@@ -684,33 +684,29 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
-        start = m[1] + 1
-        end   = m[2] - 1
-        if m[0] == 0:
-            data['code'] = 200
-            del data['headers']['Content-Range']
-            data['headers']['Content-Length'] = str(m[2])
-        elif 'Range' in self.headers:
-            req_range = re.search(r'(\d+)?-(\d+)?', self.headers['Range'])
+        if 'range' in self.headers:
+            req_range = re.search(r'(\d+)?-(\d+)?', self.headers['range'])
             if req_range:
                 req_range = [u and int(u) for u in req_range.groups()]
-                if req_range[0] is None and req_range[1] is not None:
-                    if m[1]-m[0]+1==req_range[1] and m[1]+1==m[2]:
-                        return False
-                    if m[2] >= req_range[1]:
-                        start = m[2] - req_range[1]
-                else:
-                    start = req_range[0]
+                if req_range[0] is None:
                     if req_range[1] is not None:
-                        if m[0]==req_range[0] and m[1]==req_range[1]:
+                        if not (m[1]-m[0]+1==req_range[1] and m[1]+1==m[2]):
                             return False
-                        if end > req_range[1]:
-                            end = req_range[1]
-            data['headers']['Content-Range'] = 'bytes %d-%d/%d' % (start,  m[2]-1, m[2])
-        else:
-            pass
+                        if m[2] >= req_range[1]:
+                            content_range = 'bytes %d-%d/%d' % (req_range[1], m[2]-1, m[2])
+                else:
+                    if req_range[1] is not None:
+                        if not (m[0]==req_range[0] and m[1]==req_range[1]):
+                            return False
+                        if m[2] - 1 > req_range[1]:
+                            content_range = 'bytes %d-%d/%d' % (req_range[0], req_range[1], m[2])
+            data['headers']['Content-Range'] = content_range
+        elif m[0] == 0:
+            data['code'] = 200
+            del data['headers']['Content-Range']
+        data['headers']['Content-Length'] = m[2]-m[0]
 
-        self.connection.sendall('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', data['headers']))
+        self.wfile.write('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', data['headers']))
         if 'response' in data:
             response = data['response']
             bufsize = common.AUTORANGE_BUFSIZE
@@ -721,11 +717,13 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not content:
                     response.close()
                     break
-                self.connection.sendall(content)
+                self.wfile.write(content)
                 bufsize = common.AUTORANGE_BUFSIZE
         else:
-            self.connection.sendall(data['content'])
+            self.wfile.write(data['content'])
 
+        start = m[1] + 1
+        end   = m[2] - 1
         failed = 0
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
         while start < end:
@@ -759,9 +757,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if not content:
                         response.close()
                         break
-                    self.connection.sendall(content)
+                    self.wfile.write(content)
             else:
-                self.connection.sendall(data['content'])
+                self.wfile.write(data['content'])
         logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.headers.get('Host'))
         return True
 
@@ -783,9 +781,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def setup(self):
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
-        if common.CRLF_ENABLE:
-            google_sites = ['www.google.com', 'mail.google.com', 'www.google.com.tw']
-            common.GOOGLE_HOSTS = tuple(set(sum((dns_resolve(x) for x in google_sites), ())))
         if not common.GAE_ENABLE:
             LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
             LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
@@ -809,7 +804,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 except StopIteration:
                     cname = host
                 logging.info('crlf dns_resolve(host=%r, cname=%r dnsserver=%r)', host, cname, common.CRLF_DNS)
-                common.HOSTS[host] = dns_resolve(cname, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,)
+                iplist = tuple(set(sum((dns_resolve(x, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,) for x in cname.split(',')), ())))
+                common.HOSTS[host] = iplist
             return self.do_CONNECT_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             common.HOSTS[host] = common.GOOGLE_HOSTS
@@ -910,8 +906,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     cname = common.CRLF_CNAME[itertools.ifilter(host.endswith, common.CRLF_CNAME).next()]
                 except StopIteration:
                     cname = host
-                logging.info('crlf dns_resolve(host=%r, dnsserver=%r)', host, common.CRLF_DNS)
-                common.HOSTS[host] = dns_resolve(host, common.CRLF_DNS) if host[-1] not in '1234567890' else host
+                logging.info('crlf dns_resolve(host=%r, cname=%r dnsserver=%r)', host, cname, common.CRLF_DNS)
+                iplist = tuple(set(sum((dns_resolve(x, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,) for x in cname.split(',')), ())))
+                common.HOSTS[host] = iplist
             return self.do_METHOD_Direct()
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             common.HOSTS[host] = common.GOOGLE_HOSTS
