@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.7.10';
+$__version__  = '1.8.0';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -23,7 +23,7 @@ function decode_data($qs) {
 
 function print_response($status, $headers, $content) {
     $strheaders = encode_data($headers);
-    $content_type = $headers['content-type'];
+    $content_type = isset($headers['content-type']) ? $headers['content-type'] : '';
     if ($content_type && (substr($content_type, 0, 5) == 'text/' || substr($content_type, 0, 16) == 'application/json' || substr($content_type, 0, 22) == 'application/javascript')) {
         $data = '1' . gzcompress(pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content);
     } else {
@@ -62,7 +62,7 @@ class URLFetch {
 
     function urlfetch_curl_readheader($ch, $header) {
         $kv = array_map('trim', explode(':', $header, 2));
-        if ($kv[1]) {
+        if (isset($kv[1])) {
             $key = strtolower($kv[0]);
             $value = $kv[1];
             if ($key == 'set-cookie') {
@@ -163,11 +163,13 @@ class URLFetch {
         if ($errno)
         {
             $error =  $errno . ': ' .curl_error($ch);
+        } else {
+            $error = '';
         }
         curl_close($ch);
         
         $this->headers['connection'] = 'close';
-        $content_length = 1 * $this->headers["content-length"];
+        $content_length = isset($this->headers["content-length"]) ? 1*$this->headers["content-length"] : 0;
 
         if ($status_code == 200 && $errno == 23 && $content_length && $this->body_size < $content_length) {
             //error_exit($status_code, $this->headers, strlen($this->body));
@@ -262,7 +264,7 @@ class URLFetch {
         $this->body = $content;
         
         $this->headers['connection'] = 'close';
-        $content_length = 1 * $this->headers["content-length"];
+        $content_length = isset($this->headers["content-length"]) ? 1*$this->headers["content-length"] : 0;
 
         if ($status_code == 200 && $this->body_size > $this->body_maxsize && $content_length && $this->body_size < $content_length) {
             //error_exit($status_code, $this->headers, strlen($this->body));
@@ -300,12 +302,13 @@ function post()
     }
     $request = decode_data($request);
 
-    $method  = $request['method'];
-    $url     = $request['url'];
-    $payload = $request['payload'];
-    $dns     = $request['dns'];
+    $method   = $request['method'];
+    $url      = $request['url'];
+    $payload  = $request['payload'];
+    $dns      = isset($request['dns']) ? $request['dns'] : '';
+    $password = isset($request['password']) ? $request['password'] : '';
 
-    if ($__password__ && $__password__ != $request['password']) {
+    if ($__password__ && $__password__ != $password) {
         return print_notify($method, $url, 403, 'Wrong password.');
     }
 
