@@ -52,7 +52,7 @@ function error_exit() {
 }
 
 class URLFetch {
-    protected $body_maxsize = 2097152;
+    protected $body_maxsize = 4194304;
     protected $headers = array();
     protected $body = '';
     protected $body_size = 0;
