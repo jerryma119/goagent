@@ -581,9 +581,10 @@ class SimpleMessageClass(object):
         name = name.title()
         self.dict[name] = value
         headers = self.headers
-        for i in [i for i, line in enumerate(headers) if line.partition(':')[0].title() == name]:
+        try:
+            i = (i for i, line in enumerate(headers) if line.partition(':')[0].title() == name).next()
             headers[i] = '%s: %s\r\n' % (name, value)
-        else:
+        except StopIteration:
             headers.append('%s: %s\r\n' % (name, value))
 
     def __delitem__(self, name):
