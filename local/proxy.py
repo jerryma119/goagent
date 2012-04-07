@@ -686,6 +686,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def rangefetch(self, m, data):
         m = map(int, m.groups())
         if 'range' in self.headers:
+            content_range = 'bytes %d-%d/%d' % (m[0], m[1], m[2])
             req_range = re.search(r'(\d+)?-(\d+)?', self.headers['range'])
             if req_range:
                 req_range = [u and int(u) for u in req_range.groups()]
@@ -702,10 +703,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         if m[2] - 1 > req_range[1]:
                             content_range = 'bytes %d-%d/%d' % (req_range[0], req_range[1], m[2])
             data['headers']['Content-Range'] = content_range
+            data['headers']['Content-Length'] = m[2]-m[0]
         elif m[0] == 0:
             data['code'] = 200
+            data['headers']['Content-Length'] = m[2]
             del data['headers']['Content-Range']
-        data['headers']['Content-Length'] = m[2]-m[0]
 
         self.wfile.write('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', data['headers']))
         if 'response' in data:
@@ -796,7 +798,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        if host in common.HOSTS:
+        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+            common.HOSTS[host] = common.GOOGLE_HOSTS
+            return self.do_CONNECT_Direct()
+        elif host in common.HOSTS:
             return self.do_CONNECT_Direct()
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
@@ -807,9 +812,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('crlf dns_resolve(host=%r, cname=%r dnsserver=%r)', host, cname, common.CRLF_DNS)
                 iplist = tuple(set(sum((dns_resolve(x, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,) for x in cname.split(',')), ())))
                 common.HOSTS[host] = iplist
-            return self.do_CONNECT_Direct()
-        elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_CONNECT_Direct()
         else:
             return self.do_CONNECT_Tunnel()
@@ -894,12 +896,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         host = self.headers['Host']
-        if host in common.GOOGLE_FORCEHTTPS:
-            self.send_response(301)
-            self.send_header('Location', self.path.replace('http://', 'https://'))
-            self.end_headers()
-            return
-        if host in common.HOSTS:
+        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+            if host in common.GOOGLE_FORCEHTTPS:
+                self.send_response(301)
+                self.send_header('Location', self.path.replace('http://', 'https://'))
+                self.end_headers()
+                return
+            common.HOSTS[host] = common.GOOGLE_HOSTS
+            return self.do_METHOD_Direct()
+        elif host in common.HOSTS:
             return self.do_METHOD_Direct()
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in common.HOSTS:
@@ -910,9 +915,6 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('crlf dns_resolve(host=%r, cname=%r dnsserver=%r)', host, cname, common.CRLF_DNS)
                 iplist = tuple(set(sum((dns_resolve(x, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,) for x in cname.split(',')), ())))
                 common.HOSTS[host] = iplist
-            return self.do_METHOD_Direct()
-        elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_METHOD_Direct()
         else:
             return self.do_METHOD_Tunnel()
@@ -975,7 +977,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
         payload_len = int(headers.get('Content-Length', 0))
-        if payload_len > 0:
+        if payload_len:
             payload = self.rfile.read(payload_len)
         else:
             payload = ''
@@ -984,13 +986,14 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers['User-Agent'] = common.USERAGENT_STRING
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
-            for pattern in common.AUTORANGE_HOSTS:
-                if host.endswith(pattern) or fnmatch.fnmatch(host, pattern):
-                    logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    m = re.search('bytes=(\d+)-', headers.get('Range', ''))
-                    start = int(m.group(1) if m else 0)
-                    headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-                    break
+            try:
+                pattern = itertools.ifilter(lambda p:host.endswith(p) or fnmatch.fnmatch(host, p), common.AUTORANGE_HOSTS).next()
+                logging.info('autorange pattern=%r match url=%r', pattern, self.path)
+                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
+                start = int(m.group(1) if m else 0)
+                headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+            except StopIteration:
+                pass
 
         skip_headers = self.skip_headers
         strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)

@@ -7,7 +7,9 @@ $__password__ = '';
 function encode_data($dic) {
     $a = array();
     foreach ($dic as $key => $value) {
-       $a[] = $key. '=' . bin2hex($value);
+        if ($value) {
+            $a[] = $key. '=' . bin2hex($value);
+        }
     }
     return join('&', $a);
 }
