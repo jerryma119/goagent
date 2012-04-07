@@ -686,6 +686,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def rangefetch(self, m, data):
         m = map(int, m.groups())
         if 'range' in self.headers:
+            content_range = 'bytes %d-%d/%d' % (m[0], m[1], m[2])
             req_range = re.search(r'(\d+)?-(\d+)?', self.headers['range'])
             if req_range:
                 req_range = [u and int(u) for u in req_range.groups()]
