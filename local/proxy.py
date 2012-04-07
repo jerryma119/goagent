@@ -798,6 +798,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+            common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_CONNECT_Direct()
         elif host in common.HOSTS:
             return self.do_CONNECT_Direct()
@@ -900,6 +901,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_header('Location', self.path.replace('http://', 'https://'))
                 self.end_headers()
                 return
+            common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_METHOD_Direct()
         elif host in common.HOSTS:
             return self.do_METHOD_Direct()
@@ -974,7 +976,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
         payload_len = int(headers.get('Content-Length', 0))
-        if payload_len > 0:
+        if payload_len:
             payload = self.rfile.read(payload_len)
         else:
             payload = ''
