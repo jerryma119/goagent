@@ -1101,7 +1101,7 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/'+common.PAC_FILE and os.path.exists(common.PAC_FILE):
-            if common.PAC_UPDATE:# and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
+            if common.PAC_UPDATE and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
                 try:
                     logging.info('LocalPacHandler begin sync remote pac')
                     content = self._generate_pac()
