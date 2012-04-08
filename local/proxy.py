@@ -1095,7 +1095,7 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return 'DIRECT';
                     }
                 }
-                return 'SOCKS 127.0.0.1:8964';
+                return 'SOCKS 127.0.0.1:8087';
             }'''
         return PAC_TEMPLATE % ',\n'.join('[%r, %r]' % (ip, mask) for ip, mask in cndatas)
 
