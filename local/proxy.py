@@ -1083,19 +1083,22 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.info('LocalPacHandler._generate_pac download %s bytes %s items', len(content), len(cndatas))
         assert len(cndatas) > 0
         cndatas = [(ip, socket.inet_ntoa(struct.pack('!I', (int(n)-1)^0xffffffff))) for ip, n in cndatas]
+        cndataslist = [[] for i in xrange(256)]
+        for ip, mask in cndatas:
+            i = int(ip.partition('.')[0])
+            cndataslist[i].append([ip, mask])
         if common.LISTEN_IP in ('', '0.0.0.0', '::'):
             proxy = 'PROXY %s:%d' % (socket.gethostbyname(socket.gethostname()), common.LISTEN_PORT)
         else:
             proxy = 'PROXY %s:%d' % (common.LISTEN_IP, common.LISTEN_PORT)
-        ip = socket.gethostbyname(socket.gethostname()) if common.LISTEN_IP
         PAC_TEMPLATE = '''
             //inspired from https://github.com/Leask/Flora_Pac
             function FindProxyForURL(url, host)
             {
-                var list = [
-                    %s
-                ];
+                var lists = %s;
                 var ip = dnsResolve(host);
+                var index  = parseInt(ip.split('.', 1)[0], 10);
+                var list = lists[index];
                 for (var i in list) {
                     if (isInNet(ip, list[i][0], list[i][1])) {
                         return 'DIRECT';
@@ -1103,11 +1106,11 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 }
                 return '%s';
             }'''
-        return PAC_TEMPLATE % (',\n'.join('[%r, %r]' % (ip, mask) for ip, mask in cndatas), proxy)
+        return PAC_TEMPLATE % (repr(cndataslist), proxy)
 
     def do_GET(self):
         if self.path == '/'+common.PAC_FILE and os.path.exists(common.PAC_FILE):
-            if common.PAC_UPDATE and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
+            if common.PAC_UPDATE:# and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
                 try:
                     logging.info('LocalPacHandler begin sync remote pac')
                     content = self._generate_pac()
