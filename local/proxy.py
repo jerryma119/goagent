@@ -1076,14 +1076,20 @@ class PHPProxyHandler(LocalProxyHandler):
 class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _generate_pac(self):
         url = common.PAC_REMOTE
-        proxy   = {'http':'%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), 'https':'%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT)}
-        opener  = urllib2.build_opener(urllib2.ProxyHandler(proxy))
+        proxies = {'http':'%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), 'https':'%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT)}
+        opener  = urllib2.build_opener(urllib2.ProxyHandler(proxies))
         content = opener.open(url, timeout=common.PAC_TIMEOUT).read()
         cndatas = re.findall(r'(?i)apnic\|cn\|ipv4\|([0-9\.]+)\|([0-9]+)\|[0-9]+\|a.*', content)
         logging.info('LocalPacHandler._generate_pac download %s bytes %s items', len(content), len(cndatas))
         assert len(cndatas) > 0
         cndatas = [(ip, socket.inet_ntoa(struct.pack('!I', (int(n)-1)^0xffffffff))) for ip, n in cndatas]
+        if common.LISTEN_IP in ('', '0.0.0.0', '::'):
+            proxy = 'PROXY %s:%d' % (socket.gethostbyname(socket.gethostname()), common.LISTEN_PORT)
+        else:
+            proxy = 'PROXY %s:%d' % (common.LISTEN_IP, common.LISTEN_PORT)
+        ip = socket.gethostbyname(socket.gethostname()) if common.LISTEN_IP
         PAC_TEMPLATE = '''
+            //inspired from https://github.com/Leask/Flora_Pac
             function FindProxyForURL(url, host)
             {
                 var list = [
@@ -1095,9 +1101,9 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return 'DIRECT';
                     }
                 }
-                return 'PROXY 127.0.0.1:8087';
+                return '%s';
             }'''
-        return PAC_TEMPLATE % ',\n'.join('[%r, %r]' % (ip, mask) for ip, mask in cndatas)
+        return PAC_TEMPLATE % (',\n'.join('[%r, %r]' % (ip, mask) for ip, mask in cndatas), proxy)
 
     def do_GET(self):
         if self.path == '/'+common.PAC_FILE and os.path.exists(common.PAC_FILE):
