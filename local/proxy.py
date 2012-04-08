@@ -55,6 +55,7 @@ class Common(object):
 
         self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
         self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
+        self.PHP_PASSWORD         = self.CONFIG.get('php', 'password') if self.CONFIG.has_option('php', 'password') else ''
         self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
 
         if self.CONFIG.has_section('pac'):
@@ -609,12 +610,12 @@ class SimpleMessageClass(object):
     def __str__(self):
         return ''.join(self.headers)
 
-def urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=None, on_error=None):
+def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=None, dns=None, on_error=None):
     errors = []
     params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
     logging.debug('urlfetch params %s', params)
-    if common.GAE_PASSWORD:
-        params['password'] = common.GAE_PASSWORD
+    if password:
+        params['password'] = password
     if common.FETCHMAX_SERVER:
         params['fetchmax'] = common.FETCHMAX_SERVER
     if dns:
@@ -684,7 +685,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
 
     def fetch(self, url, payload, method, headers):
-        return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, on_error=self.handle_fetch_error)
+        return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD, on_error=self.handle_fetch_error)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -1046,7 +1047,7 @@ class PHPProxyHandler(LocalProxyHandler):
         host = self.headers.get('Host')
         if host in PHPProxyHandler.HOSTS:
             dns = random.choice(dns_resolve(host))
-        return urlfetch(url, payload, method, headers, fetchhost, fetchserver, dns=dns, on_error=self.handle_fetch_error)
+        return urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=common.PHP_PASSWORD, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
         PHPProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
