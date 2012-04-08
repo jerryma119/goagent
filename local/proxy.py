@@ -1080,7 +1080,7 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         opener  = urllib2.build_opener(urllib2.ProxyHandler(proxy))
         content = opener.open(url, timeout=common.PAC_TIMEOUT).read()
         cndatas = re.findall(r'(?i)apnic\|cn\|ipv4\|([0-9\.]+)\|([0-9]+)\|[0-9]+\|a.*', content)
-        print len(content), len(cndatas)
+        logging.info('LocalPacHandler._generate_pac download %s bytes %s items', len(content), len(cndatas))
         assert len(cndatas) > 0
         cndatas = [(ip, socket.inet_ntoa(struct.pack('!I', (int(n)-1)^0xffffffff))) for ip, n in cndatas]
         PAC_TEMPLATE = '''
