@@ -3492,5 +3492,5 @@
                         return 'DIRECT';
                     }
                 }
-                return 'SOCKS 127.0.0.1:8964';
+                return 'PROXY 127.0.0.1:8087';
             }
