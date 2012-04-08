@@ -991,7 +991,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             try:
                 pattern = itertools.ifilter(lambda p:host.endswith(p) or fnmatch.fnmatch(host, p), common.AUTORANGE_HOSTS).next()
-                logging.info('autorange pattern=%r match url=%r', pattern, self.path)
+                logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
                 m = re.search('bytes=(\d+)-', headers.get('Range', ''))
                 start = int(m.group(1) if m else 0)
                 headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
@@ -1074,16 +1074,37 @@ class PHPProxyHandler(LocalProxyHandler):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
 class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    def _generate_pac(self):
+        url = common.PAC_REMOTE
+        proxy   = {'http':'%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), 'https':'%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT)}
+        opener  = urllib2.build_opener(urllib2.ProxyHandler(proxy))
+        content = opener.open(url, timeout=common.PAC_TIMEOUT).read()
+        cndatas = re.findall(r'(?i)apnic\|cn\|ipv4\|([0-9\.]+)\|([0-9]+)\|[0-9]+\|a.*', content)
+        print len(content), len(cndatas)
+        assert len(cndatas) > 0
+        cndatas = [(ip, socket.inet_ntoa(struct.pack('!I', (int(n)-1)^0xffffffff))) for ip, n in cndatas]
+        PAC_TEMPLATE = '''
+            function FindProxyForURL(url, host)
+            {
+                var list = [
+                    %s
+                ];
+                var ip = dnsResolve(host);
+                for (var i in list) {
+                    if (isInNet(ip, list[i][0], list[i][1])) {
+                        return 'DIRECT';
+                    }
+                }
+                return 'SOCKS 127.0.0.1:8964';
+            }'''
+        return PAC_TEMPLATE % ',\n'.join('[%r, %r]' % (ip, mask) for ip, mask in cndatas)
+
     def do_GET(self):
         if self.path == '/'+common.PAC_FILE and os.path.exists(common.PAC_FILE):
-            if common.PAC_UPDATE and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
+            if common.PAC_UPDATE:# and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
                 try:
                     logging.info('LocalPacHandler begin sync remote pac')
-                    url = common.PAC_REMOTE
-                    netloc = urlparse.urlparse(url).netloc
-                    if netloc.endswith(common.GOOGLE_SITES):
-                        common.HOSTS[netloc] = common.GOOGLE_HOSTS
-                    content = urllib2.urlopen(url, timeout=common.PAC_TIMEOUT).read()
+                    content = self._generate_pac()
                     with open(common.PAC_FILE, 'wb') as fp:
                         fp.write(content)
                     logging.info('LocalPacHandler end sync remote pac')
