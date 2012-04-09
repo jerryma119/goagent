@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.8.0'
+__version__ = '1.8.1'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
@@ -582,9 +582,6 @@ class SimpleMessageClass(object):
         name = name.title()
         self.dict[name] = value
         headers = self.headers
-        if name == 'Set-Cookie':
-            headers.append('%s: %s\r\n' % (name, value))
-            return
         try:
             i = (i for i, line in enumerate(headers) if line.partition(':')[0].title() == name).next()
             headers[i] = '%s: %s\r\n' % (name, value)
@@ -991,7 +988,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         if host.endswith(common.AUTORANGE_HOSTS_TAIL):
             try:
-                pattern = itertools.ifilter(lambda p:host.endswith(p) or fnmatch.fnmatch(host, p), common.AUTORANGE_HOSTS).next()
+                pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
                 logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
                 m = re.search('bytes=(\d+)-', headers.get('Range', ''))
                 start = int(m.group(1) if m else 0)
