@@ -986,21 +986,19 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if common.USERAGENT_ENABLE:
             headers['User-Agent'] = common.USERAGENT_STRING
 
-        if 'Range' in headers:
+        if 'Range' in headers.dict:
             m = re.search('bytes=(\d+)-', headers['Range'])
             start = int(m.group(1) if m else 0)
             headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-        elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
-            try:
-                pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
-                logging.info('autorange pattern=%r match url=%r', pattern, self.path)
-                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
-                start = int(m.group(1) if m else 0)
-                headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-            except StopIteration:
-                pass
-        else:
-            pass
+##        elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
+##            try:
+##                pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
+##                logging.info('autorange pattern=%r match url=%r', pattern, self.path)
+##                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
+##                start = int(m.group(1) if m else 0)
+##                headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+##            except StopIteration:
+##                pass
 
         skip_headers = self.skip_headers
         strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
