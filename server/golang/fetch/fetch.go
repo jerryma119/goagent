@@ -1,5 +1,5 @@
 // WARNING: If you want to edit this file, please use notepad.exe!
-// Copyright 2011 Phus Lu. All rights reserved.
+// Copyright 2012 Phus Lu. All rights reserved.
 
 package fetch
 
@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	Version  = "1.8.0"
+	Version  = "1.8.1"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
