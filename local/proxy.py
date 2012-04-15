@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.8.1'
+__version__ = '1.8.2'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 

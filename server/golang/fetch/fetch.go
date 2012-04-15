@@ -1,4 +1,3 @@
-// WARNING: If you want to edit this file, please use notepad.exe!
 // Copyright 2012 Phus Lu. All rights reserved.
 
 package fetch
@@ -14,19 +13,19 @@ import (
 	"compress/zlib"
 	"encoding/binary"
 	"encoding/hex"
+	"net/http"
 
 	"appengine"
 	"appengine/urlfetch"
-	"net/http"
 )
 
 const (
-	Version  = "1.8.1"
+	Version  = "1.8.2"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
 	FetchMax     = 3
-	FetchMaxSize = 1024 * 1024 * 2
+	FetchMaxSize = 1024 * 1024 * 4
 	Deadline int64 = 30 *1e9
 )
 
@@ -87,7 +86,7 @@ func (h Handler) printResponse(status int, header map[string]string, content []b
 		h.response.Write([]byte("1"))
 		w, err := zlib.NewWriterLevel(h.response, zlib.BestCompression)
 		if err != nil {
-			h.context.Criticalf("zlib.NewWriterDict(h.response, zlib.BestCompression, nil) Error: %v", err)
+			h.context.Criticalf("zlib.NewWriterLevel(h.response, zlib.BestCompression) Error: %v", err)
 			return
 		}
 		defer w.Close()

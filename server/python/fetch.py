@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.8.0'
+__version__ = '1.8.2'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -13,7 +13,7 @@ from google.appengine.api import urlfetch
 from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 
 FetchMax = 3
-FetchMaxSize = 1024*1024*2
+FetchMaxSize = 1024*1024*4
 Deadline = 30
 
 def encode_data(dic):
@@ -119,8 +119,7 @@ class MainPage(webapp2.RequestHandler):
         return self.send_response(response.status_code, headers, response.content)
 
     def get(self):
-        self.response.headers['Content-Type'] = 'text/html; charset=utf-8'
-        self.response.out.write('''\
+        html = u'''\
 <html>
 <head>
     <link rel="icon" type="image/vnd.microsoft.icon" href="http://www.google.cn/favicon.ico">
@@ -148,6 +147,8 @@ class MainPage(webapp2.RequestHandler):
     </table>
 </body>
 </html>
-''' % dict(version=__version__))
+''' % dict(version=__version__)
+        self.response.headers['Content-Type'] = 'text/html; charset=utf-8'
+        self.response.out.write(html.encode('utf8'))
 
 app = webapp2.WSGIApplication([('/fetch.py', MainPage)])
