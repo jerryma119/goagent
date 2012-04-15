@@ -328,44 +328,36 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
-def dns_resolve(host, dnsserver='', dnscache=common.HOSTS, dnslock=threading.Lock()):
-    if not dnsserver:
-        iplist = dnscache.get(host)
-        if not iplist:
-            iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
-            dnscache[host] = iplist
-        return iplist
-    else:
-        index = os.urandom(2)
-        hoststr = ''.join(chr(len(x))+x for x in host.split('.'))
-        data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, hoststr)
-        data = struct.pack('!H', len(data)) + data
-        if host not in dnscache:
-            with dnslock:
-                if host not in dnscache:
-                    sock = None
-                    try:
-                        sock = socket.socket(socket.AF_INET6 if ':' in dnsserver else socket.AF_INET)
-                        sock.connect((dnsserver, 53))
-                        sock.sendall(data)
-                        rfile = sock.makefile('rb')
-                        size = struct.unpack('!H', rfile.read(2))[0]
-                        data = rfile.read(size)
-                        iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
-                        iplist = tuple('.'.join(str(ord(x)) for x in s) for s in iplist)
-                        logging.info('dns_resolve(host=%r) return %s', host, iplist)
-                        dnscache[host] = iplist
-                    except socket.error, e:
-                        logging.exception('dns_resolve(host=%r) fail:%s', host, e)
-                    finally:
-                        if sock:
-                            sock.close()
-        return dnscache.get(host, tuple())
+def dns_resolve(host, dnsserver='8.8.8.8', dnscache=common.HOSTS, dnslock=threading.Lock()):
+    index = os.urandom(2)
+    hoststr = ''.join(chr(len(x))+x for x in host.split('.'))
+    data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, hoststr)
+    data = struct.pack('!H', len(data)) + data
+    if host not in dnscache:
+        with dnslock:
+            if host not in dnscache:
+                sock = None
+                try:
+                    sock = socket.socket(socket.AF_INET6 if ':' in dnsserver else socket.AF_INET)
+                    sock.connect((dnsserver, 53))
+                    sock.sendall(data)
+                    rfile = sock.makefile('rb')
+                    size = struct.unpack('!H', rfile.read(2))[0]
+                    data = rfile.read(size)
+                    iplist = re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)
+                    iplist = tuple('.'.join(str(ord(x)) for x in s) for s in iplist)
+                    logging.info('dns_resolve(host=%r) return %s', host, iplist)
+                    dnscache[host] = iplist
+                except socket.error, e:
+                    logging.exception('dns_resolve(host=%r) fail:%s', host, e)
+                finally:
+                    if sock:
+                        sock.close()
+    return dnscache.get(host, tuple())
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    if common.CRLF_ENABLE:
-        self._output('\r\n')
+    self._buffer.append('\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
@@ -663,14 +655,17 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     MessageClass = SimpleMessageClass
 
     def handle_fetch_error(self, error):
+        print self.path
         if isinstance(error, urllib2.HTTPError):
             # seems that current appid is nonexists or overqouta, swith to next appid
-            if error.code in (404, 502, 503, 504):
+            if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
+                logging.error('GAE Error(%s) switch to https', error, common.GAE_APPIDS[0])
+            if error.code in (503, ): # 404 ?
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 logging.error('GAE Error(%s) switch to appid(%r)', error, common.GAE_APPIDS[0])
         elif isinstance(error, urllib2.URLError):
-            if error.reason[0] in (11004, 10051, 10054, 10060, 'timed out'):
+            if error.reason[0] in (11004, 10051, 10060, 'timed out', 10054):
                 # it seems that google.cn is reseted, switch to https
                 common.GOOGLE_MODE = 'https'
         elif isinstance(error, httplib.HTTPException):
@@ -821,22 +816,27 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             logging.debug('LocalProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
+            port = int(port)
             idlecall = None
-            data = ''
             if not common.PROXY_ENABLE:
                 if host in common.HOSTS:
-                    iplist = dns_resolve(host)
-                    conn = MultiplexConnection(iplist, int(port))
+                    iplist = common.HOSTS[host]
+                    if not iplist:
+                        common.HOSTS[host] = iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+                    conn = MultiplexConnection(iplist, port)
                     sock = conn.socket
                     idlecall=conn.close
                 else:
-                    sock = socket.create_connection((host, int(port)))
+                    sock = socket.create_connection((host, port))
                 self.log_request(200)
                 self.connection.sendall('%s 200 Tunnel established\r\n\r\n' % self.protocol_version)
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host in common.HOSTS:
-                    ip = random.choice(common.HOSTS[host])
+                    iplist = common.HOSTS[host]
+                    if not iplist:
+                        common.HOSTS[host] = iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+                    conn = MultiplexConnection(iplist, port)
                 else:
                     ip = host
                 if 'Host' in self.headers:
@@ -844,11 +844,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
                 data = '%s %s:%s %s\r\n%s\r\n' % (self.command, ip, port, self.protocol_version, self.headers)
-            if data:
-                if common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
-                    sock.sendall('\r\n'+data)
-                else:
-                    sock.sendall(data)
+                sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except:
             logging.exception('LocalProxyHandler.do_CONNECT_Direct Error')
@@ -878,8 +874,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
             self.parse_request()
             if self.path[0] == '/':
-                if (self.headers.get('Host')):
-                    self.path = 'https://%s:%s%s' % (self.headers['Host'], port or 443, self.path)
+                if 'Host' in self.headers:
+                    self.path = 'https://%s:%s%s' % (self.headers['Host'].partition(':')[0], port or 443, self.path)
                 else:
                     self.path = 'https://%s%s' % (self._realpath, self.path)
                 self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
@@ -931,17 +927,18 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         try:
             self.log_request()
             idlecall = None
-            data = ''
             if not common.PROXY_ENABLE:
                 if host in common.HOSTS:
-                    iplist = dns_resolve(host)
+                    iplist = common.HOSTS[host]
+                    if not iplist:
+                        common.HOSTS[host] = iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
                     conn = MultiplexConnection(iplist, port)
                     sock = conn.socket
                     idlecall = conn.close
                 else:
                     sock = socket.create_connection((host, port))
                 self.headers['Connection'] = 'close'
-                data = '%s %s %s\r\n%s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version, ''.join(line for line in self.headers.headers if not line.startswith('Proxy-')))
+                data = '\r\n%s %s %s\r\n%s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version, ''.join(line for line in self.headers.headers if not line.startswith('Proxy-')))
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host in common.HOSTS:
@@ -953,15 +950,11 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.headers['Proxy-Connection'] = 'close'
                 if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
-                data ='%s %s %s\r\n%s\r\n'  % (self.command, url, self.request_version, self.headers)
+                data ='\r\n%s %s %s\r\n%s\r\n'  % (self.command, url, self.request_version, self.headers)
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
-            if data:
-                if common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
-                    sock.sendall('\r\n'+data)
-                else:
-                    sock.sendall(data)
+            sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception, ex:
             logging.exception('LocalProxyHandler.do_GET Error, %s', ex)
@@ -1049,7 +1042,7 @@ class PHPProxyHandler(LocalProxyHandler):
         dns  = None
         host = self.headers.get('Host')
         if host in PHPProxyHandler.HOSTS:
-            dns = random.choice(dns_resolve(host))
+            dns = random.choice(tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)))
         return urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=common.PHP_PASSWORD, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
@@ -1064,7 +1057,7 @@ class PHPProxyHandler(LocalProxyHandler):
                         if fetchhost not in common.HOSTS:
                             try:
                                 logging.info('Resole php fetchserver address.')
-                                dns_resolve(fetchhost)
+                                common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
                                 logging.info('Resole php fetchserver address OK. %s', common.HOSTS[fetchhost])
                             except Exception, e:
                                 logging.exception('PHPProxyHandler.setup resolve fail: %s', e)
