@@ -778,6 +778,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection.sendall(data)
 
     def setup(self):
+        if not common.PROXY_ENABLE:
+            logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
+            common.GOOGLE_HOSTS = tuple(set(sum((tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)) if host[-1] not in '1234567890' else (host,) for host in common.GOOGLE_HOSTS), ())))
+            logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
         if not common.GAE_ENABLE:
