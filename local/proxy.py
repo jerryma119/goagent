@@ -116,6 +116,8 @@ class Common(object):
 
     def build_gae_fetchserver(self):
         """rebuild gae fetch server config"""
+        if self.PROXY_ENABLE:
+            self.GOOGLE_MODE = 'https'
         self.GAE_FETCHHOST = '%s.appspot.com' % self.GAE_APPIDS[0]
         if not self.PROXY_ENABLE:
             # append '?' to url, it can avoid china telicom/unicom AD
@@ -669,7 +671,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # it seems that google.cn is reseted, switch to https
                 common.GOOGLE_MODE = 'https'
         elif isinstance(error, httplib.HTTPException):
-            common.GOOGLE_MODE = 'https'
+            #common.GOOGLE_MODE = 'https'
+            pass
         else:
             logging.warning('LocalProxyHandler.handle_fetch_error Exception %s', error, exc_info=True)
             return {}
@@ -780,8 +783,9 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def setup(self):
         if not common.PROXY_ENABLE:
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
-            common.GOOGLE_HOSTS = tuple(set(sum((tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)) if host[-1] not in '1234567890' else (host,) for host in common.GOOGLE_HOSTS), ())))
-            logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
+            with LocalProxyHandler.SetupLock:
+                common.GOOGLE_HOSTS = tuple(set(sum((tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)) if host[-1] not in '1234567890' else (host,) for host in common.GOOGLE_HOSTS), ())))
+                logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
         if not common.GAE_ENABLE:
