@@ -981,7 +981,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         if 'Range' in headers.dict:
             autorange = headers.dict['Range']
-            logging.info('autorange match %r', autorange)
+            logging.info('autorange range=%r match url=%r', autorange, self.path)
             m = re.search('bytes=(\d+)-', autorange)
             start = int(m.group(1) if m else 0)
             headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
