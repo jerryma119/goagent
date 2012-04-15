@@ -11,13 +11,31 @@ import sys
 # check python 2.6 or 2.7
 sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/2.7'))
 
-import sys, os, re, time, errno, binascii, zlib
-import struct, random, hashlib, itertools
-import fnmatch, base64, logging, ConfigParser
-import thread, threading
-import socket, ssl, select
-import httplib, urllib2, urlparse
-import BaseHTTPServer, SocketServer
+import sys
+import os
+import re
+import time
+import errno
+import binascii
+import itertools
+import zlib
+import struct
+import random
+import hashlib
+import fnmatch
+import base64
+import urlparse
+import logging
+import thread
+import threading
+import socket
+import ssl
+import select
+import httplib
+import urllib2
+import BaseHTTPServer
+import SocketServer
+import ConfigParser
 try:
     import ctypes
 except ImportError:
