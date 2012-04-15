@@ -660,7 +660,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # seems that current appid is nonexists or overqouta, swith to next appid
             if error.code in (502, 504):
                 common.GOOGLE_MODE = 'https'
-                logging.error('GAE Error(%s) switch to https', error, common.GAE_APPIDS[0])
+                logging.error('GAE Error(%s) switch to https', error)
             if error.code in (503, ): # 404 ?
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 logging.error('GAE Error(%s) switch to appid(%r)', error, common.GAE_APPIDS[0])
