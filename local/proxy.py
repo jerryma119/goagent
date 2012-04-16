@@ -13,7 +13,7 @@ sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/
 
 try:
     import gevent, gevent.monkey
-    gevent.monkey.patch_all(dns=gevent.__version__[0]>'0')
+    gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except:
     pass
 
