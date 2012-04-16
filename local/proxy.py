@@ -11,6 +11,12 @@ import sys
 # check python 2.6 or 2.7
 sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/2.7'))
 
+try:
+    import gevent.monkey
+    gevent.monkey.patch_all(dns=False)
+except ImportError:
+    pass
+
 import sys
 import os
 import re
