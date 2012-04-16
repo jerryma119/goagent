@@ -675,7 +675,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     MessageClass = SimpleMessageClass
 
     def handle_fetch_error(self, error):
-        print self.path
+        logging.info('handle_fetch_error self.path=%r', self.path)
         if isinstance(error, urllib2.HTTPError):
             # seems that current appid is nonexists or overqouta, swith to next appid
             if error.code in (502, 504):
