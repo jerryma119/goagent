@@ -554,23 +554,23 @@ class SimpleLogging(object):
         self.__write = sys.stdout.write
     def basicConfig(self, *args, **kwargs):
         self.level = kwargs.get('level', SimpleLogging.INFO)
-    def log(self, level, fmt, *args, **kwargs):
-        self.__write('%s - - [%s] ' % (level, time.ctime()) + fmt % args + '\n')
-    def debug(self, fmt, *args, **kwargs):
+    def log(self, level, fmt, *args):
+        self.__write('%s - - [%s] %s\n' % (level, time.ctime()[4:-5], fmt%args)
+    def debug(self, fmt, *args):
         if self.level <= SimpleLogging.DEBUG:
-            self.log('DEBUG', fmt, *args, **kwargs)
-    def info(self, fmt, *args, **kwargs):
-        self.log('INFO', fmt, *args, **kwargs)
-    def warning(self, fmt, *args, **kwargs):
-        self.log('WARNING', fmt, *args, **kwargs)
-    def warn(self, fmt, *args, **kwargs):
-        self.log('WARNING', fmt, *args, **kwargs)
-    def error(self, fmt, *args, **kwargs):
-        self.log('ERROR', fmt, *args, **kwargs)
-    def exception(self, fmt, *args, **kwargs):
-        self.log('ERROR', fmt, *args, **kwargs)
-    def critical(self, fmt, *args, **kwargs):
-        self.log('CRITICAL', fmt, *args, **kwargs)
+            self.log('DEBUG', fmt, *args)
+    def info(self, fmt, *args):
+        self.log('INFO', fmt, *args)
+    def warning(self, fmt, *args):
+        self.log('WARNING', fmt, *args)
+    def warn(self, fmt, *args):
+        self.log('WARNING', fmt, *args)
+    def error(self, fmt, *args):
+        self.log('ERROR', fmt, *args)
+    def exception(self, fmt, *args):
+        self.log('ERROR', fmt, *args)
+    def critical(self, fmt, *args):
+        self.log('CRITICAL', fmt, *args)
 
 class SimpleMessageClass(object):
 
@@ -1231,7 +1231,7 @@ def main():
     global logging
     if logging is None:
         logging = SimpleLogging()
-    logging.basicConfig(level=logging.DEBUG if common.GAE_DEBUGLEVEL else logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
+    logging.basicConfig(level=logging.DEBUG if common.GAE_DEBUGLEVEL else logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
