@@ -83,6 +83,7 @@ class Common(object):
             self.PAC_UPDATE           = self.CONFIG.getint('pac', 'update')
             self.PAC_REMOTE           = self.CONFIG.get('pac', 'remote')
             self.PAC_TIMEOUT          = self.CONFIG.getint('pac', 'timeout')
+            self.PAC_DIRECTS          = self.CONFIG.get('pac', 'direct').split('|') if self.CONFIG.get('pac', 'direct') else []
         else:
             self.PAC_ENABLE           = 0
 
@@ -375,7 +376,7 @@ def dns_resolve(host, dnsserver='8.8.8.8', dnscache=common.HOSTS, dnslock=thread
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    self._buffer.append('\r\n')
+    self._buffer.append('\r\n\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
@@ -992,7 +993,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     sock = socket.create_connection((host, port))
                 self.headers['Connection'] = 'close'
-                data = '\r\n%s %s %s\r\n%s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version, ''.join(line for line in self.headers.headers if not line.startswith('Proxy-')))
+                data = '\r\n\r\n%s %s %s\r\n%s\r\n'  % (self.command, urlparse.urlunparse(('', '', path, params, query, '')), self.request_version, ''.join(line for line in self.headers.headers if not line.startswith('Proxy-')))
             else:
                 sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
                 if host in common.HOSTS:
@@ -1004,7 +1005,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.headers['Proxy-Connection'] = 'close'
                 if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
-                data ='\r\n%s %s %s\r\n%s\r\n'  % (self.command, url, self.request_version, self.headers)
+                data ='\r\n\r\n%s %s %s\r\n%s\r\n'  % (self.command, url, self.request_version, self.headers)
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
                 data += self.rfile.read(content_length)
@@ -1127,9 +1128,8 @@ class PHPProxyHandler(LocalProxyHandler):
 class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _generate_pac(self):
         url = common.PAC_REMOTE
-        proxies = {'http':'%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), 'https':'%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT)}
-        opener  = urllib2.build_opener(urllib2.ProxyHandler(proxies))
-        content = opener.open(url, timeout=common.PAC_TIMEOUT).read()
+        logging.info('LocalPacHandler._generate_pac url=%r, timeout=%r', url, common.PAC_TIMEOUT)
+        content = urllib2.urlopen(url, timeout=common.PAC_TIMEOUT).read()
         cndatas = re.findall(r'(?i)apnic\|cn\|ipv4\|([0-9\.]+)\|([0-9]+)\|[0-9]+\|a.*', content)
         logging.info('LocalPacHandler._generate_pac download %s bytes %s items', len(content), len(cndatas))
         assert len(cndatas) > 0
@@ -1146,6 +1146,10 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             //inspired from https://github.com/Leask/Flora_Pac
             function FindProxyForURL(url, host)
             {
+                if (false %s) {
+                    return 'DIRECT';
+                }
+
                 var lists = %s;
                 var ip = dnsResolve(host);
                 var index  = parseInt(ip.split('.', 1)[0], 10);
@@ -1157,7 +1161,8 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 }
                 return '%s';
             }'''
-        return PAC_TEMPLATE % (repr(cndataslist), proxy)
+        directs = '||'.join(['dnsDomainIs(host, "%s")' % x for x in common.PAC_DIRECTS]) if common.PAC_DIRECTS else ''
+        return PAC_TEMPLATE % (directs, repr(cndataslist), proxy)
 
     def do_GET(self):
         filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
