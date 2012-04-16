@@ -822,7 +822,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         host, port = self.client_address[:2]
-        sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime(), fmt%args))
+        sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
 
     def send_response(self, code, message=None):
         self.log_request(code)
