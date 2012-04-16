@@ -866,12 +866,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         common.HOSTS[host] = iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
                     conn = MultiplexConnection(iplist, port)
                 else:
-                    ip = host
+                    iplist = (host,)
                 if 'Host' in self.headers:
                     del self.headers['Host']
                 if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
-                data = '%s %s:%s %s\r\n%s\r\n' % (self.command, ip, port, self.protocol_version, self.headers)
+                data = '%s %s:%s %s\r\n%s\r\n' % (self.command, random.choice(iplist), port, self.protocol_version, self.headers)
                 sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except:
