@@ -81,7 +81,7 @@ class Common(object):
             self.PAC_ENABLE           = self.CONFIG.getint('pac','enable')
             self.PAC_IP               = self.CONFIG.get('pac','ip')
             self.PAC_PORT             = self.CONFIG.getint('pac','port')
-            self.PAC_FILE             = self.CONFIG.get('pac','file')
+            self.PAC_FILE             = self.CONFIG.get('pac','file').lstrip('/')
             self.PAC_UPDATE           = self.CONFIG.getint('pac', 'update')
             self.PAC_REMOTE           = self.CONFIG.get('pac', 'remote')
             self.PAC_TIMEOUT          = self.CONFIG.getint('pac', 'timeout')
@@ -1134,25 +1134,25 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return PAC_TEMPLATE % (repr(cndataslist), proxy)
 
     def do_GET(self):
-        if self.path == '/'+common.PAC_FILE and os.path.exists(common.PAC_FILE):
-            if common.PAC_UPDATE and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
-                try:
-                    logging.info('LocalPacHandler begin sync remote pac')
-                    content = self._generate_pac()
-                    with open(common.PAC_FILE, 'wb') as fp:
-                        fp.write(content)
-                    logging.info('LocalPacHandler end sync remote pac')
-                except Exception, e:
-                    logging.exception('LocalPacHandler sync remote pac failed:%s', e)
-            with open(common.PAC_FILE, 'rb') as fp:
-                data = fp.read()
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
-                self.end_headers()
-                self.wfile.write(data)
-                self.wfile.close()
-        else:
-            self.send_error(404, 'Not Found')
+        filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
+        if self.path != '/'+common.PAC_FILE or not os.path.isfile(filename):
+            return self.send_error(404, 'Not Found')
+        if common.PAC_UPDATE and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
+            try:
+                logging.info('LocalPacHandler begin sync remote pac')
+                content = self._generate_pac()
+                with open(filename, 'wb') as fp:
+                    fp.write(content)
+                logging.info('LocalPacHandler end sync remote pac')
+            except Exception, e:
+                logging.exception('LocalPacHandler sync remote pac failed:%s', e)
+        with open(filename, 'rb') as fp:
+            data = fp.read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
+            self.end_headers()
+            self.wfile.write(data)
+            self.wfile.close()
 
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
