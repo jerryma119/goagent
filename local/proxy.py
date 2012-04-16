@@ -1191,6 +1191,13 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data)
             self.wfile.close()
 
+class LocalProxyAndPacHandler(LocalProxyHandler, LocalPacHandler):
+    def do_GET(self):
+        if self.path == '/'+common.PAC_FILE:
+            LocalPacHandler.do_GET(self)
+        else:
+            LocalProxyHandler.do_METHOD(self)
+    
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -1241,11 +1248,14 @@ def main():
             httpd = LocalProxyServer(address, PHPProxyHandler)
             thread.start_new_thread(httpd.serve_forever, ())
 
-    if common.PAC_ENABLE:
+    if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
         httpd = LocalProxyServer((common.PAC_IP,common.PAC_PORT),LocalPacHandler)
         thread.start_new_thread(httpd.serve_forever,())
-
-    httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyHandler)
+        
+    if common.PAC_ENABLE and common.PAC_PORT == common.LISTEN_PORT:
+        httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyAndPacHandler)
+    else:
+        httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyHandler)
     httpd.serve_forever()
 
 if __name__ == '__main__':
