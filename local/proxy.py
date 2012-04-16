@@ -25,7 +25,6 @@ import hashlib
 import fnmatch
 import base64
 import urlparse
-import logging
 import thread
 import threading
 import socket
@@ -37,6 +36,10 @@ import BaseHTTPServer
 import SocketServer
 import ConfigParser
 try:
+    import logging
+except ImportError:
+    logging = None
+try:
     import ctypes
 except ImportError:
     ctypes = None
@@ -45,10 +48,33 @@ try:
 except ImportError:
     OpenSSL = None
 
-# logging format/datefmt config
-logging.basicConfig(level=logging.INFO,
-                    format='%(levelname)s - - %(asctime)s %(message)s',
-                    datefmt='[%d/%b/%Y %H:%M:%S]')
+class SimpleLogging(object):
+    CRITICAL = 50
+    FATAL = CRITICAL
+    ERROR = 40
+    WARNING = 30
+    WARN = WARNING
+    INFO = 20
+    DEBUG = 10
+    NOTSET = 0
+    def basicConfig(*args, **kwargs):
+        pass
+    def log(level, *args, **kwargs):
+        pass
+    def debug(*args, **kwargs):
+        pass
+    def info(*args, **kwargs):
+        pass
+    def error(*args, **kwargs):
+        pass
+    def warning(*args, **kwargs):
+        pass
+    def warn(*args, **kwargs):
+        pass
+    def exception(*args, **kwargs):
+        pass
+    def critical(*args, **kwargs):
+        pass
 
 class Common(object):
     """global config object"""
@@ -527,7 +553,7 @@ class CertUtil(object):
                 #'darwin' : r'sudo security add-trusted-cert -d �Cr trustRoot �Ck /Library/Keychains/System.keychain CA.crt',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
-            logging.warn('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
+            logging.warning('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
         if OpenSSL:
             keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
             crtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
@@ -1179,6 +1205,10 @@ def try_show_love():
                 common.CONFIG.write(fp)
 
 def main():
+    global logging
+    if logging is None:
+        logging = SimpleLogging()
+    logging.basicConfig(level=logging.DEBUG if common.GAE_DEBUGLEVEL else logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%d/%b/%Y %H:%M:%S]')
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
@@ -1186,14 +1216,13 @@ def main():
         try_show_love()
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
-    if common.GAE_DEBUGLEVEL:
-        logging.root.setLevel(logging.DEBUG)
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', __config__)
         sys.exit(-1)
     CertUtil.checkCA()
     common.install_opener()
     sys.stdout.write(common.info())
+
     LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
 
     if common.PHP_ENABLE:
