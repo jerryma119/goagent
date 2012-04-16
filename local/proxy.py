@@ -12,9 +12,9 @@ import sys
 sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/2.7'))
 
 try:
-    import gevent.monkey
-    gevent.monkey.patch_all(dns=False)
-except ImportError:
+    import gevent, gevent.monkey
+    gevent.monkey.patch_all(dns=gevent.__version__[0]>'0')
+except:
     pass
 
 import sys
