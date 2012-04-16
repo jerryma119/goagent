@@ -551,10 +551,11 @@ class SimpleLogging(object):
     NOTSET = 0
     def __init__(self, *args, **kwargs):
         self.level = SimpleLogging.INFO
+        self.__write = sys.stdout.write
     def basicConfig(self, *args, **kwargs):
         self.level = kwargs.get('level', SimpleLogging.INFO)
     def log(self, level, fmt, *args, **kwargs):
-        sys.stdout.write('%s - - [%s] ' % (level, time.ctime()) + fmt % args + '\n')
+        self.__write('%s - - [%s] ' % (level, time.ctime()) + fmt % args + '\n')
     def debug(self, fmt, *args, **kwargs):
         if self.level <= SimpleLogging.DEBUG:
             self.log('DEBUG', fmt, *args, **kwargs)
