@@ -555,7 +555,7 @@ class SimpleLogging(object):
     def basicConfig(self, *args, **kwargs):
         self.level = kwargs.get('level', SimpleLogging.INFO)
     def log(self, level, fmt, *args):
-        self.__write('%s - - [%s] %s\n' % (level, time.ctime()[4:-5], fmt%args)
+        self.__write('%s - - [%s] %s\n' % (level, time.ctime()[4:-5], fmt%args))
     def debug(self, fmt, *args):
         if self.level <= SimpleLogging.DEBUG:
             self.log('DEBUG', fmt, *args)
