@@ -13,7 +13,7 @@ sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/
 
 try:
     import gevent, gevent.monkey
-    gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
+    gevent.monkey.patch_all(dns=gevent.version_info>(1,))
 except:
     pass
 
@@ -1197,7 +1197,7 @@ class LocalProxyAndPacHandler(LocalProxyHandler, LocalPacHandler):
             LocalPacHandler.do_GET(self)
         else:
             LocalProxyHandler.do_METHOD(self)
-    
+
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -1251,7 +1251,7 @@ def main():
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
         httpd = LocalProxyServer((common.PAC_IP,common.PAC_PORT),LocalPacHandler)
         thread.start_new_thread(httpd.serve_forever,())
-        
+
     if common.PAC_ENABLE and common.PAC_PORT == common.LISTEN_PORT:
         httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyAndPacHandler)
     else:
