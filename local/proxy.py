@@ -549,24 +549,27 @@ class SimpleLogging(object):
     INFO = 20
     DEBUG = 10
     NOTSET = 0
-    def basicConfig(*args, **kwargs):
-        pass
-    def log(level, *args, **kwargs):
-        pass
-    def debug(*args, **kwargs):
-        pass
-    def info(*args, **kwargs):
-        pass
-    def error(*args, **kwargs):
-        pass
-    def warning(*args, **kwargs):
-        pass
-    def warn(*args, **kwargs):
-        pass
-    def exception(*args, **kwargs):
-        pass
-    def critical(*args, **kwargs):
-        pass
+    def __init__(self, *args, **kwargs):
+        self.level = SimpleLogging.INFO
+    def basicConfig(self, *args, **kwargs):
+        self.level = kwargs.get('level', SimpleLogging.INFO)
+    def log(self, level, fmt, *args, **kwargs):
+        sys.stdout.write('%s - - [%s] ' % (level, time.ctime()) + fmt % args + '\n')
+    def debug(self, fmt, *args, **kwargs):
+        if self.level <= SimpleLogging.DEBUG:
+            self.log('DEBUG', fmt, *args, **kwargs)
+    def info(self, fmt, *args, **kwargs):
+        self.log('INFO', fmt, *args, **kwargs)
+    def warning(self, fmt, *args, **kwargs):
+        self.log('WARNING', fmt, *args, **kwargs)
+    def warn(self, fmt, *args, **kwargs):
+        self.log('WARNING', fmt, *args, **kwargs)
+    def error(self, fmt, *args, **kwargs):
+        self.log('ERROR', fmt, *args, **kwargs)
+    def exception(self, fmt, *args, **kwargs):
+        self.log('ERROR', fmt, *args, **kwargs)
+    def critical(self, fmt, *args, **kwargs):
+        self.log('CRITICAL', fmt, *args, **kwargs)
 
 class SimpleMessageClass(object):
 
@@ -711,7 +714,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.info('handle_fetch_error self.path=%r', self.path)
         if isinstance(error, urllib2.HTTPError):
             # seems that current appid is nonexists or overqouta, swith to next appid
-            if error.code in (502, 504):
+            if error.code in (504, ): # 502 ?
                 common.GOOGLE_MODE = 'https'
                 logging.error('GAE Error(%s) switch to https', error)
             if error.code in (503, ): # 404 ?
