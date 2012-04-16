@@ -48,34 +48,6 @@ try:
 except ImportError:
     OpenSSL = None
 
-class SimpleLogging(object):
-    CRITICAL = 50
-    FATAL = CRITICAL
-    ERROR = 40
-    WARNING = 30
-    WARN = WARNING
-    INFO = 20
-    DEBUG = 10
-    NOTSET = 0
-    def basicConfig(*args, **kwargs):
-        pass
-    def log(level, *args, **kwargs):
-        pass
-    def debug(*args, **kwargs):
-        pass
-    def info(*args, **kwargs):
-        pass
-    def error(*args, **kwargs):
-        pass
-    def warning(*args, **kwargs):
-        pass
-    def warn(*args, **kwargs):
-        pass
-    def exception(*args, **kwargs):
-        pass
-    def critical(*args, **kwargs):
-        pass
-
 class Common(object):
     """global config object"""
 
@@ -560,6 +532,34 @@ class CertUtil(object):
             cakey = CertUtil.readFile(keyFile)
             cacrt = CertUtil.readFile(crtFile)
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
+
+class SimpleLogging(object):
+    CRITICAL = 50
+    FATAL = CRITICAL
+    ERROR = 40
+    WARNING = 30
+    WARN = WARNING
+    INFO = 20
+    DEBUG = 10
+    NOTSET = 0
+    def basicConfig(*args, **kwargs):
+        pass
+    def log(level, *args, **kwargs):
+        pass
+    def debug(*args, **kwargs):
+        pass
+    def info(*args, **kwargs):
+        pass
+    def error(*args, **kwargs):
+        pass
+    def warning(*args, **kwargs):
+        pass
+    def warn(*args, **kwargs):
+        pass
+    def exception(*args, **kwargs):
+        pass
+    def critical(*args, **kwargs):
+        pass
 
 class SimpleMessageClass(object):
 
