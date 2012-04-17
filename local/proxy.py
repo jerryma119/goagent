@@ -1050,11 +1050,10 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers['User-Agent'] = common.USERAGENT_STRING
 
         if 'Range' in headers.dict:
-            autorange = headers.dict['Range']
-            logging.info('autorange range=%r match url=%r', autorange, self.path)
-            m = re.search('bytes=(\d+)-', autorange)
+            m = re.search('bytes=(\d+)-', headers.dict['Range'])
             start = int(m.group(1) if m else 0)
             headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+            logging.info('autorange range=%r match url=%r', headers['Range'], self.path)
         elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
             try:
                 pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
