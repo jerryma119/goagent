@@ -3,7 +3,7 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.8.2'
+__version__ = '1.8.3'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
@@ -550,15 +550,18 @@ class SimpleLogging(object):
     DEBUG = 10
     NOTSET = 0
     def __init__(self, *args, **kwargs):
-        self.level = SimpleLogging.INFO
+        self.level = SimpleLogging.DEBUG
         self.__write = sys.stdout.write
     def basicConfig(self, *args, **kwargs):
         self.level = kwargs.get('level', SimpleLogging.INFO)
+        if self.level > SimpleLogging.DEBUG:
+            self.debug = self.dummy
     def log(self, level, fmt, *args):
         self.__write('%s - - [%s] %s\n' % (level, time.ctime()[4:-5], fmt%args))
+    def dummy(self, *args):
+        pass
     def debug(self, fmt, *args):
-        if self.level <= SimpleLogging.DEBUG:
-            self.log('DEBUG', fmt, *args)
+        self.log('DEBUG', fmt, *args)
     def info(self, fmt, *args):
         self.log('INFO', fmt, *args)
     def warning(self, fmt, *args):
@@ -714,11 +717,12 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_fetch_error(self, error):
         logging.info('handle_fetch_error self.path=%r', self.path)
         if isinstance(error, urllib2.HTTPError):
-            # seems that current appid is nonexists or overqouta, swith to next appid
-            if error.code in (504, ): # 502 ?
+            # http error 502/504, swith to https
+            if error.code == 504 or (error.code==502 and common.GAE_PROFILE=='google_cn'):
                 common.GOOGLE_MODE = 'https'
                 logging.error('GAE Error(%s) switch to https', error)
-            if error.code in (503, ): # 404 ?
+            # seems that current appid is overqouta, swith to next appid
+            if error.code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 logging.error('GAE Error(%s) switch to appid(%r)', error, common.GAE_APPIDS[0])
         elif isinstance(error, urllib2.URLError):
