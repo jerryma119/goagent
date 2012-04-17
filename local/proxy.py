@@ -540,6 +540,7 @@ class CertUtil(object):
             cacrt = CertUtil.readFile(crtFile)
             CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
 
+
 class SimpleLogging(object):
     CRITICAL = 50
     FATAL = CRITICAL
@@ -550,8 +551,13 @@ class SimpleLogging(object):
     DEBUG = 10
     NOTSET = 0
     def __init__(self, *args, **kwargs):
-        self.level = SimpleLogging.DEBUG
+        self.level = SimpleLogging.INFO
+        if self.level > SimpleLogging.DEBUG:
+            self.debug = self.dummy
         self.__write = sys.stdout.write
+    @classmethod
+    def getLogger(cls, *args, **kwargs):
+        return cls(*args, **kwargs)
     def basicConfig(self, *args, **kwargs):
         self.level = kwargs.get('level', SimpleLogging.INFO)
         if self.level > SimpleLogging.DEBUG:
@@ -1233,7 +1239,7 @@ def try_show_love():
 def main():
     global logging
     if logging is None:
-        logging = SimpleLogging()
+        sys.modules['logging'] = logging = SimpleLogging()
     logging.basicConfig(level=logging.DEBUG if common.GAE_DEBUGLEVEL else logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
