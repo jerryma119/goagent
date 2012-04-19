@@ -562,24 +562,24 @@ class SimpleLogging(object):
         self.level = kwargs.get('level', SimpleLogging.INFO)
         if self.level > SimpleLogging.DEBUG:
             self.debug = self.dummy
-    def log(self, level, fmt, *args):
+    def log(self, level, fmt, *args, **kwargs):
         self.__write('%s - - [%s] %s\n' % (level, time.ctime()[4:-5], fmt%args))
-    def dummy(self, *args):
+    def dummy(self, *args, **kwargs):
         pass
-    def debug(self, fmt, *args):
-        self.log('DEBUG', fmt, *args)
-    def info(self, fmt, *args):
+    def debug(self, fmt, *args, **kwargs):
+        self.log('DEBUG', fmt, *args, **kwargs)
+    def info(self, fmt, *args, **kwargs):
         self.log('INFO', fmt, *args)
-    def warning(self, fmt, *args):
-        self.log('WARNING', fmt, *args)
-    def warn(self, fmt, *args):
-        self.log('WARNING', fmt, *args)
-    def error(self, fmt, *args):
-        self.log('ERROR', fmt, *args)
-    def exception(self, fmt, *args):
-        self.log('ERROR', fmt, *args)
-    def critical(self, fmt, *args):
-        self.log('CRITICAL', fmt, *args)
+    def warning(self, fmt, *args, **kwargs):
+        self.log('WARNING', fmt, *args, **kwargs)
+    def warn(self, fmt, *args, **kwargs):
+        self.log('WARNING', fmt, *args, **kwargs)
+    def error(self, fmt, *args, **kwargs):
+        self.log('ERROR', fmt, *args, **kwargs)
+    def exception(self, fmt, *args, **kwargs):
+        self.log('ERROR', fmt, *args, **kwargs)
+    def critical(self, fmt, *args, **kwargs):
+        self.log('CRITICAL', fmt, *args, **kwargs)
 
 class SimpleMessageClass(object):
 
