@@ -723,8 +723,8 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_fetch_error(self, error):
         logging.info('handle_fetch_error self.path=%r', self.path)
         if isinstance(error, urllib2.HTTPError):
-            # http error 502/504, swith to https
-            if error.code == 504 or (error.code==502 and common.GAE_PROFILE=='google_cn'):
+            # http error 400/502/504, swith to https
+            if error.code in (400, 504) or (error.code==502 and common.GAE_PROFILE=='google_cn'):
                 common.GOOGLE_MODE = 'https'
                 logging.error('GAE Error(%s) switch to https', error)
             # seems that current appid is overqouta, swith to next appid
