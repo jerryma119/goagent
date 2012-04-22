@@ -1162,16 +1162,18 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             proxy = 'PROXY %s:%d' % (socket.gethostbyname(socket.gethostname()), common.LISTEN_PORT)
         else:
             proxy = 'PROXY %s:%d' % (common.LISTEN_IP, common.LISTEN_PORT)
-        PAC_TEMPLATE = '''
+        PAC_TEMPLATE = '''\
             //inspired from https://github.com/Leask/Flora_Pac
             function FindProxyForURL(url, host)
             {
                 if (false %s) {
                     return 'DIRECT';
                 }
-
-                var lists = %s;
                 var ip = dnsResolve(host);
+                if (ip == null) {
+                    return '%s';
+                }
+                var lists = %s;
                 var index  = parseInt(ip.split('.', 1)[0], 10);
                 var list = lists[index];
                 for (var i in list) {
@@ -1182,7 +1184,7 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return '%s';
             }'''
         directs = '||'.join(['dnsDomainIs(host, "%s")' % x for x in common.PAC_DIRECTS]) if common.PAC_DIRECTS else ''
-        return PAC_TEMPLATE % (directs, repr(cndataslist), proxy)
+        return PAC_TEMPLATE % (directs, proxy, repr(cndataslist), proxy)
 
     def do_GET(self):
         filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
