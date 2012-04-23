@@ -522,7 +522,8 @@ class CertUtil(object):
             if not OpenSSL:
                 logging.critical('CA.crt is not exist and OpenSSL is disabled, ABORT!')
                 sys.exit(-1)
-            os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
+            if os.name == 'nt'
+                os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
             [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
             key, crt = CertUtil.makeCA()
             CertUtil.writeFile(keyFile, key)
