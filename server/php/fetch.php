@@ -389,6 +389,8 @@ function get() {
         print_notify('GET', $_SERVER['SCRIPT_FILENAME'], 200, 'Error: need curl moudle or allow_url_fopen!');
         exit(-1);
     }
+    
+    header("Location: http://www.google.cn");
 
     echo <<<EOF
 
