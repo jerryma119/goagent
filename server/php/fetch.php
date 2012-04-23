@@ -391,7 +391,7 @@ function get() {
     }
     
     header("Location: http://www.google.cn");
-
+/*
     echo <<<EOF
 
 <html>
@@ -422,7 +422,7 @@ function get() {
 </body>
 </html>
 
-EOF;
+EOF; */
 }
 
 function main() {
