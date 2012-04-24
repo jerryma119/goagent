@@ -780,13 +780,13 @@ function displayData(dataJSON)
 	  <td>服务器主机名</td>
 	  <td><?php if('/'==DIRECTORY_SEPARATOR ){echo $os[1];}else{echo $os[2];} ?></td>
 	  <td>绝对路径</td>
-	  <td><?php echo $_SERVER['DOCUMENT_ROOT']?str_replace('\\','/',$_SERVER['DOCUMENT_ROOT']):str_replace('\\','/',dirname(__FILE__));?></td>
+	  <td><?php echo str_replace('\\','/',dirname(__FILE__));?></td>
 	</tr>
   <tr>
 	  <td>管理员邮箱</td>
 	  <td><?php echo $_SERVER['SERVER_ADMIN'];?></td>
 		<td>探针路径</td>
-		<td><?php echo str_replace('\\','/',__FILE__)?str_replace('\\','/',__FILE__):$_SERVER['SCRIPT_FILENAME'];?></td>
+		<td><?php echo str_replace('\\','/',dirname(__FILE__)).'/index.php';?></td>
 	</tr>
 </table>
 
