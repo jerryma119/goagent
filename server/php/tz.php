@@ -21,8 +21,11 @@ error_reporting(0); //抑制所有错误信息
 @header("content-Type: text/html; charset=utf-8"); //语言强制
 ob_start();
 
-$title = "雅黑PHP探针";
-$version = "v0.4.1"; //版本号
+//$title = "雅黑PHP探针";
+//$version = "v0.4.1"; //版本号
+//hide for gfw scan
+$title = "";
+$version = "";
 
 define('HTTP_HOST', preg_replace('~^www\.~i', '', $_SERVER['HTTP_HOST']));
 
@@ -639,7 +642,7 @@ if ($_GET['act'] == "rt")
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title><?php echo $title.$version; ?></title>
+<title><?php echo $_SERVER['HTTP_HOST']; ?></title>
 <meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7" />
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <!-- Powered by: Yahei.Net -->
