@@ -13,7 +13,7 @@ sys.version[:3] in ('2.6', '2.7') or sys.exit(sys.stderr.write('Must python 2.6/
 
 try:
     import gevent, gevent.monkey
-    gevent.monkey.patch_all(dns=gevent.version_info>(1,))
+    gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except:
     pass
 
@@ -61,7 +61,7 @@ class Common(object):
         """load config from proxy.ini"""
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
-        self.CONFIG.read(os.path.abspath(os.path.dirname(__file__))+'/'+ __config__)
+        self.CONFIG.read(os.path.join(os.path.dirname(__file__), __config__))
 
         self.LISTEN_IP            = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
@@ -243,6 +243,7 @@ class MultiplexConnection(object):
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
             logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hosts, port, MultiplexConnection.retry)
+            raise socket.error('MultiplexConnection connect hosts=%r failed' % hosts)
     def connect_single(self, hostlist, port, timeout, window):
         for host in hostlist:
             logging.debug('MultiplexConnection try connect host=%s, port=%d', host, port)
