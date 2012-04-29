@@ -81,7 +81,7 @@ class Common(object):
         self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
 
         if self.CONFIG.has_section('udp'):
-            self.UDP_ENABLE      = self.CONFIG.getint('udp', 'enbale')
+            self.UDP_ENABLE      = self.CONFIG.getint('udp', 'enable')
             self.UDP_LISTEN      = self.CONFIG.get('udp', 'listen')
             self.UDP_PASSWORD    = self.CONFIG.get('udp', 'password')
             self.UDP_FETCHSERVER = self.CONFIG.get('udp', 'fetchserver')
@@ -182,6 +182,9 @@ class Common(object):
             for (ip, port),(fetchhost, fetchserver) in common.PHP_FETCH_INFO.iteritems():
                 info += 'PHP Mode Listen : %s:%d\n' % (ip, port)
                 info += 'PHP FetchServer : %s\n' % fetchserver
+        if common.UDP_ENABLE:
+            info += 'UDP Mode Listen : %s\n' % common.UDP_LISTEN
+            info += 'UDP FetchServer : %s\n' % common.UDP_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server      : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
