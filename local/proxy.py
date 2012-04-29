@@ -80,6 +80,14 @@ class Common(object):
         self.PHP_PASSWORD         = self.CONFIG.get('php', 'password') if self.CONFIG.has_option('php', 'password') else ''
         self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
 
+        if self.CONFIG.has_section('udp'):
+            self.UDP_ENABLE      = self.CONFIG.getint('udp', 'enbale')
+            self.UDP_LISTEN      = self.CONFIG.get('udp', 'listen')
+            self.UDP_PASSWORD    = self.CONFIG.get('udp', 'password')
+            self.UDP_FETCHSERVER = self.CONFIG.get('udp', 'fetchserver')
+        else:
+            self.UDP_ENABLE      = 0
+
         if self.CONFIG.has_section('pac'):
             # XXX, cowork with GoAgentX
             self.PAC_ENABLE           = self.CONFIG.getint('pac','enable')
@@ -1217,6 +1225,13 @@ class LocalProxyAndPacHandler(LocalProxyHandler, LocalPacHandler):
         else:
             LocalProxyHandler.do_METHOD(self)
 
+class LocalUDPHandler(LocalProxyHandler):
+    def handle_fetch_error(self, error):
+        logging.error('LocalUDPHandler handle_fetch_error %s', error)
+
+    def fetch(self, url, payload, method, headers):
+        pass
+
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -1270,6 +1285,11 @@ def main():
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
         httpd = LocalProxyServer((common.PAC_IP,common.PAC_PORT),LocalPacHandler)
         thread.start_new_thread(httpd.serve_forever,())
+
+    if common.UDP_ENABLE:
+        host, _, port = common.UDP_LISTEN.partition(':')
+        httpd = LocalProxyServer((host, int(port)), LocalUDPHandler)
+        thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT == common.LISTEN_PORT:
         httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyAndPacHandler)
