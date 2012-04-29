@@ -1228,12 +1228,48 @@ class LocalProxyAndPacHandler(LocalProxyHandler, LocalPacHandler):
         else:
             LocalProxyHandler.do_METHOD(self)
 
+def udpfetch(url, payload, method, headers, fetchserver, password=None, dns=None, on_error=None):
+    errors = []
+    params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
+    logging.debug('urlfetch params %s', params)
+    if password:
+        params['password'] = password
+    if common.FETCHMAX_SERVER:
+        params['fetchmax'] = common.FETCHMAX_SERVER
+    if dns:
+        params['dns'] = dns
+    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+    for i in xrange(common.FETCHMAX_LOCAL):
+        try:
+            logging.debug('udpfetch %r by %r', url, fetchserver)
+            data = zlib.compress(params, 9)
+            # TODO: tcp over udp
+            return (0, data)
+        except Exception, e:
+            if on_error:
+                logging.info('udpfetch error=%s on_error=%s', str(e), str(on_error))
+                on_error(e)
+            errors.append(str(e))
+            time.sleep(i+1)
+            continue
+    return (-1, errors)
+
 class LocalUDPHandler(LocalProxyHandler):
     def handle_fetch_error(self, error):
         logging.error('LocalUDPHandler handle_fetch_error %s', error)
 
     def fetch(self, url, payload, method, headers):
-        pass
+        return udpfetch(url, payload, method, headers, common.UDP_FETCHSERVER, password=common.UDP_PASSWORD, on_error=self.handle_fetch_error)
+
+    def setup(self):
+        LocalUDPHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Tunnel
+        LocalUDPHandler.do_GET     = LocalProxyHandler.do_METHOD_Tunnel
+        LocalUDPHandler.do_POST    = LocalProxyHandler.do_METHOD_Tunnel
+        LocalUDPHandler.do_PUT     = LocalProxyHandler.do_METHOD_Tunnel
+        LocalUDPHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Tunnel
+        LocalUDPHandler.do_HEAD    = LocalUDPHandler.do_METHOD
+        LocalUDPHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
+        BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True

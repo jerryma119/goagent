@@ -17,6 +17,16 @@ import select
 import errno
 import gevent.server
 
+FetchMax = 3
+FetchMaxSize = 1024*1024*4
+Deadline = 30
+
+def encode_data(dic):
+    return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)
+
+def decode_data(qs):
+    return dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
+
 class LocalFetchServer(gevent.server.DatagramServer):
     def handle(self, data, address):
         print len(data), address
