@@ -394,7 +394,7 @@ def dns_resolve(host, dnsserver='8.8.8.8', dnscache=common.HOSTS, dnslock=thread
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    self._buffer.append('\r\n\r\n')
+    self._output('\r\n\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
@@ -933,7 +933,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     del self.headers['Host']
                 if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
                     self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
-                data = '%s %s:%s %s\r\n%s\r\n' % (self.command, random.choice(iplist), port, self.protocol_version, self.headers)
+                data = '\r\n\r\n%s %s:%s %s\r\n%s\r\n' % (self.command, random.choice(iplist), port, self.protocol_version, self.headers)
                 sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except:
