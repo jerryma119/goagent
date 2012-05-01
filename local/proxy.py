@@ -714,7 +714,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=Non
                 raise ValueError('Data format not match(%s)' % url)
 
             return (0, data)
-        except Exception, e:
+        except Exception as e:
             if on_error:
                 logging.info('urlfetch error=%s on_error=%s', str(e), str(on_error))
                 data = on_error(e)
@@ -1113,7 +1113,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.connection.sendall(content)
             if 'close' == headers.get('Connection',''):
                 self.close_connection = 1
-        except socket.error, e:
+        except socket.error as e:
             # Connection closed before proxy return
             if e[0] in (10053, errno.EPIPE):
                 return
