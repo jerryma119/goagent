@@ -89,6 +89,11 @@ def paas_post(environ, start_response):
 
     return send_response(start_response, response.status, headers, response.read())
 
+def paas_get(environ, start_response):
+    redirect_url = 'http://www.google.cn/webhp?source=g_cn'
+    start_response('302 Found', [('Location', redirect_url)])
+    return ['']
+
 def gae_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
     #logging.debug('post() get fetch request %s', request)
@@ -168,7 +173,7 @@ def gae_post(environ, start_response):
     headers['connection'] = 'close'
     return send_response(start_response, response.status_code, headers, response.content)
 
-def get(environ, start_response):
+def gae_get(environ, start_response):
     timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)
     ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
     html = u'GoAgent Python Server %s 已经在工作了，部署时间 %s\n' % (__version__, ctime)
@@ -181,10 +186,9 @@ def app(environ, start_response):
     elif environ['REQUEST_METHOD'] == 'POST':
         return paas_post(environ, start_response)
     elif urlfetch and environ['REQUEST_METHOD'] == 'GET':
-        return get(environ, start_response)
+        return gae_get(environ, start_response)
     else:
-        start_response('302 Found', [('Location', 'http://www.google.cn/webhp?source=g_cn')])
-        return ''
+        return paas_get(environ, start_response)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
