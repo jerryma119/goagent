@@ -8,8 +8,11 @@ __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging
-from google.appengine.api import urlfetch
-from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
+try:
+    from google.appengine.api import urlfetch
+    from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
+except ImportError:
+    urlfetch = None
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
@@ -36,7 +39,47 @@ def send_notify(start_response, method, url, status, content):
     content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
-def post(environ, start_response):
+def paas_post(environ, start_response):
+    import httplib
+    request = decode_data(zlib.decompress(environ['wsgi.input'].read()))
+    #logging.debug('post() get fetch request %s', request)
+
+    method = request['method']
+    url = request['url']
+    payload = request['payload']
+
+    if __password__ and __password__ != request.get('password', ''):
+        return send_notify(start_response, method, url, 403, 'Wrong password.')
+
+    fetchmethod = getattr(urlfetch, method, '')
+    if not fetchmethod:
+        return send_notify(start_response, method, url, 501, 'Invalid Method')
+
+    if 'http' != url[:4]:
+        return send_notify(start_response, method, url, 501, 'Unsupported Scheme')
+
+    deadline = Deadline
+
+    headers = dict((k.title(), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    headers['Connection'] = 'close'
+
+    errors = []
+    for i in xrange(int(request.get('fetchmax', FetchMax))):
+        try:
+            pass
+            break
+        except Exception, e:
+            errors.append(str(e))
+            if i==0 and method=='GET':
+                deadline = Deadline * 2
+    else:
+        return send_notify(start_response, method, url, 500, 'Python Server: Urlfetch error: %s' % errors)
+
+    headers = response.headers
+    headers['connection'] = 'close'
+    return send_response(start_response, response.status_code, headers, response.content)
+
+def gae_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read()))
     #logging.debug('post() get fetch request %s', request)
 
@@ -150,6 +193,9 @@ def get(environ, start_response):
 
 def app(environ, start_response):
     if environ['REQUEST_METHOD'] == 'POST':
-        return post(environ, start_response)
+        if urlfetch:
+            return gae_post(environ, start_response)
+        else:
+            return paas_post(environ, start_response)
     else:
         return get(environ, start_response)
