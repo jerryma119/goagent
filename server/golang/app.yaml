@@ -4,5 +4,5 @@ runtime: go
 api_version: go1
 
 handlers:
-- url: /index.py
+- url: /fetch.py
   script: _go_app
