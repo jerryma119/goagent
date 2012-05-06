@@ -206,8 +206,11 @@ def app(environ, start_response):
         return gae_post(environ, start_response)
     elif environ['REQUEST_METHOD'] == 'POST':
         return paas_post(environ, start_response)
-    else:
+    elif urlfetch and environ['REQUEST_METHOD'] == 'GET':
         return get(environ, start_response)
+    else:
+        start_response('302 Found', [('Location', 'http://www.google.cn/webhp?source=g_cn')])
+        return ''
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
