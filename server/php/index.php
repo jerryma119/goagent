@@ -378,8 +378,7 @@ function post()
 }
 
 function get() {
-    // GFW, please go to hell.
-    include('tz.php');
+    header('Location: http://stackoverflow.com/index.php');
 }
 
 function main() {
