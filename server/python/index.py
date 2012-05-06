@@ -13,7 +13,6 @@ try:
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 except ImportError:
     urlfetch = None
-    import httplib, urlparse
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
@@ -41,7 +40,9 @@ def send_notify(start_response, method, url, status, content):
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
 def paas_post(environ, start_response):
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH', -1)))))
+    import httplib, urlparse
+
+    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
@@ -209,13 +210,14 @@ def app(environ, start_response):
         return get(environ, start_response)
 
 if __name__ == '__main__':
+    logging.root.setLevel(logging.INFO)
     import gevent, gevent.pywsgi, gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
-    class WSGIHandler(gevent.pywsgi.WSGIHandler):
-        def read_requestline(self):
+    def WSGIHandler_read_requestline(self):
+        line = self.rfile.readline(8192)
+        while line == '\r\n':
             line = self.rfile.readline(8192)
-            while line == '\r\n':
-                line = self.rfile.readline(8192)
-            return line
+        return line
+    gevent.pywsgi.WSGIHandler.read_requestline = WSGIHandler_read_requestline
     gevent.pywsgi.WSGIServer(('', 80), app, handler_class=WSGIHandler).serve_forever()
 
