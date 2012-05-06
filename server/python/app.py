@@ -171,7 +171,7 @@ def gae_post(environ, start_response):
 def get(environ, start_response):
     timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)
     ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
-    html = u'GoAgent %s 已经在工作了，部署时间UTC+8 %s\n' % (__version__, ctime)
+    html = u'GoAgent %s 已经在工作了，部署时间 %s\n' % (__version__, ctime)
     start_response('200 OK', [('Content-type', 'text/plain; charset=utf-8')])
     return [html.encode('utf8')]
 
