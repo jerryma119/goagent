@@ -90,7 +90,7 @@ def paas_post(environ, start_response):
     return send_response(start_response, response.status, headers, response.read())
 
 def gae_post(environ, start_response):
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH', -1)))))
+    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
