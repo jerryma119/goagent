@@ -252,7 +252,7 @@ class MultiplexConnection(object):
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
             logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hosts, port, MultiplexConnection.retry)
-            raise socket.error('MultiplexConnection connect hosts=%r failed' % hosts)
+            raise socket.error('MultiplexConnection connect hosts=%s failed' % repr(hosts))
     def connect_single(self, hostlist, port, timeout, window):
         for host in hostlist:
             logging.debug('MultiplexConnection try connect host=%s, port=%d', host, port)
@@ -750,7 +750,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #common.GOOGLE_MODE = 'https'
             pass
         else:
-            logging.warning('LocalProxyHandler.handle_fetch_error Exception %s', error, exc_info=True)
+            logging.warning('LocalProxyHandler.handle_fetch_error Exception %s', error)
             return {}
         common.build_gae_fetchserver()
         return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
