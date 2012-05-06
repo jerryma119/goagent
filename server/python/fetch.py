@@ -13,6 +13,7 @@ try:
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 except ImportError:
     urlfetch = None
+    import httplib, urlparse
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
@@ -40,23 +41,15 @@ def send_notify(start_response, method, url, status, content):
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
 def paas_post(environ, start_response):
-    import httplib
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read()))
+    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH', -1)))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
     url = request['url']
-    payload = request['payload']
+    payload = request['payload'] or None
 
     if __password__ and __password__ != request.get('password', ''):
         return send_notify(start_response, method, url, 403, 'Wrong password.')
-
-    fetchmethod = getattr(urlfetch, method, '')
-    if not fetchmethod:
-        return send_notify(start_response, method, url, 501, 'Invalid Method')
-
-    if 'http' != url[:4]:
-        return send_notify(start_response, method, url, 501, 'Unsupported Scheme')
 
     deadline = Deadline
 
@@ -64,23 +57,39 @@ def paas_post(environ, start_response):
     headers['Connection'] = 'close'
 
     errors = []
+
+    scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+    HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+    if params:
+        path += ';' + params
+    if query:
+        path += '?' + query
     for i in xrange(int(request.get('fetchmax', FetchMax))):
         try:
-            pass
+            conn = HTTPConnection(netloc, timeout=deadline)
+            conn.request(method, path, body=payload, headers=headers)
+            response = conn.getresponse()
             break
         except Exception, e:
             errors.append(str(e))
+            time.sleep(1)
             if i==0 and method=='GET':
                 deadline = Deadline * 2
     else:
-        return send_notify(start_response, method, url, 500, 'Python Server: Urlfetch error: %s' % errors)
+        return send_notify(start_response, method, url, 500, 'Python PaaS Server: HTTPConnection error: %s' % errors)
 
-    headers = response.headers
+    headers = {}
+    for key, value in response.getheaders():
+        if key == 'set-cookie':
+            headers['set-cookie'] = headers.get('set-cookie', '') + '\r\nSet-Cookie: %s' % value
+        else:
+            headers[key] = value
     headers['connection'] = 'close'
-    return send_response(start_response, response.status_code, headers, response.content)
+
+    return send_response(start_response, response.status, headers, response.read())
 
 def gae_post(environ, start_response):
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read()))
+    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH', -1)))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
@@ -192,10 +201,25 @@ def get(environ, start_response):
     return [html.encode('utf8')]
 
 def app(environ, start_response):
-    if environ['REQUEST_METHOD'] == 'POST':
-        if urlfetch:
-            return gae_post(environ, start_response)
-        else:
-            return paas_post(environ, start_response)
+    if urlfetch and environ['REQUEST_METHOD'] == 'POST':
+        return gae_post(environ, start_response)
+    elif environ['REQUEST_METHOD'] == 'POST':
+        return paas_post(environ, start_response)
     else:
         return get(environ, start_response)
+
+if __name__ == '__main__':
+    import socket, SocketServer, wsgiref.simple_server
+    socket.getfqdn = lambda x:x
+    def WSGIRequestHandler_handle(self):
+        self.raw_requestline = self.rfile.readline()
+        while self.raw_requestline == '\r\n':
+            self.raw_requestline = self.rfile.readline()
+        if not self.parse_request():
+            return
+        handler = wsgiref.simple_server.ServerHandler(self.rfile, self.wfile, self.get_stderr(), self.get_environ())
+        handler.request_handler = self
+        handler.run(self.server.get_app())
+    wsgiref.simple_server.WSGIRequestHandler.handle = WSGIRequestHandler_handle
+    wsgiref.simple_server.make_server('', 80, app).serve_forever()
+
