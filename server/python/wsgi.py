@@ -180,7 +180,7 @@ def gae_get(environ, start_response):
     start_response('200 OK', [('Content-type', 'text/plain; charset=utf-8')])
     return [html.encode('utf8')]
 
-def app(environ, start_response):
+def application(environ, start_response):
     if urlfetch and environ['REQUEST_METHOD'] == 'POST':
         return gae_post(environ, start_response)
     elif environ['REQUEST_METHOD'] == 'POST':
@@ -200,7 +200,7 @@ if __name__ == '__main__':
             line = self.rfile.readline(8192)
         return line
     gevent.pywsgi.WSGIHandler.read_requestline = WSGIHandler_read_requestline
-    server = gevent.pywsgi.WSGIServer(('', 80), app)
-    logging.info('serving http://%s:%s/app.py', server.address[0] or '0.0.0.0', server.address[1])
+    server = gevent.pywsgi.WSGIServer(('', 80), application)
+    logging.info('serving http://%s:%s/wsgi.py', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()
 
