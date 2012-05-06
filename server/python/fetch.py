@@ -213,9 +213,9 @@ if __name__ == '__main__':
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
     class WSGIHandler(gevent.pywsgi.WSGIHandler):
         def read_requestline(self):
-            line = self.rfile.readline(MAX_REQUEST_LINE)
+            line = self.rfile.readline(8192)
             while line == '\r\n':
-                line = self.rfile.readline(MAX_REQUEST_LINE)
+                line = self.rfile.readline(8192)
             return line
     gevent.pywsgi.WSGIServer(('', 80), app, handler_class=WSGIHandler).serve_forever()
 
