@@ -210,7 +210,7 @@ def app(environ, start_response):
         return get(environ, start_response)
 
 if __name__ == '__main__':
-    logging.root.setLevel(logging.INFO)
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     import gevent, gevent.pywsgi, gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
     def WSGIHandler_read_requestline(self):
@@ -219,5 +219,7 @@ if __name__ == '__main__':
             line = self.rfile.readline(8192)
         return line
     gevent.pywsgi.WSGIHandler.read_requestline = WSGIHandler_read_requestline
-    gevent.pywsgi.WSGIServer(('', 80), app, handler_class=WSGIHandler).serve_forever()
+    server = gevent.pywsgi.WSGIServer(('', 80), app)
+    logging.info('serving http://%s:%s/app.py', server.address[0] or '0.0.0.0', server.address[1])
+    server.serve_forever()
 
