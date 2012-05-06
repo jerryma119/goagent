@@ -169,36 +169,10 @@ def gae_post(environ, start_response):
     return send_response(start_response, response.status_code, headers, response.content)
 
 def get(environ, start_response):
-    html = u'''\
-<html>
-<head>
-<link rel="icon" type="image/vnd.microsoft.icon" href="http://www.google.cn/favicon.ico">
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-<title>GoAgent Python Server %(version)s 已经在工作了</title>
-</head>
-<body>
-<table width="800" border="0" align="center">
-    <tr><td align="center"><hr></td></tr>
-    <tr><td align="center">
-        <b><h1>GoAgent Python Server %(version)s 已经在工作了</h1></b>
-    </td></tr>
-    <tr><td align="center"><hr></td></tr>
-
-    <tr><td align="center">
-        GoAgent是一个开源的HTTP Proxy软件,使用Python编写,运行于Google App Engine平台上.
-    </td></tr>
-    <tr><td align="center"><hr></td></tr>
-
-    <tr><td align="center">
-        更多相关介绍,请参考<a href="http://code.google.com/p/goagent/">GoAgent项目主页</a>.
-    </td></tr>
-    <tr><td align="center"><hr></td></tr>
-
-</table>
-</body>
-</html>
-''' % dict(version=__version__)
-    start_response('200 OK', [('Content-type', 'text/html; charset=utf-8')])
+    timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)
+    ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
+    html = u'GoAgent %s 已经在工作了，部署时间UTC+8 %s\n' % (__version__, ctime)
+    start_response('200 OK', [('Content-type', 'text/plain; charset=utf-8')])
     return [html.encode('utf8')]
 
 def app(environ, start_response):
