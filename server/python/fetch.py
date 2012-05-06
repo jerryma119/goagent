@@ -209,17 +209,13 @@ def app(environ, start_response):
         return get(environ, start_response)
 
 if __name__ == '__main__':
-    import socket, SocketServer, wsgiref.simple_server
-    socket.getfqdn = lambda x:x
-    def WSGIRequestHandler_handle(self):
-        self.raw_requestline = self.rfile.readline()
-        while self.raw_requestline == '\r\n':
-            self.raw_requestline = self.rfile.readline()
-        if not self.parse_request():
-            return
-        handler = wsgiref.simple_server.ServerHandler(self.rfile, self.wfile, self.get_stderr(), self.get_environ())
-        handler.request_handler = self
-        handler.run(self.server.get_app())
-    wsgiref.simple_server.WSGIRequestHandler.handle = WSGIRequestHandler_handle
-    wsgiref.simple_server.make_server('', 80, app).serve_forever()
+    import gevent, gevent.pywsgi, gevent.monkey
+    gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
+    class WSGIHandler(gevent.pywsgi.WSGIHandler):
+        def read_requestline(self):
+            line = self.rfile.readline(MAX_REQUEST_LINE)
+            while line == '\r\n':
+                line = self.rfile.readline(MAX_REQUEST_LINE)
+            return line
+    gevent.pywsgi.WSGIServer(('', 80), app, handler_class=WSGIHandler).serve_forever()
 
