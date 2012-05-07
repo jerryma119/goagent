@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Version  = "1.8.2"
+	Version  = "1.8.5"
 	Author   = "phus.lu@gmail.com"
 	Password = ""
 
@@ -234,36 +234,12 @@ func (h Handler) post() {
 }
 
 func (h Handler) get() {
+    version, _ := strconv.ParseInt(strings.Split(appengine.VersionID(h.context), ".")[1], 10, 64)
+    ctime := time.Unix(version/(1<<28)+8*3600, 0).Format(time.RFC3339)
+    
 	h.response.WriteHeader(http.StatusOK)
 	h.response.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(h.response, `
-<html>
-<head>
-    <link rel="icon" type="image/vnd.microsoft.icon" href="http://www.google.cn/favicon.ico">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>GoAgent GAE/Go %s &#x5DF2;&#x7ECF;&#x5728;&#x5DE5;&#x4F5C;&#x4E86;</title>
-</head>
-<body>
-    <table width="800" border="0" align="center">
-        <tr><td align="center"><hr></td></tr>
-        <tr><td align="center">
-            <b><h1>GoAgent Go Server %s &#x5DF2;&#x7ECF;&#x5728;&#x5DE5;&#x4F5C;&#x4E86;</h1></b>
-        </td></tr>
-        <tr><td align="center"><hr></td></tr>
-
-        <tr><td align="center">
-            GoAgent&#x662F;&#x4E00;&#x4E2A;&#x5F00;&#x6E90;&#x7684;HTTP Proxy&#x8F6F;&#x4EF6;, &#x4F7F;&#x7528;Go/Python&#x7F16;&#x5199;, &#x8FD0;&#x884C;&#x4E8E;Google App Engine&#x5E73;&#x53F0;&#x4E0A;
-        </td></tr>
-        <tr><td align="center"><hr></td></tr>
-
-        <tr><td align="center">
-            &#x66F4;&#x591A;&#x76F8;&#x5173;&#x4ECB;&#x7ECD;, &#x8BF7;&#x53C2;&#x8003;<a href="http://code.google.com/p/goagent/">GoAgent&#x9879;&#x76EE;&#x4E3B;&#x9875;</a>.
-        </td></tr>
-        <tr><td align="center"><hr></td></tr>
-
-    </table>
-</body>
-</html>`, Version, Version)
+	fmt.Fprintf(h.response, "GoAgent Go Server %s \xe5\xb7\xb2\xe7\xbb\x8f\xe5\x9c\xa8\xe5\xb7\xa5\xe4\xbd\x9c\xe4\xba\x86\xef\xbc\x8c\xe9\x83\xa8\xe7\xbd\xb2\xe6\x97\xb6\xe9\x97\xb4 %s\n", Version, ctime)
 }
 
 func init() {
