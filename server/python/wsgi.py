@@ -49,14 +49,17 @@ def paas_post(environ, start_response):
     url = request['url']
     payload = request['payload'] or None
 
+    headers = dict((k.title(), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    headers['Connection'] = 'close'
+
+    if 'dns' in request:
+        headers['Host'] = urlparse.urlparse(url).netloc
+        url = re.sub(r'://.+?([:/])', '://%s\\1' % request['dns'], url)
+
     if __password__ and __password__ != request.get('password', ''):
         return send_notify(start_response, method, url, 403, 'Wrong password.')
 
     deadline = Deadline
-
-    headers = dict((k.title(), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
-    headers['Connection'] = 'close'
-
     errors = []
 
     scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
@@ -184,7 +187,10 @@ def application(environ, start_response):
     if urlfetch and environ['REQUEST_METHOD'] == 'POST':
         return gae_post(environ, start_response)
     elif environ['REQUEST_METHOD'] == 'POST':
-        return paas_post(environ, start_response)
+        try:
+            return paas_post(environ, start_response)
+        except Exception as e:
+            logging.exception('paas_post(environ, start_response) exception:%s', e)
     elif urlfetch and environ['REQUEST_METHOD'] == 'GET':
         return gae_get(environ, start_response)
     else:
@@ -200,7 +206,7 @@ if __name__ == '__main__':
             line = self.rfile.readline(8192)
         return line
     gevent.pywsgi.WSGIHandler.read_requestline = WSGIHandler_read_requestline
-    server = gevent.pywsgi.WSGIServer(('', 80), application)
+    server = gevent.pywsgi.WSGIServer(('', 8080), application)
     logging.info('serving http://%s:%s/wsgi.py', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()
 
