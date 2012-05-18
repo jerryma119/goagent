@@ -4,28 +4,24 @@
 /* 程序功能: 探测系统的Web服务器运行环境
 /* 程序开发: Yahei.Net
 /* 联系方式: info@Yahei.net
-/* Date: 1970-01-01 / 2011-12-27
+/* Date: 1970-01-01 / 2012-04-23
 /* ---------------------------------------------------- */
 /* 使用条款:
-/* 1.你可以自由免费的使用本程序.
-/* 2.你可以修改本程序,仅限自己使用.
-/* 3.如果你修改本程序后发布提供下载,必须要有新的功能或内容.
-/* 4.作者不对该程序运行显示的数据负任何责任.
+/* 1.该软件免费使用.
+/* 2.禁止未经通告的衍生版本.
 /* ---------------------------------------------------- */
 /* 感谢以下朋友为探针做出的贡献:
 /* zyypp,酷を龙卷风,龙智超,菊花肿了,闲人,Clare Lou,hotsnow
 /* 二戒,yexinzhu,wangyu1314,Kokgog,gibyasus,akw28888,A大,huli
+/* 小松,charwin
 /* 您可能是下一个?
 /* ---------------------------------------------------- */
 error_reporting(0); //抑制所有错误信息
 @header("content-Type: text/html; charset=utf-8"); //语言强制
 ob_start();
 
-//$title = "雅黑PHP探针";
-//$version = "v0.4.1"; //版本号
-//hide for gfw scan
-$title = "";
-$version = "";
+$title = "雅黑PHP探针";
+$version = "v0.4.2"; //版本号
 
 define('HTTP_HOST', preg_replace('~^www\.~i', '', $_SERVER['HTTP_HOST']));
 
@@ -201,7 +197,9 @@ elseif ($_POST['act'] == '函数检测')
 elseif ($_POST['act'] == '邮件检测')
 {
 	$mailRe = "邮件发送检测结果：发送";
-	$mailRe .= (false !== @mail($_POST["mailAdd"], "http://".$_SERVER['SERVER_NAME'].($_SERVER['PHP_SELF'] ? $_SERVER['PHP_SELF'] : $_SERVER['SCRIPT_NAME']), "This is a test mail!")) ? "完成":"失败";
+	if($_SERVER['SERVER_PORT']==80){$mailContent = "http://".$_SERVER['SERVER_NAME'].($_SERVER['PHP_SELF'] ? $_SERVER['PHP_SELF'] : $_SERVER['SCRIPT_NAME']);}
+	else{$mailContent = "http://".$_SERVER['SERVER_NAME'].":".$_SERVER['SERVER_PORT'].($_SERVER['PHP_SELF'] ? $_SERVER['PHP_SELF'] : $_SERVER['SCRIPT_NAME']);}
+	$mailRe .= (false !== @mail($_POST["mailAdd"], $mailContent, "This is a test mail!")) ? "完成":"失败";
 }
 
 //网络速度测试
@@ -642,7 +640,7 @@ if ($_GET['act'] == "rt")
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title><?php echo $_SERVER['HTTP_HOST']; ?></title>
+<title><?php echo $title.$version; ?></title>
 <meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7" />
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <!-- Powered by: Yahei.Net -->
@@ -780,13 +778,13 @@ function displayData(dataJSON)
 	  <td>服务器主机名</td>
 	  <td><?php if('/'==DIRECTORY_SEPARATOR ){echo $os[1];}else{echo $os[2];} ?></td>
 	  <td>绝对路径</td>
-	  <td><?php echo str_replace('\\','/',dirname(__FILE__));?></td>
+	  <td><?php echo $_SERVER['DOCUMENT_ROOT']?str_replace('\\','/',$_SERVER['DOCUMENT_ROOT']):str_replace('\\','/',dirname(__FILE__));?></td>
 	</tr>
   <tr>
 	  <td>管理员邮箱</td>
 	  <td><?php echo $_SERVER['SERVER_ADMIN'];?></td>
 		<td>探针路径</td>
-		<td><?php echo str_replace('\\','/',dirname(__FILE__)).'/index.php';?></td>
+		<td><?php echo str_replace('\\','/',__FILE__)?str_replace('\\','/',__FILE__):$_SERVER['SCRIPT_FILENAME'];?></td>
 	</tr>
 </table>
 
@@ -830,7 +828,7 @@ foreach ($tmp AS $v) {
           <font color='#CC0000'><span id="FreeMemory"><?php echo $mf;?></span></font>
           , 使用率
 		  <span id="memPercent"><?php echo $memPercent;?></span>
-          <div class="bar"><div id="barmemPercent" class="barli_green" >&nbsp;</div> </div>
+          <div class="bar"><div id="barmemPercent" class="barli_green" style="width:<?php echo $memPercent?>%">&nbsp;</div> </div>
 <?php
 //判断如果cache为0，不显示
 if($sysInfo['memCached']>0)
@@ -1190,7 +1188,7 @@ else
   </tr>
   <tr>
     <td>SQLite 数据库：</td>
-    <td><?php echo isfun("sqlite_close"); if(isfun("sqlite_close") == '<font color="green">√</font>'){echo "&nbsp; 版本： ".@sqlite_libversion();}?></td>
+    <td><?php if(extension_loaded('sqlite3')) {$sqliteVer = SQLite3::version();echo '<font color=green>√</font>　';echo "SQLite3　Ver ";echo $sqliteVer[versionString];}else {echo isfun("sqlite_close");if(isfun("sqlite_close") == '<font color="green">√</font>') {echo "&nbsp; 版本： ".@sqlite_libversion();}}?></td>
     <td>Hyperwave 数据库：</td>
     <td><?php echo isfun("hw_close");?></td>
   </tr>

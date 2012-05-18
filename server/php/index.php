@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.8.4';
+$__version__  = '1.8.6';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -82,7 +82,7 @@ class URLFetch {
 
     function urlfetch_curl_readbody($ch, $data) {
         $bytes = strlen($data);
-    	if ($this->body_size + $bytes > $this->body_maxsize) {
+        if ($this->body_size + $bytes > $this->body_maxsize) {
             return -1;
         }
         $this->body_size += $bytes;
@@ -311,7 +311,9 @@ function post()
     $password = isset($request['password']) ? $request['password'] : '';
 
     if ($__password__ && $__password__ != $password) {
-        return print_notify($method, $url, 403, 'Wrong password.');
+        #return print_notify($method, $url, 403, 'Wrong password.');
+        # prevent GFW detect
+        exit();
     }
 
     if (substr($url, 0, 4) != 'http') {
@@ -378,7 +380,7 @@ function post()
 }
 
 function get() {
-    header('Location: http://stackoverflow.com/index.php');
+    header('Location: https://www.google.com/index.php');
 }
 
 function main() {

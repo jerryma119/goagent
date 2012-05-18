@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.8.5'
+__version__ = '1.8.6'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -68,7 +68,7 @@ def paas_post(environ, start_response):
         path += ';' + params
     if query:
         path += '?' + query
-    for i in xrange(int(request.get('fetchmax', FetchMax))):
+    for i in xrange(FetchMax if 'fetchmax' not in request else int(request['fetchmax'])):
         try:
             conn = HTTPConnection(netloc, timeout=deadline)
             conn.request(method, path, body=payload, headers=headers)
@@ -112,16 +112,13 @@ def gae_post(environ, start_response):
     if not fetchmethod:
         return send_notify(start_response, method, url, 501, 'Invalid Method')
 
-    if 'http' != url[:4]:
-        return send_notify(start_response, method, url, 501, 'Unsupported Scheme')
-
     deadline = Deadline
 
     headers = dict((k.title(), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers['Connection'] = 'close'
 
     errors = []
-    for i in xrange(int(request.get('fetchmax', FetchMax))):
+    for i in xrange(FetchMax if 'fetchmax' not in request else int(request['fetchmax'])):
         try:
             response = urlfetch.fetch(url, payload, fetchmethod, headers, False, False, deadline, False)
             break
@@ -200,12 +197,12 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     import gevent, gevent.pywsgi, gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
-    def WSGIHandler_read_requestline(self):
+    def read_requestline(self):
         line = self.rfile.readline(8192)
         while line == '\r\n':
             line = self.rfile.readline(8192)
         return line
-    gevent.pywsgi.WSGIHandler.read_requestline = WSGIHandler_read_requestline
+    gevent.pywsgi.WSGIHandler.read_requestline = read_requestline
     server = gevent.pywsgi.WSGIServer(('', 8080), application)
     logging.info('serving http://%s:%s/wsgi.py', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()
