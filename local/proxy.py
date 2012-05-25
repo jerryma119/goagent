@@ -1128,6 +1128,7 @@ class PHPProxyHandler(LocalProxyHandler):
 
     def handle_fetch_error(self, error):
         logging.error('PHPProxyHandler handle_fetch_error %s', error)
+        httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
 
     def fetch(self, url, payload, method, headers):
         fetchhost, fetchserver = common.PHP_FETCH_INFO[self.server.server_address]
