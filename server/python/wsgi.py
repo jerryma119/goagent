@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.8.6'
+__version__ = '1.8.7'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -57,7 +57,9 @@ def paas_post(environ, start_response):
         url = re.sub(r'://.+?([:/])', '://%s\\1' % request['dns'], url)
 
     if __password__ and __password__ != request.get('password', ''):
-        return send_notify(start_response, method, url, 403, 'Wrong password.')
+        # return send_notify(start_response, method, url, 403, 'Wrong password.')
+        # avoid GFW detect
+        return paas_get(environ, start_response)
 
     deadline = Deadline
     errors = []
