@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.8.6';
+$__version__  = '1.8.7';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -31,7 +31,7 @@ function print_response($status, $headers, $content) {
     } else {
         $data = '0' . pack('NNN', $status, strlen($strheaders), strlen($content)) . $strheaders . $content;
     }
-    header('Content-Type: image/gif');
+    header('Content-Type: text/html');
     header('Content-Length: '.strlen($data));
     print($data);
 }
@@ -169,7 +169,7 @@ class URLFetch {
             $error = '';
         }
         curl_close($ch);
-        
+
         $this->headers['connection'] = 'close';
         $content_length = isset($this->headers["content-length"]) ? 1*$this->headers["content-length"] : 0;
 
@@ -264,7 +264,7 @@ class URLFetch {
         }
         $this->body_size = strlen($content);
         $this->body = $content;
-        
+
         $this->headers['connection'] = 'close';
         $content_length = isset($this->headers["content-length"]) ? 1*$this->headers["content-length"] : 0;
 
@@ -380,7 +380,7 @@ function post()
 }
 
 function get() {
-    header('Location: https://www.google.com/index.php');
+    header('Location: http://www.google.cn/webhp?source=g_cn');
 }
 
 function main() {
