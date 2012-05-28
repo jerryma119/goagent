@@ -205,6 +205,8 @@ def application(environ, start_response):
     else:
         return paas_get(environ, start_response)
 
+app = application
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     import gevent, gevent.pywsgi, gevent.monkey
