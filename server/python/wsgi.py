@@ -12,6 +12,7 @@ try:
     from google.appengine.api import urlfetch
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 except ImportError:
+    import httplib, urlparse
     urlfetch = None
 
 FetchMax = 3
@@ -40,8 +41,6 @@ def send_notify(start_response, method, url, status, content):
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
 def paas_post(environ, start_response):
-    import httplib, urlparse
-
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
     #logging.debug('post() get fetch request %s', request)
 
@@ -92,11 +91,11 @@ def paas_post(environ, start_response):
             headers[key] = value
     headers['connection'] = 'close'
 
-    return send_response(start_response, response.status, headers, response.read(), 'text/html')
+    return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
 
 def paas_get(environ, start_response):
     redirect_url = 'http://www.google.cn/webhp?source=g_cn'
-    start_response('302 Found', [('Location', redirect_url)])
+    start_response('302 Found', [('Location', redirect_url), ('Content-Type', 'text/html; charset=UTF-8')])
     return ['']
 
 def gae_post(environ, start_response):
