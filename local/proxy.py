@@ -726,7 +726,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=Non
             continue
     return (-1, errors)
 
-class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
@@ -753,7 +753,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             #common.GOOGLE_MODE = 'https'
             pass
         else:
-            logging.warning('LocalProxyHandler.handle_fetch_error Exception %s', error)
+            logging.warning('GAEProxyHandler.handle_fetch_error Exception %s', error)
             return {}
         common.build_gae_fetchserver()
         return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
@@ -864,7 +864,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not common.PROXY_ENABLE:
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
             if any(x[-1] not in '1234567890' for x in common.GOOGLE_HOSTS):
-                with LocalProxyHandler.SetupLock:
+                with GAEProxyHandler.SetupLock:
                     if any(x[-1] not in '1234567890' for x in common.GOOGLE_HOSTS):
                         google_iplist = [host for host in common.GOOGLE_HOSTS if host[-1] in '1234567890']
                         google_hosts = [host for host in common.GOOGLE_HOSTS if host[-1] not in '1234567890']
@@ -877,15 +877,15 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
         if not common.GAE_ENABLE:
-            LocalProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Direct
-            LocalProxyHandler.do_METHOD  = LocalProxyHandler.do_METHOD_Direct
-        LocalProxyHandler.do_GET     = LocalProxyHandler.do_METHOD
-        LocalProxyHandler.do_POST    = LocalProxyHandler.do_METHOD
-        LocalProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD
-        LocalProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD
-        LocalProxyHandler.do_OPTIONS = LocalProxyHandler.do_METHOD
-        LocalProxyHandler.do_HEAD    = LocalProxyHandler.do_METHOD
-        LocalProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
+            GAEProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Direct
+            GAEProxyHandler.do_METHOD  = GAEProxyHandler.do_METHOD_Direct
+        GAEProxyHandler.do_GET     = GAEProxyHandler.do_METHOD
+        GAEProxyHandler.do_POST    = GAEProxyHandler.do_METHOD
+        GAEProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD
+        GAEProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD
+        GAEProxyHandler.do_OPTIONS = GAEProxyHandler.do_METHOD
+        GAEProxyHandler.do_HEAD    = GAEProxyHandler.do_METHOD
+        GAEProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
     def do_CONNECT(self):
@@ -910,7 +910,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT_Direct(self):
         try:
-            logging.debug('LocalProxyHandler.do_CONNECT_Directt %s' % self.path)
+            logging.debug('GAEProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
             port = int(port)
             idlecall = None
@@ -943,7 +943,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception:
-            logging.exception('LocalProxyHandler.do_CONNECT_Direct Error')
+            logging.exception('GAEProxyHandler.do_CONNECT_Direct Error')
         finally:
             try:
                 sock.close()
@@ -1053,7 +1053,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception:
-            logging.exception('LocalProxyHandler.do_GET Error')
+            logging.exception('GAEProxyHandler.do_GET Error')
         finally:
             try:
                 sock.close()
@@ -1125,7 +1125,7 @@ class LocalProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e[0] in (10053, errno.EPIPE):
                 return
 
-class PAASProxyHandler(LocalProxyHandler):
+class PAASProxyHandler(GAEProxyHandler):
 
     HOSTS = {}
 
@@ -1149,7 +1149,7 @@ class PAASProxyHandler(LocalProxyHandler):
             for fetchhost, _ in common.PAAS_FETCH_INFO.itervalues():
                 logging.info('PAASProxyHandler.setup check %s is in common.HOSTS', fetchhost)
                 if fetchhost not in common.HOSTS:
-                    with LocalProxyHandler.SetupLock:
+                    with GAEProxyHandler.SetupLock:
                         if fetchhost not in common.HOSTS:
                             try:
                                 logging.info('Resole PAAS fetchserver address.')
@@ -1157,22 +1157,22 @@ class PAASProxyHandler(LocalProxyHandler):
                                 logging.info('Resole PAAS fetchserver address OK. %s', common.HOSTS[fetchhost])
                             except Exception:
                                 logging.exception('PAASProxyHandler.setup resolve fail')
-        PAASProxyHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Tunnel
-        PAASProxyHandler.do_GET     = LocalProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_POST    = LocalProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_PUT     = LocalProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
+        PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
         PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
         PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
-class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _generate_pac(self):
         url = common.PAC_REMOTE
-        logging.info('LocalPacHandler._generate_pac url=%r, timeout=%r', url, common.PAC_TIMEOUT)
+        logging.info('PacServerHandler._generate_pac url=%r, timeout=%r', url, common.PAC_TIMEOUT)
         content = urllib2.urlopen(url, timeout=common.PAC_TIMEOUT).read()
         cndatas = re.findall(r'(?i)apnic\|cn\|ipv4\|([0-9\.]+)\|([0-9]+)\|[0-9]+\|a.*', content)
-        logging.info('LocalPacHandler._generate_pac download %s bytes %s items', len(content), len(cndatas))
+        logging.info('PacServerHandler._generate_pac download %s bytes %s items', len(content), len(cndatas))
         assert len(cndatas) > 0
         cndatas = [(ip, socket.inet_ntoa(struct.pack('!I', (int(n)-1)^0xffffffff))) for ip, n in cndatas]
         cndataslist = [[] for i in xrange(256)]
@@ -1213,13 +1213,13 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.send_error(404, 'Not Found')
         if common.PAC_UPDATE and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
             try:
-                logging.info('LocalPacHandler begin sync remote pac')
+                logging.info('PacServerHandler begin sync remote pac')
                 content = self._generate_pac()
                 with open(filename, 'wb') as fp:
                     fp.write(content)
-                logging.info('LocalPacHandler end sync remote pac')
+                logging.info('PacServerHandler end sync remote pac')
             except Exception:
-                logging.exception('LocalPacHandler sync remote pac failed')
+                logging.exception('PacServerHandler sync remote pac failed')
         with open(filename, 'rb') as fp:
             data = fp.read()
             self.send_response(200)
@@ -1228,12 +1228,12 @@ class LocalPacHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data)
             self.wfile.close()
 
-class LocalProxyAndPacHandler(LocalProxyHandler, LocalPacHandler):
+class ProxyAndPacHandler(GAEProxyHandler, PacServerHandler):
     def do_GET(self):
         if self.path == '/'+common.PAC_FILE:
-            LocalPacHandler.do_GET(self)
+            PacServerHandler.do_GET(self)
         else:
-            LocalProxyHandler.do_METHOD(self)
+            GAEProxyHandler.do_METHOD(self)
 
 def udpfetch(url, payload, method, headers, fetchserver, password=None, dns=None, on_error=None):
     errors = []
@@ -1257,21 +1257,21 @@ def udpfetch(url, payload, method, headers, fetchserver, password=None, dns=None
             continue
     return (-1, errors)
 
-class LocalUDPHandler(LocalProxyHandler):
+class UDPProxyHandler(GAEProxyHandler):
     def handle_fetch_error(self, error):
-        logging.error('LocalUDPHandler handle_fetch_error %s', error)
+        logging.error('UDPProxyHandler handle_fetch_error %s', error)
 
     def fetch(self, url, payload, method, headers):
         return udpfetch(url, payload, method, headers, common.UDP_FETCHSERVER, password=common.UDP_PASSWORD, on_error=self.handle_fetch_error)
 
     def setup(self):
-        LocalUDPHandler.do_CONNECT = LocalProxyHandler.do_CONNECT_Tunnel
-        LocalUDPHandler.do_GET     = LocalProxyHandler.do_METHOD_Tunnel
-        LocalUDPHandler.do_POST    = LocalProxyHandler.do_METHOD_Tunnel
-        LocalUDPHandler.do_PUT     = LocalProxyHandler.do_METHOD_Tunnel
-        LocalUDPHandler.do_DELETE  = LocalProxyHandler.do_METHOD_Tunnel
-        LocalUDPHandler.do_HEAD    = LocalUDPHandler.do_METHOD
-        LocalUDPHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
+        UDPProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
+        UDPProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
+        UDPProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
+        UDPProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
+        UDPProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
+        UDPProxyHandler.do_HEAD    = UDPProxyHandler.do_METHOD
+        UDPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
@@ -1325,18 +1325,18 @@ def main():
             thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
-        httpd = LocalProxyServer((common.PAC_IP,common.PAC_PORT),LocalPacHandler)
+        httpd = LocalProxyServer((common.PAC_IP,common.PAC_PORT),PacServerHandler)
         thread.start_new_thread(httpd.serve_forever,())
 
     if common.UDP_ENABLE:
         host, _, port = common.UDP_LISTEN.partition(':')
-        httpd = LocalProxyServer((host, int(port)), LocalUDPHandler)
+        httpd = LocalProxyServer((host, int(port)), UDPProxyHandler)
         thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT == common.LISTEN_PORT:
-        httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyAndPacHandler)
+        httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), ProxyAndPacHandler)
     else:
-        httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), LocalProxyHandler)
+        httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
     httpd.serve_forever()
 
 if __name__ == '__main__':
