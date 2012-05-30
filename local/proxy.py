@@ -169,25 +169,25 @@ class Common(object):
     def info(self):
         info = ''
         info += '------------------------------------------------------\n'
-        info += 'GoAgent Version : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
-        info += 'Listen Address  : %s:%d\n' % (self.LISTEN_IP,self.LISTEN_PORT)
-        info += 'Local Proxy     : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
-        info += 'Debug Level     : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
-        info += 'GAE Mode        : %s\n' % self.GOOGLE_MODE if self.GAE_ENABLE else ''
-        info += 'GAE Profile     : %s\n' % self.GAE_PROFILE
-        info += 'GAE APPID       : %s\n' % '|'.join(self.GAE_APPIDS)
+        info += 'GoAgent Version  : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
+        info += 'Listen Address   : %s:%d\n' % (self.LISTEN_IP,self.LISTEN_PORT)
+        info += 'Local Proxy      : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
+        info += 'Debug Level      : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
+        info += 'GAE Mode         : %s\n' % self.GOOGLE_MODE if self.GAE_ENABLE else ''
+        info += 'GAE Profile      : %s\n' % self.GAE_PROFILE
+        info += 'GAE APPID        : %s\n' % '|'.join(self.GAE_APPIDS)
         if common.PAAS_ENABLE:
             for (ip, port),(fetchhost, fetchserver) in common.PAAS_FETCH_INFO.iteritems():
                 info += 'PAAS Listen      : %s:%d\n' % (ip, port)
                 info += 'PAAS FetchServer : %s\n' % fetchserver
         if common.UDP_ENABLE:
-            info += 'UDP Mode Listen : %s\n' % common.UDP_LISTEN
-            info += 'UDP FetchServer : %s\n' % common.UDP_FETCHSERVER
+            info += 'UDP Mode Listen  : %s\n' % common.UDP_LISTEN
+            info += 'UDP FetchServer  : %s\n' % common.UDP_FETCHSERVER
         if common.PAC_ENABLE:
-            info += 'Pac Server      : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
+            info += 'Pac Server       : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
             #http://www.acunetix.com/websitesecurity/crlf-injection.htm
-            info += 'CRLF Injection  : %s\n' % '|'.join(self.CRLF_SITES)
+            info += 'CRLF Injection   : %s\n' % '|'.join(self.CRLF_SITES)
         info += '------------------------------------------------------\n'
         return info
 
