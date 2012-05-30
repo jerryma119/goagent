@@ -178,7 +178,7 @@ class Common(object):
         info += 'GAE APPID       : %s\n' % '|'.join(self.GAE_APPIDS)
         if common.PAAS_ENABLE:
             for (ip, port),(fetchhost, fetchserver) in common.PAAS_FETCH_INFO.iteritems():
-                info += 'PAAS Listen : %s:%d\n' % (ip, port)
+                info += 'PAAS Listen      : %s:%d\n' % (ip, port)
                 info += 'PAAS FetchServer : %s\n' % fetchserver
         if common.UDP_ENABLE:
             info += 'UDP Mode Listen : %s\n' % common.UDP_LISTEN
