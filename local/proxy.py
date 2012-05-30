@@ -869,7 +869,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         google_iplist = [host for host in common.GOOGLE_HOSTS if host[-1] in '1234567890']
                         google_hosts = [host for host in common.GOOGLE_HOSTS if host[-1] not in '1234567890']
                         google_hosts_iplist = [[x[-1][0] for x in socket.getaddrinfo(host, 80)] for host in google_hosts]
-                        if google_hosts and any(len(iplist)==1 for iplist in google_hosts_iplist):
+                        if google_hosts and any(len(iplist)==1 for iplist in google_hosts_iplist) and common.GAE_PROFILE != 'google_ipv6':
                             logging.warning('OOOPS, there are some mistake in socket.getaddrinfo, try remote dns_resolve')
                             google_hosts_iplist = [list(dns_resolve(host)) for host in google_hosts]
                         common.GOOGLE_HOSTS = tuple(set(sum(google_hosts_iplist, google_iplist)))
