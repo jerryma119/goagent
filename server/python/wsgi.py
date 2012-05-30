@@ -24,24 +24,14 @@ def encode_data(dic):
 def decode_data(qs):
     return dict((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
 
-def send_response(start_response, status, headers, content):
+def send_response(start_response, status, headers, content, content_type='image/gif'):
     strheaders = encode_data(headers)
     #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
     if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
     else:
         data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
-    start_response('200 OK', [('Content-type', 'image/gif')])
-    return [data]
-
-def send_response_paas(start_response, status, headers, content):
-    strheaders = encode_data(headers)
-    #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
-    if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
-        data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
-    else:
-        data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
-    start_response('200 OK', [('Content-type', 'text/html')])
+    start_response('200 OK', [('Content-type', content_type)])
     return [data]
 
 def send_notify(start_response, method, url, status, content):
@@ -102,7 +92,7 @@ def paas_post(environ, start_response):
             headers[key] = value
     headers['connection'] = 'close'
 
-    return send_response_paas(start_response, response.status, headers, response.read())
+    return send_response(start_response, response.status, headers, response.read(), 'text/html')
 
 def paas_get(environ, start_response):
     redirect_url = 'http://www.google.cn/webhp?source=g_cn'
