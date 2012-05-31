@@ -23,7 +23,7 @@ def encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)
 
 def decode_data(qs):
-    return {k:binascii.a2b_hex(v) for k, _, v in (x.partition('=') for x in qs.split('&'))}
+    return dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
 
 def send_response(start_response, status, headers, content, content_type='image/gif'):
     strheaders = encode_data(headers)
@@ -48,7 +48,7 @@ def paas_post(environ, start_response):
     url = request['url']
     payload = request['payload'] or None
 
-    headers = {k.title():v.lstrip() for k, _, v in (line.partition(':') for line in request['headers'].splitlines())}
+    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers['Connection'] = 'close'
 
     if 'dns' in request:
@@ -115,7 +115,7 @@ def gae_post(environ, start_response):
 
     deadline = Deadline
 
-    headers = {k.title():v.lstrip() for k, _, v in (line.partition(':') for line in request['headers'].splitlines())}
+    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers['Connection'] = 'close'
 
     errors = []
