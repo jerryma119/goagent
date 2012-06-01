@@ -730,6 +730,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
+    DefaultHosts = 'eJxdztsNgDAMQ9GNIvIoSXZjeApSqc3nUVT3ZojakFTR47wSNEhB8qXhorXg+kMjckGtQM9efDKf\n91Km4W+N4M1CldNIYMu+qSVoTm7MsG5E4KPd8apInNUUMo4betRQjg=='
 
     def handle_fetch_error(self, error):
         logging.info('handle_fetch_error self.path=%r', self.path)
@@ -750,8 +751,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # it seems that google.cn is reseted, switch to https
                 common.GOOGLE_MODE = 'https'
         elif isinstance(error, httplib.HTTPException):
-            #common.GOOGLE_MODE = 'https'
-            pass
+            common.GOOGLE_MODE = 'https'
+            httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
         else:
             logging.warning('GAEProxyHandler.handle_fetch_error Exception %s', error)
             return {}
@@ -877,6 +878,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             logging.warning('OOOPS, there are some mistake in socket.getaddrinfo, try remote dns_resolve')
                             google_hosts_iplist = [list(dns_resolve(host)) for host in google_hosts]
                         common.GOOGLE_HOSTS = tuple(set(sum(google_hosts_iplist, google_iplist)))
+                        if len(common.GOOGLE_HOSTS) == 0:
+                            logging.error('resolve common.GOOGLE_HOSTS domian to iplist return empty!')
+                            common.GOOGLE_HOSTS = zlib.decompress(base64.b64decode(self.DefaultHosts)).split('|')
                         logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
