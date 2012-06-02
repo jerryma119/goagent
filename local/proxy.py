@@ -862,16 +862,16 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.connection.sendall(data)
 
     def setup(self):
-        if not common.PROXY_ENABLE:
+        if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
-            if any(x[-1] not in '1234567890' for x in common.GOOGLE_HOSTS):
+            if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with GAEProxyHandler.SetupLock:
-                    if any(x[-1] not in '1234567890' for x in common.GOOGLE_HOSTS):
-                        google_iplist = [host for host in common.GOOGLE_HOSTS if host[-1] in '1234567890']
-                        google_hosts = [host for host in common.GOOGLE_HOSTS if host[-1] not in '1234567890']
+                    if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
+                        google_iplist = [host for host in common.GOOGLE_HOSTS if re.match(r'\d+\.\d+\.\d+\.\d+', host)]
+                        google_hosts = [host for host in common.GOOGLE_HOSTS if not re.match(r'\d+\.\d+\.\d+\.\d+', host)]
                         try:
                             google_hosts_iplist = [[x[-1][0] for x in socket.getaddrinfo(host, 80)] for host in google_hosts]
-                            need_remote_dns = google_hosts and any(len(iplist)==1 for iplist in google_hosts_iplist) and common.GAE_PROFILE != 'google_ipv6'
+                            need_remote_dns = google_hosts and any(len(iplist)==1 for iplist in google_hosts_iplist) and
                         except socket.gaierror:
                             need_remote_dns = True
                         if need_remote_dns:
@@ -910,7 +910,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 except StopIteration:
                     cname = host
                 logging.info('crlf dns_resolve(host=%r, cname=%r dnsserver=%r)', host, cname, common.CRLF_DNS)
-                iplist = tuple(set(sum((dns_resolve(x, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,) for x in cname.split(',')), ())))
+                iplist = tuple(set(sum((dns_resolve(x, common.CRLF_DNS) if not re.match(r'\d+\.\d+\.\d+\.\d+', host) else (host,) for x in cname.split(',')), ())))
                 common.HOSTS[host] = iplist
             return self.do_CONNECT_Direct()
         else:
@@ -1014,7 +1014,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 except StopIteration:
                     cname = host
                 logging.info('crlf dns_resolve(host=%r, cname=%r dnsserver=%r)', host, cname, common.CRLF_DNS)
-                iplist = tuple(set(sum((dns_resolve(x, common.CRLF_DNS) if host[-1] not in '1234567890' else (host,) for x in cname.split(',')), ())))
+                iplist = tuple(set(sum((dns_resolve(x, common.CRLF_DNS) if re.match(r'\d+\.\d+\.\d+\.\d+', host) else (host,) for x in cname.split(',')), ())))
                 common.HOSTS[host] = iplist
             return self.do_METHOD_Direct()
         else:
