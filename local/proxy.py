@@ -871,7 +871,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         google_hosts = [host for host in common.GOOGLE_HOSTS if not re.match(r'\d+\.\d+\.\d+\.\d+', host)]
                         try:
                             google_hosts_iplist = [[x[-1][0] for x in socket.getaddrinfo(host, 80)] for host in google_hosts]
-                            need_remote_dns = google_hosts and any(len(iplist)==1 for iplist in google_hosts_iplist) and
+                            need_remote_dns = google_hosts and any(len(iplist)==1 for iplist in google_hosts_iplist)
                         except socket.gaierror:
                             need_remote_dns = True
                         if need_remote_dns:
