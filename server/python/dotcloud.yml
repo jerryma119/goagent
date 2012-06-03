@@ -5,6 +5,6 @@ www:
     ports:
         www: http
     processes:
-        app: /home/dotcloud/env/bin/gunicorn -b 0.0.0.0:$PORT_WWW -k gevent wsgi:app
+        app: /home/dotcloud/env/bin/python /home/dotcloud/wsgi.py $PORT_WWW
     systempackages:
         - libevent-dev
