@@ -78,14 +78,6 @@ class Common(object):
         self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
 
-        if self.CONFIG.has_section('udp'):
-            self.UDP_ENABLE      = self.CONFIG.getint('udp', 'enable')
-            self.UDP_LISTEN      = self.CONFIG.get('udp', 'listen')
-            self.UDP_PASSWORD    = self.CONFIG.get('udp', 'password')
-            self.UDP_FETCHSERVER = self.CONFIG.get('udp', 'fetchserver')
-        else:
-            self.UDP_ENABLE      = 0
-
         if self.CONFIG.has_section('pac'):
             # XXX, cowork with GoAgentX
             self.PAC_ENABLE           = self.CONFIG.getint('pac','enable')
@@ -180,9 +172,6 @@ class Common(object):
             for (ip, port),(fetchhost, fetchserver) in common.PAAS_FETCH_INFO.iteritems():
                 info += 'PAAS Listen      : %s:%d\n' % (ip, port)
                 info += 'PAAS FetchServer : %s\n' % fetchserver
-        if common.UDP_ENABLE:
-            info += 'UDP Mode Listen  : %s\n' % common.UDP_LISTEN
-            info += 'UDP FetchServer  : %s\n' % common.UDP_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server       : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
@@ -1243,45 +1232,6 @@ class ProxyAndPacHandler(GAEProxyHandler, PacServerHandler):
         else:
             GAEProxyHandler.do_METHOD(self)
 
-def udpfetch(url, payload, method, headers, fetchserver, password=None, dns=None, on_error=None):
-    errors = []
-    params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
-    logging.debug('urlfetch params %s', params)
-    if password:
-        params['password'] = password
-    if common.FETCHMAX_SERVER:
-        params['fetchmax'] = common.FETCHMAX_SERVER
-    if dns:
-        params['dns'] = dns
-    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-    for i in xrange(common.FETCHMAX_LOCAL):
-        try:
-            logging.debug('udpfetch %r by %r', url, fetchserver)
-            data = zlib.compress(params, 9)
-            # TODO: tcp over udp
-            return (0, data)
-        except Exception:
-            time.sleep(i+1)
-            continue
-    return (-1, errors)
-
-class UDPProxyHandler(GAEProxyHandler):
-    def handle_fetch_error(self, error):
-        logging.error('UDPProxyHandler handle_fetch_error %s', error)
-
-    def fetch(self, url, payload, method, headers):
-        return udpfetch(url, payload, method, headers, common.UDP_FETCHSERVER, password=common.UDP_PASSWORD, on_error=self.handle_fetch_error)
-
-    def setup(self):
-        UDPProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
-        UDPProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
-        UDPProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
-        UDPProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
-        UDPProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
-        UDPProxyHandler.do_HEAD    = UDPProxyHandler.do_METHOD
-        UDPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
-        BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
-
 class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -1335,11 +1285,6 @@ def main():
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
         httpd = LocalProxyServer((common.PAC_IP,common.PAC_PORT),PacServerHandler)
         thread.start_new_thread(httpd.serve_forever,())
-
-    if common.UDP_ENABLE:
-        host, _, port = common.UDP_LISTEN.partition(':')
-        httpd = LocalProxyServer((host, int(port)), UDPProxyHandler)
-        thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT == common.LISTEN_PORT:
         httpd = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), ProxyAndPacHandler)
