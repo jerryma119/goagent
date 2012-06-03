@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.8.7'
+__version__ = '1.8.8'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -74,6 +74,13 @@ def paas_post(environ, start_response):
             conn = HTTPConnection(netloc, timeout=deadline)
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
+            content_length = response.getheader('content-length')
+            if content_length and int(content_length) > FetchMaxSize:
+                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
+                start = int(m.group(1) if m else 0)
+                headers['Range'] = 'bytes=%d-%d' % (start, start+FetchMaxSize-1)
+                response.close()
+                continue
             break
         except Exception, e:
             errors.append(str(e))
