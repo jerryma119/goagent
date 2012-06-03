@@ -868,7 +868,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             google_hosts_iplist = [list(dns_resolve(host)) for host in google_hosts]
                         common.GOOGLE_HOSTS = tuple(set(sum(google_hosts_iplist, google_iplist)))
                         if len(common.GOOGLE_HOSTS) == 0:
-                            logging.error('resolve common.GOOGLE_HOSTS domian to iplist return empty!')
+                            logging.error('resolve common.GOOGLE_HOSTS domian to iplist return empty! use default iplist')
                             common.GOOGLE_HOSTS = zlib.decompress(base64.b64decode(self.DefaultHosts)).split('|')
                         logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
