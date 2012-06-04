@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.8.7';
+$__version__  = '1.8.9';
 $__password__ = '';
 
 function encode_data($dic) {
@@ -313,7 +313,7 @@ function post()
     if ($__password__ && $__password__ != $password) {
         #return print_notify($method, $url, 403, 'Wrong password.');
         # prevent GFW detect
-        exit();
+        return get();
     }
 
     if (substr($url, 0, 4) != 'http') {
@@ -380,7 +380,6 @@ function post()
 }
 
 function get() {
-    header('Location: http://www.google.cn/webhp?source=g_cn');
 }
 
 function main() {

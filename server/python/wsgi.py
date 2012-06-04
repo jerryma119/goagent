@@ -102,7 +102,7 @@ def paas_post(environ, start_response):
 
 def paas_get(environ, start_response):
     redirect_url = 'http://www.google.cn/webhp?source=g_cn'
-    start_response('302 Found', [('Location', redirect_url), ('Content-Type', 'text/html; charset=UTF-8')])
+    start_response('200 OK', [('Content-Type', 'text/html; charset=UTF-8')])
     return ['']
 
 def gae_post(environ, start_response):
