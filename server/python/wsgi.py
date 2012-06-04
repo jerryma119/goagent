@@ -3,7 +3,7 @@
 # Based on GAppProxy by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
 
-__version__ = '1.8.8'
+__version__ = '1.8.9'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 

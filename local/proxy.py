@@ -5,7 +5,7 @@
 
 from __future__ import with_statement
 
-__version__ = '1.8.8'
+__version__ = '1.8.9'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
@@ -73,10 +73,11 @@ class Common(object):
         self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
-        self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
-        self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
-        self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
-        self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
+        paas_section = 'paas' if self.CONFIG.has_section('paas') else 'php'
+        self.PAAS_ENABLE           = self.CONFIG.getint(paas_section, 'enable')
+        self.PAAS_LISTEN           = self.CONFIG.get(paas_section, 'listen')
+        self.PAAS_PASSWORD         = self.CONFIG.get(paas_section, 'password') if self.CONFIG.has_option(paas_section, 'password') else ''
+        self.PAAS_FETCHSERVER      = self.CONFIG.get(paas_section, 'fetchserver')
 
         if self.CONFIG.has_section('pac'):
             # XXX, cowork with GoAgentX
