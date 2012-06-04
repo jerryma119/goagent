@@ -213,8 +213,8 @@ if __name__ == '__main__':
             line = self.rfile.readline(8192)
         return line
     gevent.pywsgi.WSGIHandler.read_requestline = read_requestline
-    port = int(sys.argv[1]) if len(sys.argv) == 2 else 8080
-    server = gevent.pywsgi.WSGIServer(('', port), application)
+    host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) == 2 else ('', ':', 8080)
+    server = gevent.pywsgi.WSGIServer((host, int(port)), application)
     logging.info('serving http://%s:%s/wsgi.py', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()
 
