@@ -74,8 +74,7 @@ def paas_post(environ, start_response):
             conn = HTTPConnection(netloc, timeout=deadline)
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
-            content_length = response.getheader('content-length')
-            if content_length and int(content_length) > FetchMaxSize:
+            if response.length and response.length > FetchMaxSize:
                 m = re.search('bytes=(\d+)-', headers.get('Range', ''))
                 start = int(m.group(1) if m else 0)
                 headers['Range'] = 'bytes=%d-%d' % (start, start+FetchMaxSize-1)
