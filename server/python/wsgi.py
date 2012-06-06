@@ -101,9 +101,17 @@ def paas_post(environ, start_response):
     return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
 
 def paas_get(environ, start_response):
-    redirect_url = 'http://www.google.cn/webhp?source=g_cn'
-    start_response('200 OK', [('Content-Type', 'text/html; charset=UTF-8')])
-    return ['']
+    host = re.sub(r'^[^\.]+', '8262cd6c7abfda4855329cb7ee317187', environ['SERVER_NAME'])
+    try:
+        conn = httplib.HTTPConnection(host)
+        conn.request('GET', '/')
+        response = conn.getresponse()
+        message = '%s %s' % (response.status, httplib.responses.get(response.status, 'OK'))
+        start_response(message, response.getheaders())
+        return [response.read()]
+    except Exception as e:
+        start_response('200 OK', [('Content-Type', 'text/html; charset=UTF-8')])
+        return ['']
 
 def gae_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
