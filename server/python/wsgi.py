@@ -181,11 +181,11 @@ def gae_post(environ, start_response):
 def gae_get(environ, start_response):
     timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)
     ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
-    html = u'GoAgent Python Server %s 已经在工作了，部署时间 %s\n' % (__version__, ctime)
+    html = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
     start_response('200 OK', [('Content-type', 'text/plain; charset=utf-8')])
     return [html.encode('utf8')]
 
-def application(environ, start_response):
+def app(environ, start_response):
     if urlfetch and environ['REQUEST_METHOD'] == 'POST':
         return gae_post(environ, start_response)
     elif environ['REQUEST_METHOD'] == 'POST':
@@ -198,7 +198,7 @@ def application(environ, start_response):
     else:
         return paas_get(environ, start_response)
 
-app = application
+application = app
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
