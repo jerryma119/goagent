@@ -5,13 +5,16 @@ __version__ = '1.8.9'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
-import sys, os, re, time, struct, zlib, binascii, logging
+import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse
 try:
     from google.appengine.api import urlfetch
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 except ImportError:
-    import httplib, urlparse
     urlfetch = None
+try:
+    import sae
+except ImportError:
+    sae = None
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
@@ -198,7 +201,10 @@ def app(environ, start_response):
     else:
         return paas_get(environ, start_response)
 
-application = app
+if sae:
+    application = sae.create_wsgi_app(app)
+else:
+    application = app
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
