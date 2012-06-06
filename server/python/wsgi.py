@@ -106,7 +106,7 @@ def paas_get(environ, start_response):
         conn = httplib.HTTPConnection(host)
         conn.request('GET', '/')
         response = conn.getresponse()
-        message = '%s %s' % (response.status, httplib.responses.get(response.status, 'OK'))
+        message = '%s %s' % (response.status, response.reason)
         start_response(message, response.getheaders())
         return [response.read()]
     except Exception as e:
