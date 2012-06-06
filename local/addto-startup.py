@@ -42,9 +42,16 @@ def main_macos():
 </dict>
 </plist>''' % dict(dirname=os.path.dirname(__file__))
     filename = '/System/Library/LaunchDaemons/org.goagent.macos.plist'
+    print 'write plist to %s' % filename
     with open(filename, 'wb') as fp:
         fp.write(PLIST)
+    print 'write plist to %s done' % filename
 
+def main_linux():
+    pass
+
+def main_windows():
+    pass
 
 def main():
     main_macos()
