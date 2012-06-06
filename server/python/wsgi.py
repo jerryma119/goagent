@@ -101,7 +101,7 @@ def paas_post(environ, start_response):
     return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
 
 def paas_get(environ, start_response):
-    host = re.sub(r'^[^\.]+', 'go%d' % int(time.time()*1000000), environ['SERVER_NAME'])
+    host = re.sub(r'^[^\.]+', 'go%d' % int(time.time()*1000000), environ['HTTP_HOST'])
     try:
         conn = httplib.HTTPConnection(host)
         conn.request('GET', '/')
@@ -226,6 +226,7 @@ if __name__ == '__main__':
     gevent.pywsgi.WSGIHandler.read_requestline = read_requestline
     host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) == 2 else ('', ':', 8080)
     server = gevent.pywsgi.WSGIServer((host, int(port)), application)
+    server.environ.pop('SERVER_SOFTWARE')
     logging.info('serving http://%s:%s/wsgi.py', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()
 
