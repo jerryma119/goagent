@@ -101,7 +101,7 @@ def paas_post(environ, start_response):
     return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
 
 def paas_get(environ, start_response):
-    host = re.sub(r'^[^\.]+', 'go%d' % int(time.time()*1000000), environ['HTTP_HOST'])
+    host = 'go%s%s' % (int(time.time()*1000000), environ['HTTP_HOST'])
     try:
         conn = httplib.HTTPConnection(host)
         conn.request('GET', '/')
