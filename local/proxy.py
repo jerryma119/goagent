@@ -5,7 +5,7 @@
 
 from __future__ import with_statement
 
-__version__ = '1.8.9'
+__version__ = '1.8.10'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
@@ -205,10 +205,9 @@ class MultiplexConnection(object):
             hosts = random.sample(hostlist, window) if len(hostlist) > window else hostlist
             logging.debug('MultiplexConnection try connect hosts=%s, port=%d', hosts, port)
             socks = []
-            sock_family = socket.AF_INET6 if ':' in hosts[0] else socket.AF_INET
             # multiple connect start here
             for host in hosts:
-                sock = socket.socket(sock_family, socket.SOCK_STREAM)
+                sock = socket.socket(2 if ':' in host else 23, socket.SOCK_STREAM)
                 sock.setblocking(0)
                 #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
                 err = sock.connect_ex((host, port))
