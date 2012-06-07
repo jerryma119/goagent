@@ -110,7 +110,7 @@ def paas_get(environ, start_response):
         start_response(message, response.getheaders())
         return [response.read()]
     except Exception as e:
-        start_response('200 OK', [('Content-Type', 'text/html; charset=UTF-8')])
+        start_response('503 Service Unavailable', [('Content-Type', 'text/html; charset=UTF-8')])
         return ['']
 
 def gae_post(environ, start_response):
