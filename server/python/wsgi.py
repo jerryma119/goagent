@@ -90,12 +90,21 @@ def paas_post(environ, start_response):
     else:
         return send_notify(start_response, method, url, 500, 'Python PaaS Server: HTTPConnection error: %s' % errors)
 
-    headers = {}
-    for key, value in response.getheaders():
-        if key == 'set-cookie':
-            headers['set-cookie'] = headers.get('set-cookie', '') + '\r\nSet-Cookie: %s' % value
-        else:
-            headers[key] = value
+    headers = dict(response.getheaders())
+    if 'set-cookie' in headers:
+        scs = headers['set-cookie'].split(', ')
+        cookies = []
+        i = -1
+        for sc in scs:
+            if re.match(r'[^ =]+ ', sc):
+                try:
+                    cookies[i] = '%s, %s' % (cookies[i], sc)
+                except IndexError:
+                    pass
+            else:
+                cookies.append(sc)
+                i += 1
+        headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
     headers['connection'] = 'close'
 
     return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
