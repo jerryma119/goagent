@@ -5,7 +5,7 @@
 
 from __future__ import with_statement
 
-__version__ = '1.8.10'
+__version__ = '1.8.11'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
@@ -870,6 +870,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         if len(common.GOOGLE_HOSTS) == 0:
                             logging.error('resolve common.GOOGLE_HOSTS domian to iplist return empty! use default iplist')
                             common.GOOGLE_HOSTS = zlib.decompress(base64.b64decode(self.DefaultHosts)).split('|')
+                        common.GOOGLE_HOSTS = tuple(x for x in common.GOOGLE_HOSTS if ':' not in x)
                         logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
