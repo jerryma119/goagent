@@ -78,6 +78,7 @@ class Common(object):
         self.PAAS_LISTEN           = self.CONFIG.get(paas_section, 'listen')
         self.PAAS_PASSWORD         = self.CONFIG.get(paas_section, 'password') if self.CONFIG.has_option(paas_section, 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get(paas_section, 'fetchserver')
+        self.PAAS_CONNECT          = self.CONFIG.get(paas_section, 'connect') if self.CONFIG.has_option(paas_section, 'connect') else 0
         self.PAAS_FETCHHOST        = urlparse.urlparse(self.PAAS_FETCHSERVER).netloc
 
         if self.CONFIG.has_section('pac'):
@@ -1202,7 +1203,7 @@ class PAASProxyHandler(GAEProxyHandler):
         PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
         PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
 
-        if not common.PAAS_FETCHHOST.endswith(('127.0.0.1', '.herokuapp.com', '.sinaapp.com', 'rhccloud.com')):
+        if not common.PAAS_CONNECT:
             PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
 
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
