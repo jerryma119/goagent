@@ -97,7 +97,12 @@ def paas_post_tunnel(environ, start_response, request=None):
 
     try:
         # XXX: only test in gevent
-        local = environ['wsgi.input'].rfile._sock
+        if hasattr(environ['wsgi.input'], 'rfile'):
+            local = environ['wsgi.input'].rfile._sock
+        elif hasattr(environ['wsgi.input'], 'fileno'):
+            local = environ['wsgi.input']
+        else:
+            pass
         if method == 'CONNECT':
             host, _, port = url.rpartition(':')
             remote = socket.create_connection((host, int(port)))
@@ -122,7 +127,7 @@ def paas_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
     #logging.debug('post() get fetch request %s', request)
 
-    if int(request.get('tunnel', 0)):
+    if request.get('tunnel'):
         logging.info('redirect to paas_post_tunnel')
         return paas_post_tunnel(environ, start_response, request=request)
 
