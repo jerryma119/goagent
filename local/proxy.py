@@ -5,7 +5,7 @@
 
 from __future__ import with_statement
 
-__version__ = '1.8.11'
+__version__ = '1.9.0dev'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
@@ -78,6 +78,7 @@ class Common(object):
         self.PAAS_LISTEN           = self.CONFIG.get(paas_section, 'listen')
         self.PAAS_PASSWORD         = self.CONFIG.get(paas_section, 'password') if self.CONFIG.has_option(paas_section, 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get(paas_section, 'fetchserver')
+        self.PAAS_FETCHHOST        = urlparse.urlparse(self.PAAS_FETCHSERVER).netloc
 
         if self.CONFIG.has_section('pac'):
             # XXX, cowork with GoAgentX
@@ -134,7 +135,6 @@ class Common(object):
         self.HOSTS                = dict((k, tuple(v.split('|')) if v else tuple()) for k, v in self.CONFIG.items('hosts'))
 
         self.build_gae_fetchserver()
-        self.PAAS_FETCH_INFO       = dict(((listen.rpartition(':')[0], int(listen.rpartition(':')[-1])), (re.sub(r':\d+$', '', urlparse.urlparse(server).netloc), server)) for listen, server in zip(self.PAAS_LISTEN.split('|'), [re.sub(r'/index\.[^/]+$','/',x) for x in self.PAAS_FETCHSERVER.split('|')]))
 
     def build_gae_fetchserver(self):
         """rebuild gae fetch server config"""
@@ -170,9 +170,8 @@ class Common(object):
         info += 'GAE Profile      : %s\n' % self.GAE_PROFILE
         info += 'GAE APPID        : %s\n' % '|'.join(self.GAE_APPIDS)
         if common.PAAS_ENABLE:
-            for (ip, port),(fetchhost, fetchserver) in common.PAAS_FETCH_INFO.iteritems():
-                info += 'PAAS Listen      : %s:%d\n' % (ip, port)
-                info += 'PAAS FetchServer : %s\n' % fetchserver
+            info += 'PAAS Listen      : %s\n' % common.PAAS_LISTEN
+            info += 'PAAS FetchServer : %s\n' % common.PAAS_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server       : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
@@ -1127,41 +1126,85 @@ class PAASProxyHandler(GAEProxyHandler):
 
     HOSTS = {}
 
+    def do_CONNECT(self):
+        try:
+            logging.debug('PAASProxyHandler.do_CONNECT %s' % self.path)
+            idlecall = None
+            if not common.PROXY_ENABLE:
+                fetchhost = common.PAAS_FETCHHOST
+                fetchport ={'http':80, 'https':443}[urlparse.urlparse(common.PAAS_FETCHSERVER).scheme]
+                if fetchhost in common.HOSTS:
+                    conn = MultiplexConnection(common.HOSTS[fetchhost], fetchport)
+                    sock = conn.socket
+                    idlecall = conn.close
+                else:
+                    sock = socket.create_connection((fetchhost, fetchport))
+                self.log_request(200)
+            else:
+                assert NotImplemented
+
+            params = {'url':self.path, 'method':self.command, 'headers':''}
+            logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
+            if common.PAAS_PASSWORD:
+                params['password'] = common.PAAS_PASSWORD
+            if common.FETCHMAX_SERVER:
+                params['fetchmax'] = common.FETCHMAX_SERVER
+            if False:
+                params['dns'] = dns
+            params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+            params =  zlib.compress(params)
+
+            data = 'POST %s HTTP/1.1\r\nConnection: keep-alive\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHSERVER, len(params), params)
+            sock.sendall(data)
+
+            self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
+            socket_forward(self.connection, sock, idlecall=idlecall)
+        except Exception:
+            logging.exception('PAASProxyHandler.do_CONNECT_Direct Error')
+        finally:
+            try:
+                sock.close()
+                del sock
+            except:
+                pass
+
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
         httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
 
     def fetch(self, url, payload, method, headers):
-        fetchhost, fetchserver = common.PAAS_FETCH_INFO[self.server.server_address]
         dns  = None
         host = self.headers.get('Host')
         if host in PAASProxyHandler.HOSTS:
             dns = random.choice(tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)))
-        return urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=common.PAAS_PASSWORD, dns=dns, on_error=self.handle_fetch_error)
+        return urlfetch(url, payload, method, headers, common.PAAS_FETCHHOST, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
         PAASProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
         if common.PROXY_ENABLE:
             logging.info('Local Proxy is enable, PAASProxyHandler dont resole DNS')
         else:
-            for fetchhost, _ in common.PAAS_FETCH_INFO.itervalues():
-                logging.info('PAASProxyHandler.setup check %s is in common.HOSTS', fetchhost)
-                if fetchhost not in common.HOSTS:
-                    with GAEProxyHandler.SetupLock:
-                        if fetchhost not in common.HOSTS:
-                            try:
-                                logging.info('Resole PAAS fetchserver address.')
-                                common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
-                                logging.info('Resole PAAS fetchserver address OK. %s', common.HOSTS[fetchhost])
-                            except Exception:
-                                logging.exception('PAASProxyHandler.setup resolve fail')
-        PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
+            logging.info('PAASProxyHandler.setup check %s is in common.HOSTS', common.PAAS_FETCHHOST)
+            if common.PAAS_FETCHHOST not in common.HOSTS:
+                with GAEProxyHandler.SetupLock:
+                    if common.PAAS_FETCHHOST not in common.HOSTS:
+                        try:
+                            logging.info('Resole PAAS fetchserver address.')
+                            common.HOSTS[common.PAAS_FETCHHOST] = tuple(x[-1][0] for x in socket.getaddrinfo(common.PAAS_FETCHHOST, 80))
+                            logging.info('Resole PAAS fetchserver address OK. %s', common.HOSTS[common.PAAS_FETCHHOST])
+                        except Exception:
+                            logging.exception('PAASProxyHandler.setup resolve fail')
+
         PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
         PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
         PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
         PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
         PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
         PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
+
+        if not common.PAAS_FETCHHOST.endswith(('127.0.0.1', '.herokuapp.com', '.sinaapp.com', 'rhccloud.com')):
+            PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
+
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -1279,9 +1322,9 @@ def main():
     LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
 
     if common.PAAS_ENABLE:
-        for address in common.PAAS_FETCH_INFO:
-            httpd = LocalProxyServer(address, PAASProxyHandler)
-            thread.start_new_thread(httpd.serve_forever, ())
+        host, _, port = common.PAAS_LISTEN.partition(':')
+        httpd = LocalProxyServer((host, int(port)), PAASProxyHandler)
+        thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
         httpd = LocalProxyServer((common.PAC_IP,common.PAC_PORT),PacServerHandler)

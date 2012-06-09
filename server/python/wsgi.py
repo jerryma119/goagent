@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 
-__version__ = '1.8.11'
+__version__ = '1.9.0dev'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -15,6 +15,10 @@ try:
     import sae
 except ImportError:
     sae = None
+try:
+    import socket, ssl, select
+except:
+    socket = None
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
@@ -41,13 +45,65 @@ def send_notify(start_response, method, url, status, content):
     content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
+    timecount = timeout
+    try:
+        while 1:
+            timecount -= tick
+            if timecount <= 0:
+                break
+            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
+            if errors:
+                break
+            if ins:
+                for sock in ins:
+                    data = sock.recv(bufsize)
+                    if data:
+                        if sock is local:
+                            remote.sendall(data)
+                            timecount = maxping or timeout
+                        else:
+                            local.sendall(data)
+                            timecount = maxpong or timeout
+                    else:
+                        return
+            else:
+                if idlecall:
+                    try:
+                        idlecall()
+                    except Exception:
+                        logging.exception('socket_forward idlecall fail')
+                    finally:
+                        idlecall = None
+    except Exception:
+        logging.exception('socket_forward error')
+        raise
+    finally:
+        if idlecall:
+            idlecall()
+
 def paas_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
     url = request['url']
-    payload = request['payload'] or None
+    payload = request.get('payload')
+
+    if method == 'CONNECT':
+        if socket is None:
+            return paas_get(environ, start_response)
+        host, _, port = url.rpartition(':')
+        # XXX: only test in gevent
+        local = environ['wsgi.input'].rfile._sock
+        remote = socket.create_connection((host, int(port)))
+        print (local, remote)
+        try:
+            socket_forward(local, remote)
+        except Exception, e:
+            logging.exception('socket_forward(local, remote) %s', e)
+            start_response('500', [])
+            return [str(e)]
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers['Connection'] = 'close'
