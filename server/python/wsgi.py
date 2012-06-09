@@ -17,8 +17,10 @@ except ImportError:
     sae = None
 try:
     import socket, ssl, select
+    paas_connect = True
 except:
     socket = None
+    paas_connect = False
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
@@ -90,14 +92,12 @@ def paas_post(environ, start_response):
     url = request['url']
     payload = request.get('payload')
 
-    if method == 'CONNECT':
-        if socket is None:
-            return paas_get(environ, start_response)
+    if paas_connect and method == 'CONNECT':
         host, _, port = url.rpartition(':')
         # XXX: only test in gevent
-        local = environ['wsgi.input'].rfile._sock
-        remote = socket.create_connection((host, int(port)))
         try:
+            local = environ['wsgi.input'].rfile._sock
+            remote = socket.create_connection((host, int(port)))
             logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)
             socket_forward(local, remote, timeout=300)
         except Exception, e:
