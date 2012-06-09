@@ -123,6 +123,7 @@ def paas_post(environ, start_response):
     #logging.debug('post() get fetch request %s', request)
 
     if request.get('tunnel'):
+        logging.info('redirect to paas_post_tunnel')
         return paas_post_tunnel(environ, start_response, request=request)
 
     method = request['method']

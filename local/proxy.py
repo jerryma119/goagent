@@ -1134,7 +1134,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
     def do_CONNECT(self):
         try:
-            logging.debug('PAASProxyHandler.do_CONNECT %s' % self.path)
+            logging.debug('PAASProxyHandler.do_CONNECT %s', self.path)
             idlecall = None
             if not common.PROXY_ENABLE:
                 if common.PAAS_FETCHHOST in common.HOSTS:
@@ -1164,7 +1164,7 @@ class PAASProxyHandler(GAEProxyHandler):
             self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
             socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception as e:
-            logging.exception('PAASProxyHandler.do_CONNECT_Direct Error: %s', e)
+            logging.exception('PAASProxyHandler.do_CONNECT Error: %s', e)
         finally:
             try:
                 sock.close()
@@ -1173,7 +1173,43 @@ class PAASProxyHandler(GAEProxyHandler):
                 pass
 
     def do_METHOD(self):
-        raise NotImplemented
+        try:
+            logging.debug('PAASProxyHandler.do_METHOD %s %s ', self.command, self.path)
+            idlecall = None
+            if not common.PROXY_ENABLE:
+                if common.PAAS_FETCHHOST in common.HOSTS:
+                    conn = MultiplexConnection(common.HOSTS[common.PAAS_FETCHHOST], common.PAAS_FETCHPORT)
+                    sock = conn.socket
+                    idlecall = conn.close
+                else:
+                    sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
+                self.log_request(200)
+            else:
+                raise NotImplemented
+
+            params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
+            logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
+            if common.PAAS_PASSWORD:
+                params['password'] = common.PAAS_PASSWORD
+            if common.FETCHMAX_SERVER:
+                params['fetchmax'] = common.FETCHMAX_SERVER
+            if False:
+                params['dns'] = dns
+            params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+            params =  zlib.compress(params)
+
+            data = 'POST / HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHHOST, len(params), params)
+            sock.sendall(data)
+
+            socket_forward(self.connection, sock, idlecall=idlecall)
+        except Exception as e:
+            logging.exception('PAASProxyHandler.do_METHOD Error: %s', e)
+        finally:
+            try:
+                sock.close()
+                del sock
+            except:
+                pass
 
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
@@ -1202,15 +1238,20 @@ class PAASProxyHandler(GAEProxyHandler):
                         except Exception:
                             logging.exception('PAASProxyHandler.setup resolve fail')
 
-        PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
         PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
         PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
 
         if not common.PAAS_TUNNEL:
             PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
+            PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
+            PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
+            PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
+            PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
+            PAASProxyHandler.do_HEAD    = GAEProxyHandler.do_METHOD_Tunnel
 
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
