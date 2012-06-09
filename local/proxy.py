@@ -78,7 +78,7 @@ class Common(object):
         self.PAAS_LISTEN           = self.CONFIG.get(paas_section, 'listen')
         self.PAAS_PASSWORD         = self.CONFIG.get(paas_section, 'password') if self.CONFIG.has_option(paas_section, 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get(paas_section, 'fetchserver')
-        self.PAAS_TUNNEL           = self.CONFIG.get(paas_section, 'tunnel') if self.CONFIG.has_option(paas_section, 'tunnel') else 0
+        self.PAAS_TUNNEL           = self.CONFIG.getint(paas_section, 'tunnel') if self.CONFIG.has_option(paas_section, 'tunnel') else 0
         self.PAAS_FETCHHOST        = urlparse.urlparse(self.PAAS_FETCHSERVER).netloc
         self.PAAS_FETCHPORT        = 443 if self.PAAS_FETCHSERVER.startswith('https://') else 80
         if re.search(r':\d+$', self.PAAS_FETCHHOST):

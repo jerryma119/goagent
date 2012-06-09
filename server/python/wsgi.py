@@ -122,7 +122,7 @@ def paas_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
     #logging.debug('post() get fetch request %s', request)
 
-    if request.get('tunnel'):
+    if int(request.get('tunnel', 0)):
         logging.info('redirect to paas_post_tunnel')
         return paas_post_tunnel(environ, start_response, request=request)
 
