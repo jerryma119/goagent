@@ -97,13 +97,12 @@ def paas_post(environ, start_response):
         # XXX: only test in gevent
         local = environ['wsgi.input'].rfile._sock
         remote = socket.create_connection((host, int(port)))
-        print (local, remote)
         try:
-            socket_forward(local, remote)
+            logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)
+            socket_forward(local, remote, timeout=300)
         except Exception, e:
-            logging.exception('socket_forward(local, remote) %s', e)
-            start_response('500', [])
-            return [str(e)]
+            logging.exception('socket_forward(local=%s, remote=%s) %s', local, remote, e)
+            return paas_get(environ, start_response)
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers['Connection'] = 'close'
