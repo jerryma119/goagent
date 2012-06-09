@@ -80,6 +80,11 @@ class Common(object):
         self.PAAS_FETCHSERVER      = self.CONFIG.get(paas_section, 'fetchserver')
         self.PAAS_TUNNEL           = self.CONFIG.get(paas_section, 'tunnel') if self.CONFIG.has_option(paas_section, 'tunnel') else 0
         self.PAAS_FETCHHOST        = urlparse.urlparse(self.PAAS_FETCHSERVER).netloc
+        self.PAAS_FETCHPORT        = 443 if self.PAAS_FETCHSERVER.startswith('https://') else 80
+        if re.search(r':\d+$', self.PAAS_FETCHHOST):
+            m = re.search(r'^(.+):(\d+)$', self.PAAS_FETCHHOST)
+            self.PAAS_FETCHHOST = m.group(1)
+            self.PAAS_FETCHPORT = int(m.group(2))
 
         if self.CONFIG.has_section('pac'):
             # XXX, cowork with GoAgentX
@@ -1132,17 +1137,15 @@ class PAASProxyHandler(GAEProxyHandler):
             logging.debug('PAASProxyHandler.do_CONNECT %s' % self.path)
             idlecall = None
             if not common.PROXY_ENABLE:
-                fetchhost = common.PAAS_FETCHHOST
-                fetchport ={'http':80, 'https':443}[urlparse.urlparse(common.PAAS_FETCHSERVER).scheme]
-                if fetchhost in common.HOSTS:
-                    conn = MultiplexConnection(common.HOSTS[fetchhost], fetchport)
+                if common.PAAS_FETCHHOST in common.HOSTS:
+                    conn = MultiplexConnection(common.HOSTS[common.PAAS_FETCHHOST], common.PAAS_FETCHPORT)
                     sock = conn.socket
                     idlecall = conn.close
                 else:
-                    sock = socket.create_connection((fetchhost, fetchport))
+                    sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
                 self.log_request(200)
             else:
-                assert NotImplemented
+                raise NotImplemented
 
             params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
             logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
@@ -1168,6 +1171,9 @@ class PAASProxyHandler(GAEProxyHandler):
                 del sock
             except:
                 pass
+
+    def do_METHOD(self):
+        raise NotImplemented
 
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
