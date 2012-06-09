@@ -84,25 +84,50 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
-def paas_post(environ, start_response):
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
-    #logging.debug('post() get fetch request %s', request)
+def paas_post_tunnel(environ, start_response, request=None):
+    if not request:
+        request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
 
     method = request['method']
     url = request['url']
     payload = request.get('payload')
 
-    if paas_connect and method == 'CONNECT':
-        host, _, port = url.rpartition(':')
+    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    #headers['Connection'] = 'close'
+
+    try:
         # XXX: only test in gevent
-        try:
-            local = environ['wsgi.input'].rfile._sock
+        local = environ['wsgi.input'].rfile._sock
+        if method == 'CONNECT':
+            host, _, port = url.rpartition(':')
             remote = socket.create_connection((host, int(port)))
-            logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)
-            socket_forward(local, remote, timeout=300)
-        except Exception, e:
-            logging.exception('socket_forward(local=%s, remote=%s) %s', local, remote, e)
-            return paas_get(environ, start_response)
+        else:
+            scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+            HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+            if params:
+                path += ';' + params
+            if query:
+                path += '?' + query
+            conn = HTTPConnection(netloc, timeout=Deadline)
+            conn.request(method, path, body=payload, headers=headers)
+            remote = conn.sock
+        logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)
+        socket_forward(local, remote, timeout=300)
+    except Exception as e:
+        logging.exception('paas_post_tunnel method=%r url=%r error %s', method, url, e)
+        return paas_get(environ, start_response)
+
+
+def paas_post(environ, start_response):
+    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
+    #logging.debug('post() get fetch request %s', request)
+
+    if request.get('tunnel'):
+        return paas_post_tunnel(environ, start_response, request=request)
+
+    method = request['method']
+    url = request['url']
+    payload = request.get('payload')
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers['Connection'] = 'close'

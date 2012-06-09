@@ -78,7 +78,7 @@ class Common(object):
         self.PAAS_LISTEN           = self.CONFIG.get(paas_section, 'listen')
         self.PAAS_PASSWORD         = self.CONFIG.get(paas_section, 'password') if self.CONFIG.has_option(paas_section, 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get(paas_section, 'fetchserver')
-        self.PAAS_CONNECT          = self.CONFIG.get(paas_section, 'connect') if self.CONFIG.has_option(paas_section, 'connect') else 0
+        self.PAAS_TUNNEL           = self.CONFIG.get(paas_section, 'tunnel') if self.CONFIG.has_option(paas_section, 'tunnel') else 0
         self.PAAS_FETCHHOST        = urlparse.urlparse(self.PAAS_FETCHSERVER).netloc
 
         if self.CONFIG.has_section('pac'):
@@ -1144,7 +1144,7 @@ class PAASProxyHandler(GAEProxyHandler):
             else:
                 assert NotImplemented
 
-            params = {'url':self.path, 'method':self.command, 'headers':''}
+            params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
             logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
             if common.PAAS_PASSWORD:
                 params['password'] = common.PAAS_PASSWORD
@@ -1160,8 +1160,8 @@ class PAASProxyHandler(GAEProxyHandler):
 
             self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
             socket_forward(self.connection, sock, idlecall=idlecall)
-        except Exception:
-            logging.exception('PAASProxyHandler.do_CONNECT_Direct Error')
+        except Exception as e:
+            logging.exception('PAASProxyHandler.do_CONNECT_Direct Error: %s', e)
         finally:
             try:
                 sock.close()
@@ -1203,7 +1203,7 @@ class PAASProxyHandler(GAEProxyHandler):
         PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
         PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
 
-        if not common.PAAS_CONNECT:
+        if not common.PAAS_TUNNEL:
             PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
 
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
