@@ -1155,7 +1155,7 @@ class PAASProxyHandler(GAEProxyHandler):
             params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
             params =  zlib.compress(params)
 
-            data = 'POST %s HTTP/1.1\r\nConnection: keep-alive\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHSERVER, len(params), params)
+            data = 'POST / HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHHOST, len(params), params)
             sock.sendall(data)
 
             self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
