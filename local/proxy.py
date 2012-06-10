@@ -35,6 +35,7 @@ import socket
 import ssl
 import select
 import httplib
+import string
 import urllib2
 import BaseHTTPServer
 import SocketServer
@@ -319,8 +320,10 @@ def socket_create_connection((host, port), timeout=None, source_address=None):
         raise socket.error, msg
 socket.create_connection = socket_create_connection
 
-def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, translate=0):
     timecount = timeout
+    if translate:
+        trans = string.maketrans(''.join(chr(x) for x in xrange(256)), ''.join(chr(((x+128)%256)) for x in xrange(256)))
     try:
         while 1:
             timecount -= tick
@@ -334,9 +337,13 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                     data = sock.recv(bufsize)
                     if data:
                         if sock is local:
+                            if translate & 0x1:
+                                data = data.translate(trans)
                             remote.sendall(data)
                             timecount = maxping or timeout
                         else:
+                            if translate & 0x2:
+                                data = data.translate(trans)
                             local.sendall(data)
                             timecount = maxpong or timeout
                     else:
@@ -1162,7 +1169,7 @@ class PAASProxyHandler(GAEProxyHandler):
             sock.sendall(data)
 
             self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
-            socket_forward(self.connection, sock, idlecall=idlecall)
+            socket_forward(self.connection, sock, idlecall=idlecall, translate=3)
         except Exception as e:
             logging.exception('PAASProxyHandler.do_CONNECT Error: %s', e)
         finally:
@@ -1201,7 +1208,7 @@ class PAASProxyHandler(GAEProxyHandler):
             data = 'POST / HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHHOST, len(params), params)
             sock.sendall(data)
 
-            socket_forward(self.connection, sock, idlecall=idlecall)
+            socket_forward(self.connection, sock, idlecall=idlecall, translate=3)
         except Exception as e:
             logging.exception('PAASProxyHandler.do_METHOD Error: %s', e)
         finally:
