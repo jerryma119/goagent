@@ -13,6 +13,7 @@ except ImportError:
     urlfetch = None
 try:
     import sae
+    import sae.ext.shell
 except ImportError:
     sae = None
 try:
@@ -305,6 +306,7 @@ def app(environ, start_response):
         return paas_get(environ, start_response)
 
 if sae:
+    #application = sae.create_wsgi_app(sae.ext.shell.ShellMiddleware(app, __password__ or 'hugoxxxx'))
     application = sae.create_wsgi_app(app)
 else:
     application = app
