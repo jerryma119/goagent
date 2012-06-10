@@ -354,6 +354,6 @@ if __name__ == '__main__':
     host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) == 2 else ('', ':', 8080)
     server = gevent.pywsgi.WSGIServer((host, int(port)), application)
     server.environ.pop('SERVER_SOFTWARE')
-    logging.info('serving https://%s:%s/', socket.getfqdn(), server.address[1])
+    logging.info('serving http://%s:%s/', socket.getfqdn(), server.address[1])
     server.serve_forever()
 
