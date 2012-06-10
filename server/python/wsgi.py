@@ -109,7 +109,7 @@ def paas_post_tunnel(environ, start_response, request=None):
         elif hasattr(environ['wsgi.input'], 'fileno'):
             local = socket.fromfd(environ['wsgi.input'].fileno())
         else:
-            pass
+            local = None
         if method == 'CONNECT':
             host, _, port = url.rpartition(':')
             if 'dns' in request:
@@ -128,8 +128,25 @@ def paas_post_tunnel(environ, start_response, request=None):
                 conn = HTTPConnection(request['dns'], timeout=Deadline)
             conn.request(method, path, body=payload, headers=headers)
             remote = conn.sock
-        logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)
-        socket_forward(local, remote, timeout=300, translate=3)
+        if local is not None:
+            logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)
+            socket_forward(local, remote, timeout=300, translate=3)
+        else:
+            # XXX: still not work
+            if method == 'CONNECT':
+                remote = ssl.wrap_socket(remote)
+            rfile = remote.makefile('rb', -1)
+            response_line = rfile.readline()
+            response_headers = []
+            while 1:
+                line = rfile.readline()
+                if line == '\r\n':
+                    break
+                else:
+                    key, _, value = line.partition(':')
+                    response_headers.append((key.strip(), value.strip()))
+            start_response(' '.join(response_line.split()[-2:]), response_headers)
+            return iter(rfile)
     except Exception as e:
         logging.exception('paas_post_tunnel method=%r url=%r error %s', method, url, e)
         return paas_get(environ, start_response)
