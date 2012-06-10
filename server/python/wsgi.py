@@ -100,7 +100,7 @@ def paas_post_tunnel(environ, start_response, request=None):
         if hasattr(environ['wsgi.input'], 'rfile'):
             local = environ['wsgi.input'].rfile._sock
         elif hasattr(environ['wsgi.input'], 'fileno'):
-            local = environ['wsgi.input']
+            local = socket.fromfd(environ['wsgi.input'].fileno())
         else:
             pass
         if method == 'CONNECT':
