@@ -100,6 +100,7 @@ def paas_post_tunnel(environ, start_response, request=None):
     payload = request.get('payload')
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    headers.pop('Proxy-Connection', None)
     #headers['Connection'] = 'close'
 
     try:
@@ -165,6 +166,7 @@ def paas_post(environ, start_response):
     payload = request.get('payload')
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    headers.pop('Proxy-Connection', None)
     headers['Connection'] = 'close'
 
     if 'dns' in request:
