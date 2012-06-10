@@ -112,6 +112,8 @@ def paas_post_tunnel(environ, start_response, request=None):
             pass
         if method == 'CONNECT':
             host, _, port = url.rpartition(':')
+            if 'dns' in request:
+                host = request['dns']
             remote = socket.create_connection((host, int(port)))
         else:
             scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
@@ -120,7 +122,10 @@ def paas_post_tunnel(environ, start_response, request=None):
                 path += ';' + params
             if query:
                 path += '?' + query
-            conn = HTTPConnection(netloc, timeout=Deadline)
+            if 'dns' not in request:
+                conn = HTTPConnection(netloc, timeout=Deadline)
+            else:
+                conn = HTTPConnection(request['dns'], timeout=Deadline)
             conn.request(method, path, body=payload, headers=headers)
             remote = conn.sock
         logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)

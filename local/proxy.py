@@ -1144,8 +1144,8 @@ class PAASProxyHandler(GAEProxyHandler):
             logging.debug('PAASProxyHandler.do_CONNECT %s', self.path)
             idlecall = None
             if not common.PROXY_ENABLE:
-                if common.PAAS_FETCHHOST in common.HOSTS:
-                    conn = MultiplexConnection(common.HOSTS[common.PAAS_FETCHHOST], common.PAAS_FETCHPORT)
+                if common.PAAS_FETCHHOST in PAASProxyHandler.HOSTS:
+                    conn = MultiplexConnection(PAASProxyHandler.HOSTS[common.PAAS_FETCHHOST], common.PAAS_FETCHPORT)
                     sock = conn.socket
                     idlecall = conn.close
                 else:
@@ -1160,8 +1160,9 @@ class PAASProxyHandler(GAEProxyHandler):
                 params['password'] = common.PAAS_PASSWORD
             if common.FETCHMAX_SERVER:
                 params['fetchmax'] = common.FETCHMAX_SERVER
-            if False:
-                params['dns'] = dns
+            host = self.path.rpartition(':')[0]
+            if host in PAASProxyHandler.HOSTS:
+                params['dns'] = PAASProxyHandler.HOSTS[host] or socket.gethostbyname(host)
             params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
             params =  zlib.compress(params)
 
@@ -1184,8 +1185,8 @@ class PAASProxyHandler(GAEProxyHandler):
             logging.debug('PAASProxyHandler.do_METHOD %s %s ', self.command, self.path)
             idlecall = None
             if not common.PROXY_ENABLE:
-                if common.PAAS_FETCHHOST in common.HOSTS:
-                    conn = MultiplexConnection(common.HOSTS[common.PAAS_FETCHHOST], common.PAAS_FETCHPORT)
+                if common.PAAS_FETCHHOST in PAASProxyHandler.HOSTS:
+                    conn = MultiplexConnection(PAASProxyHandler.HOSTS[common.PAAS_FETCHHOST], common.PAAS_FETCHPORT)
                     sock = conn.socket
                     idlecall = conn.close
                 else:
@@ -1200,8 +1201,10 @@ class PAASProxyHandler(GAEProxyHandler):
                 params['password'] = common.PAAS_PASSWORD
             if common.FETCHMAX_SERVER:
                 params['fetchmax'] = common.FETCHMAX_SERVER
-            if False:
-                params['dns'] = dns
+            netloc = urlparse.urlparse(self.path).netloc
+            host = netloc.rpartition(':')[0] or netloc
+            if host in PAASProxyHandler.HOSTS:
+                params['dns'] = PAASProxyHandler.HOSTS[host] or socket.gethostbyname(PAASProxyHandler.HOSTS[host])
             params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
             params =  zlib.compress(params)
 
@@ -1234,14 +1237,14 @@ class PAASProxyHandler(GAEProxyHandler):
         if common.PROXY_ENABLE:
             logging.info('Local Proxy is enable, PAASProxyHandler dont resole DNS')
         else:
-            logging.info('PAASProxyHandler.setup check %s is in common.HOSTS', common.PAAS_FETCHHOST)
-            if common.PAAS_FETCHHOST not in common.HOSTS:
+            logging.info('PAASProxyHandler.setup check %s is in PAASProxyHandler.HOSTS', common.PAAS_FETCHHOST)
+            if common.PAAS_FETCHHOST not in PAASProxyHandler.HOSTS:
                 with GAEProxyHandler.SetupLock:
-                    if common.PAAS_FETCHHOST not in common.HOSTS:
+                    if common.PAAS_FETCHHOST not in PAASProxyHandler.HOSTS:
                         try:
                             logging.info('Resole PAAS fetchserver address.')
-                            common.HOSTS[common.PAAS_FETCHHOST] = tuple(x[-1][0] for x in socket.getaddrinfo(common.PAAS_FETCHHOST, 80))
-                            logging.info('Resole PAAS fetchserver address OK. %s', common.HOSTS[common.PAAS_FETCHHOST])
+                            PAASProxyHandler.HOSTS[common.PAAS_FETCHHOST] = tuple(x[-1][0] for x in socket.getaddrinfo(common.PAAS_FETCHHOST, 80))
+                            logging.info('Resole PAAS fetchserver address OK. %s', PAASProxyHandler.HOSTS[common.PAAS_FETCHHOST])
                         except Exception:
                             logging.exception('PAASProxyHandler.setup resolve fail')
 
