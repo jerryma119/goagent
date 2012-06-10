@@ -941,8 +941,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if host in common.HOSTS:
                     iplist = common.HOSTS[host]
                     if not iplist:
-                        common.HOSTS[host] = iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
-                    conn = MultiplexConnection(iplist, port)
+                        iplist = common.HOSTS[host] = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
                 else:
                     iplist = (host,)
                 if 'Host' in self.headers:
@@ -1152,7 +1151,19 @@ class PAASProxyHandler(GAEProxyHandler):
                     sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
                 self.log_request(200)
             else:
-                raise NotImplemented
+                sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
+                if host in common.HOSTS:
+                    iplist = common.HOSTS[host]
+                    if not iplist:
+                        iplist = common.HOSTS[host] = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+                else:
+                    iplist = (host,)
+                if 'Host' in self.headers:
+                    del self.headers['Host']
+                if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
+                    self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
+                data = '\r\n\r\n%s %s:%s %s\r\n%s\r\n' % (self.command, random.choice(iplist), port, self.protocol_version, self.headers)
+                sock.sendall(data)
 
             params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
             logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
@@ -1193,7 +1204,16 @@ class PAASProxyHandler(GAEProxyHandler):
                     sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
                 self.log_request(200)
             else:
-                raise NotImplemented
+                sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
+                if host in common.HOSTS:
+                    host = random.choice(common.HOSTS[host])
+                else:
+                    host = host
+                url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
+                self.headers['Host'] = netloc
+                self.headers['Proxy-Connection'] = 'Keep-Alive'
+                if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
+                    self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
 
             params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
             logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
@@ -1208,7 +1228,10 @@ class PAASProxyHandler(GAEProxyHandler):
             params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
             params =  zlib.compress(params)
 
-            data = 'POST / HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHHOST, len(params), params)
+            if not common.PROXY_ENABLE:
+                data = 'POST / HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHHOST, len(params), params)
+            else:
+                data ='POST %s HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s'  % (url, common.PAAS_FETCHHOST, len(params), params)
             sock.sendall(data)
 
             socket_forward(self.connection, sock, idlecall=idlecall, translate=3)
