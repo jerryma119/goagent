@@ -101,7 +101,7 @@ def paas_post_tunnel(environ, start_response, request=None):
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers.pop('Proxy-Connection', None)
-    #headers['Connection'] = 'close'
+    headers['Connection'] = 'Keep-Alive'
 
     try:
         # XXX: only test in gevent
