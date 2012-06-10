@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 
-__version__ = '1.9.0dev'
+__version__ = '1.9.0'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
