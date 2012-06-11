@@ -319,10 +319,8 @@ def socket_create_connection((host, port), timeout=None, source_address=None):
         raise socket.error, msg
 socket.create_connection = socket_create_connection
 
-def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, translate=0):
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
     timecount = timeout
-    if translate:
-        trans = ''.join(chr(((x+128)%256)) for x in xrange(256))
     try:
         while 1:
             timecount -= tick
@@ -336,13 +334,9 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                     data = sock.recv(bufsize)
                     if data:
                         if sock is local:
-                            if translate & 0x1:
-                                data = data.translate(trans)
                             remote.sendall(data)
                             timecount = maxping or timeout
                         else:
-                            if translate & 0x2:
-                                data = data.translate(trans)
                             local.sendall(data)
                             timecount = maxpong or timeout
                     else:
@@ -355,8 +349,8 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                         logging.exception('socket_forward idlecall fail')
                     finally:
                         idlecall = None
-    except Exception:
-        logging.exception('socket_forward error')
+    except Exception as e:
+        logging.exception('socket_forward error: %s', e)
         raise
     finally:
         if idlecall:
@@ -950,8 +944,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data = '\r\n\r\n%s %s:%s %s\r\n%s\r\n' % (self.command, random.choice(iplist), port, self.protocol_version, self.headers)
                 sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
-        except Exception:
-            logging.exception('GAEProxyHandler.do_CONNECT_Direct Error')
+        except Exception as e:
+            logging.exception('GAEProxyHandler.do_CONNECT_Direct error:%s', e)
         finally:
             try:
                 sock.close()
@@ -1060,8 +1054,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 data += self.rfile.read(content_length)
             sock.sendall(data)
             socket_forward(self.connection, sock, idlecall=idlecall)
-        except Exception:
-            logging.exception('GAEProxyHandler.do_GET Error')
+        except Exception as e:
+            logging.exception('GAEProxyHandler.do_GET error:%s', e)
         finally:
             try:
                 sock.close()
@@ -1150,19 +1144,10 @@ class PAASProxyHandler(GAEProxyHandler):
                     sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
                 self.log_request(200)
             else:
-                sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
-                if host in common.HOSTS:
-                    iplist = common.HOSTS[host]
-                    if not iplist:
-                        iplist = common.HOSTS[host] = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
-                else:
-                    iplist = (host,)
-                if 'Host' in self.headers:
-                    del self.headers['Host']
-                if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
-                    self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
-                data = '\r\n\r\n%s %s:%s %s\r\n%s\r\n' % (self.command, random.choice(iplist), port, self.protocol_version, self.headers)
-                sock.sendall(data)
+                assert NotImplemented
+
+            if common.PAAS_FETCHSERVER.startswith('https://'):
+                sock = ssl.wrap_socket(sock)
 
             params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
             logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
@@ -1180,7 +1165,7 @@ class PAASProxyHandler(GAEProxyHandler):
             sock.sendall(data)
 
             self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
-            socket_forward(self.connection, sock, idlecall=idlecall, translate=3)
+            socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception as e:
             logging.exception('PAASProxyHandler.do_CONNECT Error: %s', e)
         finally:
@@ -1203,16 +1188,10 @@ class PAASProxyHandler(GAEProxyHandler):
                     sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
                 self.log_request(200)
             else:
-                sock = socket.create_connection((common.PROXY_HOST, common.PROXY_PORT))
-                if host in common.HOSTS:
-                    host = random.choice(common.HOSTS[host])
-                else:
-                    host = host
-                url = urlparse.urlunparse((scheme, host + ('' if port == 80 else ':%d' % port), path, params, query, ''))
-                self.headers['Host'] = netloc
-                self.headers['Proxy-Connection'] = 'Keep-Alive'
-                if common.PROXY_USERNAME and 'Proxy-Authorization' not in self.headers:
-                    self.headers['Proxy-Authorization'] = 'Basic %s' + base64.b64encode('%s:%s'%(common.PROXY_USERNAME, common.PROXY_PASSWROD))
+                assert NotImplemented
+
+            if common.PAAS_FETCHSERVER.startswith('https://'):
+                sock = ssl.wrap_socket(sock)
 
             params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
             logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
@@ -1233,7 +1212,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 data ='POST %s HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s'  % (url, common.PAAS_FETCHHOST, len(params), params)
             sock.sendall(data)
 
-            socket_forward(self.connection, sock, idlecall=idlecall, translate=3)
+            socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception as e:
             logging.exception('PAASProxyHandler.do_METHOD Error: %s', e)
         finally:

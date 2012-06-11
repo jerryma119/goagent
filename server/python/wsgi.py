@@ -46,10 +46,8 @@ def send_notify(start_response, method, url, status, content):
     content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
-def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, translate=0):
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
     timecount = timeout
-    if translate:
-        trans = ''.join(chr(((x+128)%256)) for x in xrange(256))
     try:
         while 1:
             timecount -= tick
@@ -63,13 +61,9 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
                     data = sock.recv(bufsize)
                     if data:
                         if sock is local:
-                            if translate & 0x1:
-                                data = data.translate(trans)
                             remote.sendall(data)
                             timecount = maxping or timeout
                         else:
-                            if translate & 0x2:
-                                data = data.translate(trans)
                             local.sendall(data)
                             timecount = maxpong or timeout
                     else:
@@ -135,7 +129,7 @@ def paas_post_tunnel(environ, start_response, request=None):
             remote = conn.sock
         if local is not None:
             logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)
-            socket_forward(local, remote, timeout=300, translate=3)
+            socket_forward(local, remote, timeout=300)
             return ''
         else:
             # XXX: still not work
@@ -358,9 +352,10 @@ if __name__ == '__main__':
             line = self.rfile.readline(8192)
         return line
     gevent.pywsgi.WSGIHandler.read_requestline = read_requestline
-    host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) == 2 else ('', ':', 8080)
-    server = gevent.pywsgi.WSGIServer((host, int(port)), application, log=None)
+    host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) >= 2 else ('', ':', 8080)
+    ssl_args = {'certfile':os.path.splitext(__file__)[0]+'.pem'} if '-ssl' in sys.argv[1:] else {}
+    server = gevent.pywsgi.WSGIServer((host, int(port)), application, log=None, **ssl_args)
     server.environ.pop('SERVER_SOFTWARE')
-    logging.info('serving http://%s:%s/', socket.getfqdn(), server.address[1])
+    logging.info('serving %s://%s:%s/', 'https' if ssl_args else 'http', socket.getfqdn(), server.address[1])
     server.serve_forever()
 
