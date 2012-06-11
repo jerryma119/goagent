@@ -5,7 +5,7 @@ __version__ = '1.9.0'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
-import sys, os, re, time, struct, zlib, binascii, logging, string, httplib, urlparse
+import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse
 try:
     from google.appengine.api import urlfetch
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
@@ -18,10 +18,8 @@ except ImportError:
     sae = None
 try:
     import socket, ssl, select
-    paas_connect = True
 except:
-    socket = None
-    paas_connect = False
+    socket = ssl = select = None
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
@@ -51,7 +49,7 @@ def send_notify(start_response, method, url, status, content):
 def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, translate=0):
     timecount = timeout
     if translate:
-        trans = string.maketrans(''.join(chr(x) for x in xrange(256)), ''.join(chr(((x+128)%256)) for x in xrange(256)))
+        trans = ''.join(chr(((x+128)%256)) for x in xrange(256))
     try:
         while 1:
             timecount -= tick

@@ -35,7 +35,6 @@ import socket
 import ssl
 import select
 import httplib
-import string
 import urllib2
 import BaseHTTPServer
 import SocketServer
@@ -323,7 +322,7 @@ socket.create_connection = socket_create_connection
 def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, translate=0):
     timecount = timeout
     if translate:
-        trans = string.maketrans(''.join(chr(x) for x in xrange(256)), ''.join(chr(((x+128)%256)) for x in xrange(256)))
+        trans = ''.join(chr(((x+128)%256)) for x in xrange(256))
     try:
         while 1:
             timecount -= tick
