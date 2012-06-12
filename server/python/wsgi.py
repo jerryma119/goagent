@@ -128,7 +128,9 @@ def paas_post_tunnel(environ, start_response, request=None):
             conn.request(method, path, body=payload, headers=headers)
             remote = conn.sock
         if local is not None:
-            logging.debug('try socket_forward(local=%s, remote=%s)', local, remote)
+            if method == 'CONNECT':
+                pass
+            logging.info('socket_forward(local=%s, remote=%s)', local, remote)
             socket_forward(local, remote, timeout=300)
             return ''
         else:
