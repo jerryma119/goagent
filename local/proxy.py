@@ -208,7 +208,7 @@ class MultiplexConnection(object):
     def connect(self, hostlist, port, timeout, window):
         for i in xrange(MultiplexConnection.retry):
             hosts = random.sample(hostlist, window) if len(hostlist) > window else hostlist
-            logging.debug('MultiplexConnection try connect hosts=%s, port=%d', hosts, port)
+            logging.debug('MultiplexConnection try connect hosts=%s, port=%d, window=%r', hosts, port, window)
             socks = []
             # multiple connect start here
             for host in hosts:
@@ -241,11 +241,11 @@ class MultiplexConnection(object):
                 logging.debug('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
             # OOOPS, cannot multiple connect
-            MultiplexConnection.window = min(int(round(window*1.5)), len(hostlist), self.window_max)
+            MultiplexConnection.window = min(int(round(window*1.5)), len(common.GOOGLE_HOSTS), self.window_max)
             MultiplexConnection.window_ack = 0
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
-            logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hosts, port, MultiplexConnection.retry)
+            logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times! switch window=%r timeout=%r', hosts, port, MultiplexConnection.retry, MultiplexConnection.window, MultiplexConnection.timeout)
             raise socket.error('MultiplexConnection connect hosts=%s failed' % repr(hosts))
     def connect_single(self, hostlist, port, timeout, window):
         for host in hostlist:
