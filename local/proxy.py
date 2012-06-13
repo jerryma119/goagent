@@ -241,7 +241,7 @@ class MultiplexConnection(object):
                 logging.debug('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
             # OOOPS, cannot multiple connect
-            MultiplexConnection.window = min(int(round(window*1.5)), len(common.GOOGLE_HOSTS), self.window_max)
+            MultiplexConnection.window = min(int(round(window*1.5)), self.window_max)
             MultiplexConnection.window_ack = 0
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
@@ -876,6 +876,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             logging.error('resolve common.GOOGLE_HOSTS domian to iplist return empty! use default iplist')
                             common.GOOGLE_HOSTS = zlib.decompress(base64.b64decode(self.DefaultHosts)).split('|')
                         common.GOOGLE_HOSTS = tuple(x for x in common.GOOGLE_HOSTS if ':' not in x)
+                        MultiplexConnection.window_max = min(len(common.GOOGLE_HOSTS), MultiplexConnection.window_max)
                         logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
