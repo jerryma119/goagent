@@ -5,7 +5,7 @@
 
 from __future__ import with_statement
 
-__version__ = '1.9.0'
+__version__ = '1.9.1'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
@@ -1132,50 +1132,6 @@ class PAASProxyHandler(GAEProxyHandler):
 
     HOSTS = {}
 
-    def do_CONNECT(self):
-        try:
-            logging.debug('PAASProxyHandler.do_CONNECT %s', self.path)
-            idlecall = None
-            if not common.PROXY_ENABLE:
-                if common.PAAS_FETCHHOST in PAASProxyHandler.HOSTS:
-                    conn = MultiplexConnection(PAASProxyHandler.HOSTS[common.PAAS_FETCHHOST], common.PAAS_FETCHPORT)
-                    sock = conn.socket
-                    idlecall = conn.close
-                else:
-                    sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
-                self.log_request(200)
-            else:
-                assert NotImplemented
-
-            if common.PAAS_FETCHSERVER.startswith('https://'):
-                sock = ssl.wrap_socket(sock)
-
-            params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
-            logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
-            if common.PAAS_PASSWORD:
-                params['password'] = common.PAAS_PASSWORD
-            if common.FETCHMAX_SERVER:
-                params['fetchmax'] = common.FETCHMAX_SERVER
-            host = self.path.rpartition(':')[0]
-            if host in PAASProxyHandler.HOSTS:
-                params['dns'] = PAASProxyHandler.HOSTS[host] or socket.gethostbyname(host)
-            params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-            params =  zlib.compress(params)
-
-            data = 'POST / HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHHOST, len(params), params)
-            sock.sendall(data)
-
-            self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
-            socket_forward(self.connection, sock, idlecall=idlecall)
-        except Exception as e:
-            logging.exception('PAASProxyHandler.do_CONNECT Error: %s', e)
-        finally:
-            try:
-                sock.close()
-                del sock
-            except:
-                pass
-
     def do_METHOD(self):
         try:
             logging.debug('PAASProxyHandler.do_METHOD %s %s ', self.command, self.path)
@@ -1200,10 +1156,15 @@ class PAASProxyHandler(GAEProxyHandler):
                 params['password'] = common.PAAS_PASSWORD
             if common.FETCHMAX_SERVER:
                 params['fetchmax'] = common.FETCHMAX_SERVER
-            netloc = urlparse.urlparse(self.path).netloc
-            host = netloc.rpartition(':')[0] or netloc
+
+            if self.command == 'CONNECT':
+                host = self.path.rpartition(':')[0]
+            else:
+                netloc = urlparse.urlparse(self.path).netloc
+                host = netloc.rpartition(':')[0] or netloc
             if host in PAASProxyHandler.HOSTS:
-                params['dns'] = PAASProxyHandler.HOSTS[host] or socket.gethostbyname(PAASProxyHandler.HOSTS[host])
+                params['dns'] = PAASProxyHandler.HOSTS[host] or socket.gethostbyname(host)
+
             params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
             params =  zlib.compress(params)
 
@@ -1212,6 +1173,9 @@ class PAASProxyHandler(GAEProxyHandler):
             else:
                 data ='POST %s HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s'  % (url, common.PAAS_FETCHHOST, len(params), params)
             sock.sendall(data)
+
+            if self.command == 'CONNECT':
+                self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
 
             socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception as e:
@@ -1250,6 +1214,7 @@ class PAASProxyHandler(GAEProxyHandler):
                         except Exception:
                             logging.exception('PAASProxyHandler.setup resolve fail')
 
+        PAASProxyHandler.do_CONNECT = PAASProxyHandler.do_METHOD
         PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
         PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
         PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
