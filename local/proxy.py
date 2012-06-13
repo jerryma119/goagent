@@ -1135,6 +1135,7 @@ class PAASProxyHandler(GAEProxyHandler):
     def do_METHOD(self):
         try:
             logging.debug('PAASProxyHandler.do_METHOD %s %s ', self.command, self.path)
+            connect_mode = self.command == 'CONNECT'
             idlecall = None
             if not common.PROXY_ENABLE:
                 if common.PAAS_FETCHHOST in PAASProxyHandler.HOSTS:
@@ -1157,7 +1158,7 @@ class PAASProxyHandler(GAEProxyHandler):
             if common.FETCHMAX_SERVER:
                 params['fetchmax'] = common.FETCHMAX_SERVER
 
-            if self.command == 'CONNECT':
+            if connect_mode:
                 host = self.path.rpartition(':')[0]
             else:
                 netloc = urlparse.urlparse(self.path).netloc
@@ -1174,7 +1175,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 data ='POST %s HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s'  % (url, common.PAAS_FETCHHOST, len(params), params)
             sock.sendall(data)
 
-            if self.command == 'CONNECT':
+            if connect_mode:
                 self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
 
             socket_forward(self.connection, sock, idlecall=idlecall)
