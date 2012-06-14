@@ -83,6 +83,22 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
+def gevent_socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
+    local.settimeout(timeout)
+    remote.settimeout(timeout)
+    def socket_copy(sock1, sock2):
+        while 1:
+            try:
+                data = sock1.recv(bufsize)
+                if not data:
+                    break
+                sock2.sendall(data)
+            except Exception as e:
+                logging.exception('socket_copy(sock1=%r, sock2=%r) failed:%s', sock1, sock2, e)
+                break
+    gevent.spawn(socket_copy, gevent.socket.socket(_sock=local), gevent.socket.socket(_sock=remote))
+    gevent.spawn(socket_copy, gevent.socket.socket(_sock=remote), gevent.socket.socket(_sock=local))
+
 def paas_post_tunnel(environ, start_response, request=None):
     if not request:
         logging.info('%s "%s %s" - -', environ['REMOTE_ADDR'], environ['REQUEST_METHOD'], environ['PATH_INFO'])
@@ -96,6 +112,7 @@ def paas_post_tunnel(environ, start_response, request=None):
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers.pop('Proxy-Connection', None)
+    #headers['Connection'] = 'close'
     headers['Connection'] = 'Keep-Alive'
 
     try:
@@ -354,6 +371,7 @@ if __name__ == '__main__':
             line = self.rfile.readline(8192)
         return line
     gevent.pywsgi.WSGIHandler.read_requestline = read_requestline
+    #socket_forward = gevent_socket_forward
     host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) >= 2 else ('', ':', 8080)
     ssl_args = {'certfile':os.path.splitext(__file__)[0]+'.pem'} if '-ssl' in sys.argv[1:] else {}
     server = gevent.pywsgi.WSGIServer((host, int(port)), application, log=None, **ssl_args)
