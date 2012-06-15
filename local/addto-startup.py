@@ -32,9 +32,9 @@ def main_macos():
 	<key>ServiceIPC</key>
 	<true/>
 	<key>StandardErrorPath</key>
-	<string>%(dirname)s/stderr.log</string>
+	<string>%(dirname)s/proxy.log</string>
 	<key>StandardOutPath</key>
-	<string>%(dirname)s/stdout.log</string>
+	<string>%(dirname)s/proxy.log</string>
 	<key>UserName</key>
 	<string>root</string>
 	<key>WorkingDirectory</key>
