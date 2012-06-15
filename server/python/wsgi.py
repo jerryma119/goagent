@@ -176,18 +176,30 @@ def paas_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
     #logging.debug('post() get fetch request %s', request)
 
-    if request.get('tunnel'):
-        return paas_post_tunnel(environ, start_response, request=request)
-
     method = request['method']
     url = request['url']
-    payload = request.get('payload')
+    tunnel = int(request.get('tunnel', 0))
 
-    logging.info('%s "%s %s" - -', environ['REMOTE_ADDR'], method, url)
+    logging.info('%s "%s %s" tunnel=%r - -', environ['REMOTE_ADDR'], method, url, tunnel)
+
+    if tunnel == 3:
+        return paas_post_tunnel(environ, start_response, request=request)
+    if tunnel == 1 and not url.startswith('https://'):
+        return paas_post_tunnel(environ, start_response, request=request)
+    elif tunnel == 0 and 'gevent.monkey' in sys.modules:
+        if environ['wsgi.input'].rfile._sock.getpeername()[0].startswith('127.'):
+            start_response('502 Bad_gateway', [])
+        else:
+            start_response('502 Bad_Gateway', [])
+        return ['']
+    else:
+        pass
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers.pop('Proxy-Connection', None)
     headers['Connection'] = 'close'
+
+    payload = request.get('payload')
 
     if 'dns' in request:
         headers['Host'] = urlparse.urlparse(url).netloc

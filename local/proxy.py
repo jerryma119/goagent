@@ -670,16 +670,11 @@ class SimpleMessageClass(object):
     def __str__(self):
         return ''.join(self.headers)
 
-def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=None, dns=None, on_error=None):
+def urlfetch(url, payload, method, headers, fetchhost, fetchserver, on_error=None, **kwargs):
     errors = []
     params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
+    params.update(kwargs)
     logging.debug('urlfetch params %s', params)
-    if password:
-        params['password'] = password
-    if common.FETCHMAX_SERVER:
-        params['fetchmax'] = common.FETCHMAX_SERVER
-    if dns:
-        params['dns'] = dns
     params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
     for i in xrange(common.FETCHMAX_LOCAL):
         try:
@@ -754,7 +749,12 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
 
     def fetch(self, url, payload, method, headers):
-        return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD, on_error=self.handle_fetch_error)
+        kwargs = {}
+        if common.GAE_PASSWORD:
+            kwargs['password'] = common.GAE_PASSWORD
+        if common.FETCHMAX_SERVER:
+            kwargs['fetchmax'] = common.FETCHMAX_SERVER
+        return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, on_error=self.handle_fetch_error, **kwargs)
 
     def rangefetch(self, m, data):
         m = map(int, m.groups())
@@ -1151,7 +1151,7 @@ class PAASProxyHandler(GAEProxyHandler):
             if common.PAAS_FETCHSERVER.startswith('https://'):
                 sock = ssl.wrap_socket(sock)
 
-            params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':'1'}
+            params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':str(common.PAAS_TUNNEL)}
             logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
             if common.PAAS_PASSWORD:
                 params['password'] = common.PAAS_PASSWORD
@@ -1190,14 +1190,36 @@ class PAASProxyHandler(GAEProxyHandler):
 
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
+        if isinstance(error, urllib2.HTTPError):
+            # PAAS 502
+            if error.code == 502:
+                if error.msg in ('Bad_gateway', 'Bad_Gateway'):
+                    logging.info('PAAS 502 msg=%r, try swtich tunnel', error.msg)
+                    common.PAAS_TUNNEL = 1
+                    PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
+                    PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
+                    PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
+                    PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
+                    PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
+                    if error.msg == 'Bad_Gateway':
+                        common.PAAS_TUNNEL = 3
+                        PAASProxyHandler.do_CONNECT = PAASProxyHandler.do_METHOD
+                logging.error('PAAS error=%r msg=%r', error, error.msg)
         httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
+        logging.warning('GAEProxyHandler.handle_fetch_error Exception %s', error)
 
     def fetch(self, url, payload, method, headers):
-        dns  = None
+        kwargs = {}
         host = self.headers.get('Host')
+        if common.GAE_PASSWORD:
+            kwargs['password'] = common.GAE_PASSWORD
+        if common.FETCHMAX_SERVER:
+            kwargs['fetchmax'] = common.FETCHMAX_SERVER
         if host in PAASProxyHandler.HOSTS:
-            dns = random.choice(tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)))
-        return urlfetch(url, payload, method, headers, common.PAAS_FETCHHOST, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD, dns=dns, on_error=self.handle_fetch_error)
+            kwargs['dns'] = random.choice(tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)))
+        if common.PAAS_TUNNEL:
+            kwargs['tunnel'] = str(common.PAAS_TUNNEL)
+        return urlfetch(url, payload, method, headers, common.PAAS_FETCHHOST, common.PAAS_FETCHSERVER, on_error=self.handle_fetch_error, **kwargs)
 
     def setup(self):
         PAASProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
@@ -1215,22 +1237,23 @@ class PAASProxyHandler(GAEProxyHandler):
                         except Exception:
                             logging.exception('PAASProxyHandler.setup resolve fail')
 
-        PAASProxyHandler.do_CONNECT = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_HEAD    = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
+
+        if common.PAAS_TUNNEL:
+            PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
+            PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
+            PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
+            PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
+            PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
+            if common.PAAS_TUNNEL == 3:
+                PAASProxyHandler.do_CONNECT = PAASProxyHandler.do_METHOD
+
         PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
-
-        if not common.PAAS_TUNNEL:
-            PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
-            PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
-            PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
-            PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
-            PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
-            PAASProxyHandler.do_HEAD    = GAEProxyHandler.do_METHOD_Tunnel
-
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
