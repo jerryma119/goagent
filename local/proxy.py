@@ -1191,20 +1191,18 @@ class PAASProxyHandler(GAEProxyHandler):
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
         if isinstance(error, urllib2.HTTPError):
-            # PAAS 502
-            if error.code == 502:
-                if error.msg in ('Bad_gateway', 'Bad_Gateway'):
-                    logging.info('PAAS 502 msg=%r, try swtich tunnel', error.msg)
-                    common.PAAS_TUNNEL = 1
-                    PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
-                    PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
-                    PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
-                    PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
-                    PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
-                    if error.msg == 'Bad_Gateway':
-                        common.PAAS_TUNNEL = 3
-                        PAASProxyHandler.do_CONNECT = PAASProxyHandler.do_METHOD
-                logging.error('PAAS error=%r msg=%r', error, error.msg)
+            # PAAS error
+            if error.code in (520, 521):
+                logging.info('PAAS %s, try swtich tunnel', error.code)
+                common.PAAS_TUNNEL = 1
+                PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
+                PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
+                PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
+                PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
+                PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
+                if error.code == 521:
+                    common.PAAS_TUNNEL = 3
+                    PAASProxyHandler.do_CONNECT = PAASProxyHandler.do_METHOD
         httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
         logging.warning('GAEProxyHandler.handle_fetch_error Exception %s', error)
 

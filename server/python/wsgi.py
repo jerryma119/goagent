@@ -187,10 +187,10 @@ def paas_post(environ, start_response):
     if tunnel == 1 and not url.startswith('https://'):
         return paas_post_tunnel(environ, start_response, request=request)
     elif tunnel == 0 and 'gevent.monkey' in sys.modules:
-        if environ['wsgi.input'].rfile._sock.getpeername()[0].startswith('127.'):
-            start_response('502 Bad_gateway', [])
+        if environ['wsgi.input'].rfile._sock.getpeername()[0].startswith(('127.', '10.', '192.168.')):
+            start_response('520 Variant Also Negotiates', [])
         else:
-            start_response('502 Bad_Gateway', [])
+            start_response('521 Insufficient Storage', [])
         return ['']
     else:
         pass
