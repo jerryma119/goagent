@@ -73,18 +73,25 @@ class Common(object):
         self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
-        paas_section = 'paas' if self.CONFIG.has_section('paas') else 'php'
-        self.PAAS_ENABLE           = self.CONFIG.getint(paas_section, 'enable')
-        self.PAAS_LISTEN           = self.CONFIG.get(paas_section, 'listen')
-        self.PAAS_PASSWORD         = self.CONFIG.get(paas_section, 'password') if self.CONFIG.has_option(paas_section, 'password') else ''
-        self.PAAS_FETCHSERVER      = self.CONFIG.get(paas_section, 'fetchserver')
-        self.PAAS_TUNNEL           = self.CONFIG.getint(paas_section, 'tunnel') if self.CONFIG.has_option(paas_section, 'tunnel') else 0
-        self.PAAS_FETCHHOST        = urlparse.urlparse(self.PAAS_FETCHSERVER).netloc
-        self.PAAS_FETCHPORT        = 443 if self.PAAS_FETCHSERVER.startswith('https://') else 80
-        if re.search(r':\d+$', self.PAAS_FETCHHOST):
-            m = re.search(r'^(.+):(\d+)$', self.PAAS_FETCHHOST)
-            self.PAAS_FETCHHOST = m.group(1)
-            self.PAAS_FETCHPORT = int(m.group(2))
+        self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
+        self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
+        self.PHP_PASSWORD         = self.CONFIG.get('php', 'password')
+        self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
+
+        if self.CONFIG.has_section('paas'):
+            self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
+            self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
+            self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password')
+            self.PAAS_TUNNEL           = self.CONFIG.getint('paas', 'tunnel')
+            self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
+            self.PAAS_FETCHHOST        = urlparse.urlparse(self.PAAS_FETCHSERVER).netloc
+            if re.search(r':\d+$', self.PAAS_FETCHHOST):
+                self.PAAS_FETCHHOST, _, self.PAAS_FETCHPORT = self.PAAS_FETCHHOST.rpartition(':')
+                self.PAAS_FETCHPORT = int(self.PAAS_FETCHPORT)
+            else:
+                self.PAAS_FETCHPORT = {'http':80, 'https':443}[urlparse.urlparse(self.PAAS_FETCHSERVER).scheme]
+        else:
+            self.PAAS_ENABLE           = 0
 
         if self.CONFIG.has_section('pac'):
             # XXX, cowork with GoAgentX
@@ -111,7 +118,7 @@ class Common(object):
         self.GOOGLE_FORCEHTTPS    = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|'))
         self.GOOGLE_WITHGAE       = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'withgae').split('|'))
 
-        self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
+        self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 2
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
 
         self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
@@ -1130,12 +1137,12 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 class PAASProxyHandler(GAEProxyHandler):
 
+    protocol_version = 'HTTP/1.1'
     HOSTS = {}
 
     def do_METHOD(self):
         try:
-            logging.debug('PAASProxyHandler.do_METHOD %s %s ', self.command, self.path)
-            connect_mode = self.command == 'CONNECT'
+            logging.debug('PAASProxyHandler.do_METHOD %r %r', self.command, self.path)
             idlecall = None
             if not common.PROXY_ENABLE:
                 if common.PAAS_FETCHHOST in PAASProxyHandler.HOSTS:
@@ -1144,39 +1151,24 @@ class PAASProxyHandler(GAEProxyHandler):
                     idlecall = conn.close
                 else:
                     sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
-                self.log_request(200)
+                self.log_request()
             else:
                 assert NotImplemented
 
             if common.PAAS_FETCHSERVER.startswith('https://'):
                 sock = ssl.wrap_socket(sock)
 
-            params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'tunnel':str(common.PAAS_TUNNEL)}
-            logging.debug('PAASProxyHandler.do_CONNECT params %s', params)
-            if common.PAAS_PASSWORD:
-                params['password'] = common.PAAS_PASSWORD
-            if common.FETCHMAX_SERVER:
-                params['fetchmax'] = common.FETCHMAX_SERVER
+            if self.path[0] == '/':
+                self.path = 'http://%s%s' % (self.headers['Host'], self.path)
 
-            if connect_mode:
-                host = self.path.rpartition(':')[0]
-            else:
-                netloc = urlparse.urlparse(self.path).netloc
-                host = netloc.rpartition(':')[0] or netloc
-            if host in PAASProxyHandler.HOSTS:
-                params['dns'] = PAASProxyHandler.HOSTS[host] or socket.gethostbyname(host)
+            self.headers['Host'] = common.PAAS_FETCHHOST
 
-            params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-            params =  zlib.compress(params)
-
-            if not common.PROXY_ENABLE:
-                data = 'POST / HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s' % (common.PAAS_FETCHHOST, len(params), params)
-            else:
-                data ='POST %s HTTP/1.1\r\nConnection: keep-alive\r\nHost: %s\r\nContent-Length: %d\r\n\r\n%s'  % (url, common.PAAS_FETCHHOST, len(params), params)
+            data = '%s %s %s\r\n%s\r\n' % (self.command, self.path, self.protocol_version, self.headers)
             sock.sendall(data)
 
-            if connect_mode:
-                self.connection.sendall('HTTP/1.1 200 Tunnel established\r\n\r\n')
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length:
+                logging.info('%s content_length=%d', self.command, content_length)
 
             socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception as e:
@@ -1190,34 +1182,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
-        if isinstance(error, urllib2.HTTPError):
-            # PAAS error
-            if error.code in (520, 521):
-                logging.info('PAAS %s, try swtich tunnel', error.code)
-                common.PAAS_TUNNEL = 1
-                PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
-                PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
-                PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
-                PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
-                PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
-                if error.code == 521:
-                    common.PAAS_TUNNEL = 3
-                    PAASProxyHandler.do_CONNECT = PAASProxyHandler.do_METHOD
         httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
-        logging.warning('GAEProxyHandler.handle_fetch_error Exception %s', error)
-
-    def fetch(self, url, payload, method, headers):
-        kwargs = {}
-        host = self.headers.get('Host')
-        if common.GAE_PASSWORD:
-            kwargs['password'] = common.GAE_PASSWORD
-        if common.FETCHMAX_SERVER:
-            kwargs['fetchmax'] = common.FETCHMAX_SERVER
-        if host in PAASProxyHandler.HOSTS:
-            kwargs['dns'] = random.choice(tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)))
-        if common.PAAS_TUNNEL:
-            kwargs['tunnel'] = str(common.PAAS_TUNNEL)
-        return urlfetch(url, payload, method, headers, common.PAAS_FETCHHOST, common.PAAS_FETCHSERVER, on_error=self.handle_fetch_error, **kwargs)
 
     def setup(self):
         PAASProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
@@ -1235,21 +1200,12 @@ class PAASProxyHandler(GAEProxyHandler):
                         except Exception:
                             logging.exception('PAASProxyHandler.setup resolve fail')
 
-        PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_HEAD    = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
         PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
-
-        if common.PAAS_TUNNEL:
-            PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
-            PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
-            PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
-            PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
-            PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
-            if common.PAAS_TUNNEL == 3:
-                PAASProxyHandler.do_CONNECT = PAASProxyHandler.do_METHOD
 
         PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)

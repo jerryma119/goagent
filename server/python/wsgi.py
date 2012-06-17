@@ -7,6 +7,14 @@ __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse
 try:
+    import socket, ssl, select
+except:
+    socket = ssl = select = None
+try:
+    import gevent, gevent.pywsgi, gevent.queue, gevent.monkey
+except:
+    gevent = None
+try:
     from google.appengine.api import urlfetch
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
 except ImportError:
@@ -16,10 +24,6 @@ try:
     import sae.ext.shell
 except ImportError:
     sae = None
-try:
-    import socket, ssl, select
-except:
-    socket = ssl = select = None
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
@@ -99,21 +103,27 @@ def gevent_socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxpi
     gevent.spawn(socket_copy, gevent.socket.socket(_sock=local), gevent.socket.socket(_sock=remote))
     gevent.spawn(socket_copy, gevent.socket.socket(_sock=remote), gevent.socket.socket(_sock=local))
 
-def paas_post_tunnel(environ, start_response, request=None):
-    if not request:
-        logging.info('%s "%s %s" - -', environ['REMOTE_ADDR'], environ['REQUEST_METHOD'], environ['PATH_INFO'])
-        request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
+def paas_fileobj_pipe(fileobj, queue, bufsize=8192):
+    logging.info('paas_fileobj_pipe(fileobj=%r, queue)', fileobj)
+    while 1:
+        data = fileobj.read(bufsize)
+        if data:
+            queue.put(data)
+        else:
+            queue.put(StopIteration)
+            break
 
-    method = request['method']
-    url = request['url']
-    payload = request.get('payload')
+def paas_tunnel(environ, start_response):
+    method = environ['REQUEST_METHOD']
+    url = environ['PATH_INFO']
+    if environ['QUERY_STRING']:
+        url += '?' + environ['QUERY_STRING']
 
-    logging.info('%s "%s %s" - -', environ['REMOTE_ADDR'], method, url)
+    logging.info('paas_tunnel %s "%s %s" - -', environ['REMOTE_ADDR'], method, url)
 
-    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    headers = dict((x.replace('_', '-').title().replace('Http-', ''), environ[x]) for x in environ if x.startswith('HTTP_') or x in ('CONTENT_TYPE', 'CONTENT_LENGTH'))
     headers.pop('Proxy-Connection', None)
-    #headers['Connection'] = 'close'
-    headers['Connection'] = 'Keep-Alive'
+    headers['Host'] = urlparse.urlparse(url).netloc
 
     try:
         # XXX: only test in gevent
@@ -128,9 +138,10 @@ def paas_post_tunnel(environ, start_response, request=None):
             local = None
         if method == 'CONNECT':
             host, _, port = url.rpartition(':')
-            if 'dns' in request:
-                host = request['dns']
             remote = socket.create_connection((host, int(port)))
+            logging.info('socket_forward(local=%s, remote=%s)', local, remote)
+            socket_forward(local, remote, timeout=300)
+            return ['']
         else:
             scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
             HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
@@ -138,19 +149,20 @@ def paas_post_tunnel(environ, start_response, request=None):
                 path += ';' + params
             if query:
                 path += '?' + query
-            if 'dns' not in request:
-                conn = HTTPConnection(netloc, timeout=Deadline)
-            else:
-                conn = HTTPConnection(request['dns'], timeout=Deadline)
+            conn = HTTPConnection(netloc, timeout=Deadline)
+            payload = None
+            content_length = int(headers.get('Content-Length', 0))
+            if content_length:
+                payload = wsgi_input.read(content_length)
             conn.request(method, path, body=payload, headers=headers)
-            remote = conn.sock
-        if local is not None:
-            if method == 'CONNECT':
-                pass
-            logging.info('socket_forward(local=%s, remote=%s)', local, remote)
-            socket_forward(local, remote, timeout=300)
-            return ''
-        else:
+            response = conn.getresponse()
+            status   = str(response.status)
+            headers  = response.getheaders()
+            start_response(status, headers)
+            queue = gevent.queue.Queue()
+            gevent.spawn(paas_fileobj_pipe, response, queue)
+            return queue
+        if local is None:
             # XXX: still not work
             if method == 'CONNECT':
                 remote = ssl.wrap_socket(remote)
@@ -172,7 +184,7 @@ def paas_post_tunnel(environ, start_response, request=None):
 
 
 def paas_post(environ, start_response):
-    logging.info('%s "%s %s" - -', environ['REMOTE_ADDR'], environ['REQUEST_METHOD'], environ['PATH_INFO'])
+    logging.info('paas_post %s "%s %s" - -', environ['REMOTE_ADDR'], environ['REQUEST_METHOD'], environ['PATH_INFO'])
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
     #logging.debug('post() get fetch request %s', request)
 
@@ -187,13 +199,15 @@ def paas_post(environ, start_response):
     if tunnel == 1 and not url.startswith('https://'):
         return paas_post_tunnel(environ, start_response, request=request)
     elif tunnel == 0 and 'gevent.monkey' in sys.modules:
-        if environ['wsgi.input'].rfile._sock.getpeername()[0].startswith(('127.', '10.', '192.168.')):
+        remote_ip = environ['wsgi.input'].rfile._sock.getpeername()[0]
+        if remote_ip.startswith('127.'):
             start_response('520 Variant Also Negotiates', [])
+            return ['']
+        elif remote_ip.startswith(('127.', '10.', '192.168.')):
+            pass
         else:
             start_response('521 Insufficient Storage', [])
-        return ['']
-    else:
-        pass
+            return ['']
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers.pop('Proxy-Connection', None)
@@ -259,6 +273,7 @@ def paas_post(environ, start_response):
     return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
 
 def paas_get(environ, start_response):
+    logging.info('paas_get %s "%s %s" - -', environ['REMOTE_ADDR'], environ['REQUEST_METHOD'], environ['PATH_INFO'])
     host = 'go%s%s' % (int(time.time()*1000000), environ['HTTP_HOST'])
     try:
         conn = httplib.HTTPConnection(host)
@@ -270,6 +285,14 @@ def paas_get(environ, start_response):
     except Exception as e:
         start_response('503 Service Unavailable', [('Content-Type', 'text/html; charset=UTF-8')])
         return ['']
+
+def paas_dispatch(environ, start_response):
+    if environ['PATH_INFO'].startswith('http'):
+        return paas_tunnel(environ, start_response)
+    elif environ['REQUEST_METHOD'] == 'POST':
+        return paas_post(environ, start_response)
+    else:
+        return paas_get(environ, start_response)
 
 def gae_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
@@ -355,17 +378,13 @@ def gae_get(environ, start_response):
     return [html.encode('utf8')]
 
 def app(environ, start_response):
-    if urlfetch and environ['REQUEST_METHOD'] == 'POST':
-        return gae_post(environ, start_response)
-    elif environ['REQUEST_METHOD'] == 'POST':
-        try:
-            return paas_post(environ, start_response)
-        except Exception as e:
-            logging.exception('paas_post(environ, start_response) exception:%s', e)
-    elif urlfetch and environ['REQUEST_METHOD'] == 'GET':
-        return gae_get(environ, start_response)
+    if urlfetch:
+        if environ['REQUEST_METHOD'] == 'POST':
+            return gae_post(environ, start_response)
+        else:
+            return gae_get(environ, start_response)
     else:
-        return paas_get(environ, start_response)
+        return paas_dispatch(environ, start_response)
 
 if sae:
     #application = sae.create_wsgi_app(sae.ext.shell.ShellMiddleware(app, __password__ or 'hugoxxxx'))
@@ -375,7 +394,6 @@ else:
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    import gevent, gevent.pywsgi, gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
     def read_requestline(self):
         line = self.rfile.readline(8192)
