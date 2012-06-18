@@ -178,8 +178,8 @@ class Common(object):
         info += 'GAE Profile      : %s\n' % self.GAE_PROFILE
         info += 'GAE APPID        : %s\n' % '|'.join(self.GAE_APPIDS)
         if common.PHP_ENABLE:
-            info += 'PAAS Listen      : %s\n' % common.PHP_LISTEN
-            info += 'PAAS FetchServer : %s\n' % common.PHP_FETCHSERVER
+            info += 'PHP Listen       : %s\n' % common.PHP_LISTEN
+            info += 'PHP FetchServer  : %s\n' % common.PHP_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server       : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
@@ -1165,7 +1165,7 @@ class PHPProxyHandler(GAEProxyHandler):
             if common.PHP_PASSWORD:
                 params['password'] = common.PHP_PASSWORD
             if common.PHP_PAAS:
-                params['tunnel'] = str(common.PHP_PAAS)
+                params['paas'] = str(common.PHP_PAAS)
             params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
             params = zlib.compress(params)
 

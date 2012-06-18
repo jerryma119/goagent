@@ -278,7 +278,7 @@ def paas_get(environ, start_response, request=None):
 
 def paas_application(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
-    if int(request.get('tunnel',0)):
+    if int(request.get('paas',0)):
         return paas_tunnel(environ, start_response, request=request)
     elif environ['REQUEST_METHOD'] == 'POST':
         return paas_post(environ, start_response, request=request)
