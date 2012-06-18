@@ -219,7 +219,7 @@ class MultiplexConnection(object):
             socks = []
             # multiple connect start here
             for host in hosts:
-                sock = socket.socket(2 if ':' not in host else 23)
+                sock = socket.socket(2 if ':' not in host else socket.AF_INET6)
                 sock.setblocking(0)
                 #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
                 err = sock.connect_ex((host, port))
