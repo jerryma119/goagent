@@ -5,7 +5,7 @@
 
 from __future__ import with_statement
 
-__version__ = '1.9.1'
+__version__ = '1.9.2'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
@@ -73,25 +73,20 @@ class Common(object):
         self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
-        self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
-        self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
-        self.PHP_PASSWORD         = self.CONFIG.get('php', 'password')
-        self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
-
-        if self.CONFIG.has_section('paas'):
-            self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
-            self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
-            self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password')
-            self.PAAS_TUNNEL           = self.CONFIG.getint('paas', 'tunnel')
-            self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
-            self.PAAS_FETCHHOST        = urlparse.urlparse(self.PAAS_FETCHSERVER).netloc
-            if re.search(r':\d+$', self.PAAS_FETCHHOST):
-                self.PAAS_FETCHHOST, _, self.PAAS_FETCHPORT = self.PAAS_FETCHHOST.rpartition(':')
-                self.PAAS_FETCHPORT = int(self.PAAS_FETCHPORT)
+        if self.CONFIG.has_section('php'):
+            self.PHP_ENABLE           = self.CONFIG.getint('php', 'enable')
+            self.PHP_LISTEN           = self.CONFIG.get('php', 'listen')
+            self.PHP_PASSWORD         = self.CONFIG.get('php', 'password')
+            self.PHP_PAAS             = self.CONFIG.getint('php', 'paas')
+            self.PHP_FETCHSERVER      = self.CONFIG.get('php', 'fetchserver')
+            self.PHP_FETCHHOST        = urlparse.urlparse(self.PHP_FETCHSERVER).netloc
+            if re.search(r':\d+$', self.PHP_FETCHHOST):
+                self.PHP_FETCHHOST, _, self.PHP_FETCHPORT = self.PHP_FETCHHOST.rpartition(':')
+                self.PHP_FETCHPORT = int(self.PHP_FETCHPORT)
             else:
-                self.PAAS_FETCHPORT = {'http':80, 'https':443}[urlparse.urlparse(self.PAAS_FETCHSERVER).scheme]
+                self.PHP_FETCHPORT = {'http':80, 'https':443}[urlparse.urlparse(self.PHP_FETCHSERVER).scheme]
         else:
-            self.PAAS_ENABLE           = 0
+            self.PHP_ENABLE           = 0
 
         if self.CONFIG.has_section('pac'):
             # XXX, cowork with GoAgentX
@@ -182,9 +177,9 @@ class Common(object):
         info += 'GAE Mode         : %s\n' % self.GOOGLE_MODE if self.GAE_ENABLE else ''
         info += 'GAE Profile      : %s\n' % self.GAE_PROFILE
         info += 'GAE APPID        : %s\n' % '|'.join(self.GAE_APPIDS)
-        if common.PAAS_ENABLE:
-            info += 'PAAS Listen      : %s\n' % common.PAAS_LISTEN
-            info += 'PAAS FetchServer : %s\n' % common.PAAS_FETCHSERVER
+        if common.PHP_ENABLE:
+            info += 'PAAS Listen      : %s\n' % common.PHP_LISTEN
+            info += 'PAAS FetchServer : %s\n' % common.PHP_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server       : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
@@ -1135,44 +1130,52 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e[0] in (10053, errno.EPIPE):
                 return
 
-class PAASProxyHandler(GAEProxyHandler):
+class PHPProxyHandler(GAEProxyHandler):
 
     protocol_version = 'HTTP/1.1'
     HOSTS = {}
 
     def do_METHOD(self):
         try:
-            logging.debug('PAASProxyHandler.do_METHOD %r %r', self.command, self.path)
+            logging.debug('PHPProxyHandler.do_METHOD %r %r', self.command, self.path)
             idlecall = None
             if not common.PROXY_ENABLE:
-                if common.PAAS_FETCHHOST in PAASProxyHandler.HOSTS:
-                    conn = MultiplexConnection(PAASProxyHandler.HOSTS[common.PAAS_FETCHHOST], common.PAAS_FETCHPORT)
+                if common.PHP_FETCHHOST in PHPProxyHandler.HOSTS:
+                    conn = MultiplexConnection(PHPProxyHandler.HOSTS[common.PHP_FETCHHOST], common.PHP_FETCHPORT)
                     sock = conn.socket
                     idlecall = conn.close
                 else:
-                    sock = socket.create_connection((common.PAAS_FETCHHOST, common.PAAS_FETCHPORT))
+                    sock = socket.create_connection((common.PHP_FETCHHOST, common.PHP_FETCHPORT))
                 self.log_request()
             else:
                 assert NotImplemented
 
-            if common.PAAS_FETCHSERVER.startswith('https://'):
+            if common.PHP_FETCHSERVER.startswith('https://'):
                 sock = ssl.wrap_socket(sock)
 
             if self.path[0] == '/':
                 self.path = 'http://%s%s' % (self.headers['Host'], self.path)
 
-            self.headers['Host'] = common.PAAS_FETCHHOST
-
-            data = '%s %s %s\r\n%s\r\n' % (self.command, self.path, self.protocol_version, self.headers)
-            sock.sendall(data)
-
+            payload = ''
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length:
-                logging.info('%s content_length=%d', self.command, content_length)
+                payload = self.rfile.read(content_length)
+
+            params = {'url':self.path, 'method':self.command, 'headers':str(self.headers), 'payload':payload}
+            if common.PHP_PASSWORD:
+                params['password'] = common.PHP_PASSWORD
+            if common.PHP_PAAS:
+                params['tunnel'] = str(common.PHP_PAAS)
+            params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+            params = zlib.compress(params)
+
+            headdata = 'Host: %s\r\nContent-Length: %d\r\n' % (common.PHP_FETCHHOST, len(params))
+            data = '%s %s %s\r\n%s\r\n%s' % ('POST', '/', self.protocol_version, headdata, params)
+            sock.sendall(data)
 
             socket_forward(self.connection, sock, idlecall=idlecall)
         except Exception as e:
-            logging.exception('PAASProxyHandler.do_METHOD Error: %s', e)
+            logging.exception('PHPProxyHandler.do_METHOD Error: %s', e)
         finally:
             try:
                 sock.close()
@@ -1181,33 +1184,33 @@ class PAASProxyHandler(GAEProxyHandler):
                 pass
 
     def handle_fetch_error(self, error):
-        logging.error('PAASProxyHandler handle_fetch_error %s', error)
+        logging.error('PHPProxyHandler handle_fetch_error %s', error)
         httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
 
     def setup(self):
-        PAASProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
+        PHPProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
         if common.PROXY_ENABLE:
-            logging.info('Local Proxy is enable, PAASProxyHandler dont resole DNS')
+            logging.info('Local Proxy is enable, PHPProxyHandler dont resole DNS')
         else:
-            logging.info('PAASProxyHandler.setup check %s is in PAASProxyHandler.HOSTS', common.PAAS_FETCHHOST)
-            if common.PAAS_FETCHHOST not in PAASProxyHandler.HOSTS:
+            logging.info('PHPProxyHandler.setup check %s is in PHPProxyHandler.HOSTS', common.PHP_FETCHHOST)
+            if common.PHP_FETCHHOST not in PHPProxyHandler.HOSTS:
                 with GAEProxyHandler.SetupLock:
-                    if common.PAAS_FETCHHOST not in PAASProxyHandler.HOSTS:
+                    if common.PHP_FETCHHOST not in PHPProxyHandler.HOSTS:
                         try:
                             logging.info('Resole PAAS fetchserver address.')
-                            PAASProxyHandler.HOSTS[common.PAAS_FETCHHOST] = tuple(x[-1][0] for x in socket.getaddrinfo(common.PAAS_FETCHHOST, 80))
-                            logging.info('Resole PAAS fetchserver address OK. %s', PAASProxyHandler.HOSTS[common.PAAS_FETCHHOST])
+                            PHPProxyHandler.HOSTS[common.PHP_FETCHHOST] = tuple(x[-1][0] for x in socket.getaddrinfo(common.PHP_FETCHHOST, 80))
+                            logging.info('Resole PAAS fetchserver address OK. %s', PHPProxyHandler.HOSTS[common.PHP_FETCHHOST])
                         except Exception:
-                            logging.exception('PAASProxyHandler.setup resolve fail')
+                            logging.exception('PHPProxyHandler.setup resolve fail')
 
-        PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
+        PHPProxyHandler.do_GET     = PHPProxyHandler.do_METHOD
+        PHPProxyHandler.do_POST    = PHPProxyHandler.do_METHOD
+        PHPProxyHandler.do_PUT     = PHPProxyHandler.do_METHOD
+        PHPProxyHandler.do_DELETE  = PHPProxyHandler.do_METHOD
+        PHPProxyHandler.do_HEAD    = PHPProxyHandler.do_METHOD
+        PHPProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
 
-        PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
+        PHPProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -1324,9 +1327,9 @@ def main():
 
     LocalProxyServer.address_family = (socket.AF_INET, socket.AF_INET6)[':' in common.LISTEN_IP]
 
-    if common.PAAS_ENABLE:
-        host, _, port = common.PAAS_LISTEN.partition(':')
-        httpd = LocalProxyServer((host, int(port)), PAASProxyHandler)
+    if common.PHP_ENABLE:
+        host, _, port = common.PHP_LISTEN.partition(':')
+        httpd = LocalProxyServer((host, int(port)), PHPProxyHandler)
         thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:

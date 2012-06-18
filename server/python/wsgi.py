@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 
-__version__ = '1.9.0'
+__version__ = '1.9.2'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
@@ -11,7 +11,7 @@ try:
 except:
     socket = ssl = select = None
 try:
-    import gevent, gevent.pywsgi, gevent.queue, gevent.monkey
+    import gevent, gevent.pywsgi, gevent.queue, gevent.monkey, gevent.socket
 except:
     gevent = None
 try:
@@ -100,8 +100,8 @@ def gevent_socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxpi
             except Exception as e:
                 logging.exception('socket_copy(sock1=%r, sock2=%r) failed:%s', sock1, sock2, e)
                 break
-    gevent.spawn(socket_copy, gevent.socket.socket(_sock=local), gevent.socket.socket(_sock=remote))
-    gevent.spawn(socket_copy, gevent.socket.socket(_sock=remote), gevent.socket.socket(_sock=local))
+    gevent.spawn(socket_copy, local.dup(), remote.dup())
+    gevent.spawn(socket_copy, remote.dup(), local.dup())
 
 def paas_fileobj_pipe(fileobj, queue, bufsize=8192):
     logging.info('paas_fileobj_pipe(fileobj=%r, queue)', fileobj)
@@ -113,17 +113,26 @@ def paas_fileobj_pipe(fileobj, queue, bufsize=8192):
             queue.put(StopIteration)
             break
 
-def paas_tunnel(environ, start_response):
-    method = environ['REQUEST_METHOD']
-    url = environ['PATH_INFO']
-    if environ['QUERY_STRING']:
-        url += '?' + environ['QUERY_STRING']
+def paas_tunnel(environ, start_response, request=None):
+    if not request:
+        request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
 
-    logging.info('paas_tunnel %s "%s %s" - -', environ['REMOTE_ADDR'], method, url)
+    method = request['method']
+    url = request['url']
 
-    headers = dict((x.replace('_', '-').title().replace('Http-', ''), environ[x]) for x in environ if x.startswith('HTTP_') or x in ('CONTENT_TYPE', 'CONTENT_LENGTH'))
-    headers.pop('Proxy-Connection', None)
-    headers['Host'] = urlparse.urlparse(url).netloc
+    logging.info('paas_post %s "%s %s" - -', environ['REMOTE_ADDR'], method, url)
+
+    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    payload = request.get('payload')
+
+    if 'dns' in request:
+        headers['Host'] = urlparse.urlparse(url).netloc
+        url = re.sub(r'://.+?([:/])', '://%s\\1' % request['dns'], url)
+
+    if __password__ and __password__ != request.get('password', ''):
+        # return send_notify(start_response, method, url, 403, 'Wrong password.')
+        # avoid GFW detect
+        return paas_get(environ, start_response, request=request)
 
     try:
         # XXX: only test in gevent
@@ -150,10 +159,6 @@ def paas_tunnel(environ, start_response):
             if query:
                 path += '?' + query
             conn = HTTPConnection(netloc, timeout=Deadline)
-            payload = None
-            content_length = int(headers.get('Content-Length', 0))
-            if content_length:
-                payload = wsgi_input.read(content_length)
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
             status   = str(response.status)
@@ -183,31 +188,16 @@ def paas_tunnel(environ, start_response):
         return paas_get(environ, start_response)
 
 
-def paas_post(environ, start_response):
+def paas_post(environ, start_response, request=None):
     logging.info('paas_post %s "%s %s" - -', environ['REMOTE_ADDR'], environ['REQUEST_METHOD'], environ['PATH_INFO'])
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
+    if not request:
+        request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
     url = request['url']
-    tunnel = int(request.get('tunnel', 0))
 
-    logging.info('%s "%s %s" tunnel=%r - -', environ['REMOTE_ADDR'], method, url, tunnel)
-
-    if tunnel == 3:
-        return paas_post_tunnel(environ, start_response, request=request)
-    if tunnel == 1 and not url.startswith('https://'):
-        return paas_post_tunnel(environ, start_response, request=request)
-    elif tunnel == 0 and 'gevent.monkey' in sys.modules:
-        remote_ip = environ['wsgi.input'].rfile._sock.getpeername()[0]
-        if remote_ip.startswith('127.'):
-            start_response('520 Variant Also Negotiates', [])
-            return ['']
-        elif remote_ip.startswith(('127.', '10.', '192.168.')):
-            pass
-        else:
-            start_response('521 Insufficient Storage', [])
-            return ['']
+    logging.info('paas_post %s "%s %s" - -', environ['REMOTE_ADDR'], method, url)
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
     headers.pop('Proxy-Connection', None)
@@ -222,7 +212,7 @@ def paas_post(environ, start_response):
     if __password__ and __password__ != request.get('password', ''):
         # return send_notify(start_response, method, url, 403, 'Wrong password.')
         # avoid GFW detect
-        return paas_get(environ, start_response)
+        return paas_get(environ, start_response, request=request)
 
     deadline = Deadline
     errors = []
@@ -272,7 +262,7 @@ def paas_post(environ, start_response):
 
     return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
 
-def paas_get(environ, start_response):
+def paas_get(environ, start_response, request=None):
     logging.info('paas_get %s "%s %s" - -', environ['REMOTE_ADDR'], environ['REQUEST_METHOD'], environ['PATH_INFO'])
     host = 'go%s%s' % (int(time.time()*1000000), environ['HTTP_HOST'])
     try:
@@ -286,13 +276,14 @@ def paas_get(environ, start_response):
         start_response('503 Service Unavailable', [('Content-Type', 'text/html; charset=UTF-8')])
         return ['']
 
-def paas_dispatch(environ, start_response):
-    if environ['PATH_INFO'].startswith('http'):
-        return paas_tunnel(environ, start_response)
+def paas_application(environ, start_response):
+    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
+    if int(request.get('tunnel',0)):
+        return paas_tunnel(environ, start_response, request=request)
     elif environ['REQUEST_METHOD'] == 'POST':
-        return paas_post(environ, start_response)
+        return paas_post(environ, start_response, request=request)
     else:
-        return paas_get(environ, start_response)
+        return paas_get(environ, start_response, request=request)
 
 def gae_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
@@ -384,7 +375,7 @@ def app(environ, start_response):
         else:
             return gae_get(environ, start_response)
     else:
-        return paas_dispatch(environ, start_response)
+        return paas_application(environ, start_response)
 
 if sae:
     #application = sae.create_wsgi_app(sae.ext.shell.ShellMiddleware(app, __password__ or 'hugoxxxx'))
