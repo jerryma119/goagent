@@ -39,6 +39,7 @@ import urllib2
 import BaseHTTPServer
 import SocketServer
 import ConfigParser
+import traceback
 try:
     import logging
 except ImportError:
@@ -207,7 +208,7 @@ class MultiplexConnection(object):
             socks = []
             # multiple connect start here
             for host in hosts:
-                sock = socket.socket(2 if ':' not in host else 23)
+                sock = socket.socket(2 if ':' not in host else socket.AF_INET6)
                 sock.setblocking(0)
                 #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
                 err = sock.connect_ex((host, port))
@@ -236,7 +237,7 @@ class MultiplexConnection(object):
                 logging.debug('MultiplexConnection Cannot hosts %r:%r, window=%d', hosts, port, window)
         else:
             # OOOPS, cannot multiple connect
-            MultiplexConnection.window = min(int(round(window*1.5)), len(hostlist), self.window_max)
+            MultiplexConnection.window = min(int(round(window*1.5)), self.window_max)
             MultiplexConnection.window_ack = 0
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
@@ -578,6 +579,7 @@ class SimpleLogging(object):
         self.log('ERROR', fmt, *args, **kwargs)
     def exception(self, fmt, *args, **kwargs):
         self.log('ERROR', fmt, *args, **kwargs)
+        traceback.print_exc(file=sys.stderr)
     def critical(self, fmt, *args, **kwargs):
         self.log('CRITICAL', fmt, *args, **kwargs)
 
