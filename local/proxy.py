@@ -1125,6 +1125,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 class PAASProxyHandler(SocketServer.StreamRequestHandler):
 
+    SetupLock = threading.Lock()
+
     def log_message(self, fmt, *args):
         host, port = self.client_address[:2]
         sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
@@ -1140,18 +1142,29 @@ class PAASProxyHandler(SocketServer.StreamRequestHandler):
         sock = socket.create_connection((host, port))
         if scheme == 'https':
             sock = ssl.wrap_socket(sock)
-        sock.sendall('POST / HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n' % host)
+        sock.sendall('PUT / HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n' % host)
         return sock
 
     def handle(self):
         try:
             paas_fetchserver = common.PAAS_FETCHSERVER
-            self.log_message('new connection to paas_server=%r', paas_fetchserver)
+            self.log_message('Connect to paas_server=%r', paas_fetchserver)
             sock = self.connect_paas(paas_fetchserver)
             socket_forward(self.connection, sock)
         except Exception, e:
             logging.exception('PAASProxyHandler.handle client_address=%r failed:%s', self.client_address[:2], e)
 
+    def setup(self):
+        fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
+        if not common.PROXY_ENABLE:
+            logging.info('resolve fetchhost=%r to iplist', fetchhost)
+            if fetchhost not in common.HOSTS:
+                with PAASProxyHandler.SetupLock:
+                    if fetchhost not in common.HOSTS:
+                        common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
+                        logging.info('resolve fetchhost=%r to iplist=%r', fetchhost, common.HOSTS[fetchhost])
+        PAASProxyHandler.setup = SocketServer.StreamRequestHandler.setup
+        SocketServer.StreamRequestHandler.setup(self)
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def _generate_pac(self):

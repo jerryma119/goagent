@@ -61,28 +61,7 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
-def encode_data(dic):
-    return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)
-
-def decode_data(qs):
-    return dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
-
-def send_response(start_response, status, headers, content, content_type='image/gif'):
-    strheaders = encode_data(headers)
-    #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
-    if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
-        data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
-    else:
-        data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
-    start_response('200 OK', [('Content-type', content_type)])
-    return [data]
-
-def send_notify(start_response, method, url, status, content):
-    logging.warning('%r Failed: url=%r, status=%r', method, url, status)
-    content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
-    send_response(start_response, status, {'content-type':'text/html'}, content)
-
-def paas_application(environ, start_response):
+def paas_socks5(environ, start_response):
     wsgi_input = environ['wsgi.input']
     sock = None
     if hasattr(wsgi_input, 'rfile'):
@@ -123,6 +102,117 @@ def paas_application(environ, start_response):
     if reply[1] == '\x00':  # Success
         if mode == 1:    # 1. Tcp connect
             socket_forward(sock, remote)
+
+def paas_post(environ, start_response):
+    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
+    #logging.debug('post() get fetch request %s', request)
+
+    method = request['method']
+    url = request['url']
+    payload = request['payload'] or None
+
+    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    headers['Connection'] = 'close'
+
+    if 'dns' in request:
+        headers['Host'] = urlparse.urlparse(url).netloc
+        url = re.sub(r'://.+?([:/])', '://%s\\1' % request['dns'], url)
+
+    if __password__ and __password__ != request.get('password', ''):
+        # return send_notify(start_response, method, url, 403, 'Wrong password.')
+        # avoid GFW detect
+        return paas_get(environ, start_response)
+
+    deadline = Deadline
+    errors = []
+
+    scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+    HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+    if params:
+        path += ';' + params
+    if query:
+        path += '?' + query
+    for i in xrange(FetchMax if 'fetchmax' not in request else int(request['fetchmax'])):
+        try:
+            conn = HTTPConnection(netloc, timeout=deadline)
+            conn.request(method, path, body=payload, headers=headers)
+            response = conn.getresponse()
+            if response.length and response.length > FetchMaxSize:
+                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
+                start = int(m.group(1) if m else 0)
+                headers['Range'] = 'bytes=%d-%d' % (start, start+FetchMaxSize-1)
+                response.close()
+                continue
+            break
+        except Exception, e:
+            errors.append(str(e))
+            time.sleep(1)
+            if i==0 and method=='GET':
+                deadline = Deadline * 2
+    else:
+        return send_notify(start_response, method, url, 500, 'Python PaaS Server: HTTPConnection error: %s' % errors)
+
+    headers = dict(response.getheaders())
+    if 'set-cookie' in headers:
+        scs = headers['set-cookie'].split(', ')
+        cookies = []
+        i = -1
+        for sc in scs:
+            if re.match(r'[^ =]+ ', sc):
+                try:
+                    cookies[i] = '%s, %s' % (cookies[i], sc)
+                except IndexError:
+                    pass
+            else:
+                cookies.append(sc)
+                i += 1
+        headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
+    headers['connection'] = 'close'
+
+    return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
+
+def paas_get(environ, start_response):
+    host = 'go%s%s' % (int(time.time()*1000000), environ['HTTP_HOST'])
+    try:
+        conn = httplib.HTTPConnection(host)
+        conn.request('GET', '/')
+        response = conn.getresponse()
+        message = '%s %s' % (response.status, response.reason)
+        start_response(message, response.getheaders())
+        return [response.read()]
+    except Exception as e:
+        start_response('503 Service Unavailable', [('Content-Type', 'text/html; charset=UTF-8')])
+        return ['']
+
+def paas_application(environ, start_response):
+    method = environ['REQUEST_METHOD']
+    if method == 'PUT':
+        return paas_socks5(environ, start_response)
+    elif method == 'POST':
+        return paas_post(environ, start_response)
+    else:
+        return paas_get(environ, start_response)
+
+def encode_data(dic):
+    return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)
+
+def decode_data(qs):
+    return dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
+
+def send_response(start_response, status, headers, content, content_type='image/gif'):
+    strheaders = encode_data(headers)
+    #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
+    if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+        data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
+    else:
+        data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
+    start_response('200 OK', [('Content-type', content_type)])
+    return [data]
+
+def send_notify(start_response, method, url, status, content):
+    logging.warning('%r Failed: url=%r, status=%r', method, url, status)
+    content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
+    send_response(start_response, status, {'content-type':'text/html'}, content)
 
 def gae_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
