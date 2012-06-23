@@ -15,10 +15,51 @@ try:
     import sae
 except ImportError:
     sae = None
+try:
+    import socket, select, ssl
+except:
+    socket = None
 
 FetchMax = 3
 FetchMaxSize = 1024*1024*4
 Deadline = 30
+
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
+    timecount = timeout
+    try:
+        while 1:
+            timecount -= tick
+            if timecount <= 0:
+                break
+            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
+            if errors:
+                break
+            if ins:
+                for sock in ins:
+                    data = sock.recv(bufsize)
+                    if data:
+                        if sock is local:
+                            remote.sendall(data)
+                            timecount = maxping or timeout
+                        else:
+                            local.sendall(data)
+                            timecount = maxpong or timeout
+                    else:
+                        return
+            else:
+                if idlecall:
+                    try:
+                        idlecall()
+                    except Exception:
+                        logging.exception('socket_forward idlecall fail')
+                    finally:
+                        idlecall = None
+    except Exception:
+        logging.exception('socket_forward error')
+        raise
+    finally:
+        if idlecall:
+            idlecall()
 
 def encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)
@@ -41,86 +82,47 @@ def send_notify(start_response, method, url, status, content):
     content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
-def paas_post(environ, start_response):
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
-    #logging.debug('post() get fetch request %s', request)
-
-    method = request['method']
-    url = request['url']
-    payload = request['payload'] or None
-
-    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
-    headers['Connection'] = 'close'
-
-    if 'dns' in request:
-        headers['Host'] = urlparse.urlparse(url).netloc
-        url = re.sub(r'://.+?([:/])', '://%s\\1' % request['dns'], url)
-
-    if __password__ and __password__ != request.get('password', ''):
-        # return send_notify(start_response, method, url, 403, 'Wrong password.')
-        # avoid GFW detect
-        return paas_get(environ, start_response)
-
-    deadline = Deadline
-    errors = []
-
-    scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-    HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
-    if params:
-        path += ';' + params
-    if query:
-        path += '?' + query
-    for i in xrange(FetchMax if 'fetchmax' not in request else int(request['fetchmax'])):
-        try:
-            conn = HTTPConnection(netloc, timeout=deadline)
-            conn.request(method, path, body=payload, headers=headers)
-            response = conn.getresponse()
-            if response.length and response.length > FetchMaxSize:
-                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
-                start = int(m.group(1) if m else 0)
-                headers['Range'] = 'bytes=%d-%d' % (start, start+FetchMaxSize-1)
-                response.close()
-                continue
-            break
-        except Exception, e:
-            errors.append(str(e))
-            time.sleep(1)
-            if i==0 and method=='GET':
-                deadline = Deadline * 2
-    else:
-        return send_notify(start_response, method, url, 500, 'Python PaaS Server: HTTPConnection error: %s' % errors)
-
-    headers = dict(response.getheaders())
-    if 'set-cookie' in headers:
-        scs = headers['set-cookie'].split(', ')
-        cookies = []
-        i = -1
-        for sc in scs:
-            if re.match(r'[^ =]+ ', sc):
-                try:
-                    cookies[i] = '%s, %s' % (cookies[i], sc)
-                except IndexError:
-                    pass
-            else:
-                cookies.append(sc)
-                i += 1
-        headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
-    headers['connection'] = 'close'
-
-    return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
-
-def paas_get(environ, start_response):
-    host = 'go%s%s' % (int(time.time()*1000000), environ['HTTP_HOST'])
+def paas_application(environ, start_response):
+    wsgi_input = environ['wsgi.input']
+    sock = None
+    if hasattr(wsgi_input, 'rfile'):
+        sock = wsgi_input.rfile._sock
+    elif hasattr(wsgi_input, '_sock'):
+        sock = wsgi_input._sock
+    elif hasattr(wsgi_input, 'fileno'):
+        sock = socket.fromfd(wsgi_input.fileno())
+    if not sock:
+        raise RuntimeError('cannot extract socket from wsgi_input=%r' % wsgi_input)
+    # 1. Version
+    sock.recv(262)
+    sock.send(b'\x05\x00');
+    # 2. Request
+    rfile = sock.makefile('rb', -1)
+    data = rfile.read(4)
+    mode = ord(data[1])
+    addrtype = ord(data[3])
+    if addrtype == 1:       # IPv4
+        addr = socket.inet_ntoa(rfile.read(4))
+    elif addrtype == 3:     # Domain name
+        addr = rfile.read(ord(sock.recv(1)[0]))
+    port = struct.unpack('>H', rfile.read(2))
+    reply = b'\x05\x00\x00\x01'
     try:
-        conn = httplib.HTTPConnection(host)
-        conn.request('GET', '/')
-        response = conn.getresponse()
-        message = '%s %s' % (response.status, response.reason)
-        start_response(message, response.getheaders())
-        return [response.read()]
-    except Exception as e:
-        start_response('503 Service Unavailable', [('Content-Type', 'text/html; charset=UTF-8')])
-        return ['']
+        if mode == 1:  # 1. TCP Connect
+            remote = socket.create_connection((addr, port[0]))
+            logging.info('TCP Connect to %s:%s', addr, port[0])
+        else:
+            reply = b'\x05\x07\x00\x01' # Command not supported
+        local = remote.getsockname()
+        reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
+    except socket.error:
+        # Connection refused
+        reply = '\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
+    sock.send(reply)
+    # 3. Transfering
+    if reply[1] == '\x00':  # Success
+        if mode == 1:    # 1. Tcp connect
+            socket_forward(sock, remote)
 
 def gae_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
@@ -208,15 +210,10 @@ def gae_get(environ, start_response):
 def app(environ, start_response):
     if urlfetch and environ['REQUEST_METHOD'] == 'POST':
         return gae_post(environ, start_response)
-    elif environ['REQUEST_METHOD'] == 'POST':
-        try:
-            return paas_post(environ, start_response)
-        except Exception as e:
-            logging.exception('paas_post(environ, start_response) exception:%s', e)
-    elif urlfetch and environ['REQUEST_METHOD'] == 'GET':
-        return gae_get(environ, start_response)
+    elif not urlfetch:
+        return paas_application(environ, start_response)
     else:
-        return paas_get(environ, start_response)
+        return gae_get(environ, start_response)
 
 if sae:
     application = sae.create_wsgi_app(app)
@@ -233,9 +230,13 @@ if __name__ == '__main__':
             line = self.rfile.readline(8192)
         return line
     gevent.pywsgi.WSGIHandler.read_requestline = read_requestline
-    host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) == 2 else ('', ':', 8080)
-    server = gevent.pywsgi.WSGIServer((host, int(port)), application)
+    host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) == 2 else ('', ':', 443)
+    if '-ssl' in sys.argv[1:]:
+        ssl_args = dict(certfile=os.path.splitext(__file__)[0]+'.pem')
+    else:
+        ssl_args = dict()
+    server = gevent.pywsgi.WSGIServer((host, int(port)), application, **ssl_args)
     server.environ.pop('SERVER_SOFTWARE')
-    logging.info('serving http://%s:%s/wsgi.py', server.address[0] or '0.0.0.0', server.address[1])
+    logging.info('serving %s://%s:%s/wsgi.py', 'https' if ssl_args else 'http', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()
 
