@@ -180,6 +180,9 @@ class Common(object):
         if common.PAAS_ENABLE:
             info += 'PAAS Listen      : %s\n' % common.PAAS_LISTEN
             info += 'PAAS FetchServer : %s\n' % common.PAAS_FETCHSERVER
+        if common.SOCKS5_ENABLE:
+            info += 'Socks5 Listen    : %s\n' % common.SOCKS5_LISTEN
+            info += 'Socks5 Server    : %s\n' % common.SOCKS5_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server       : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
