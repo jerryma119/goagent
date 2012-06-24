@@ -61,6 +61,38 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
+def socks5_server(sock, rfile=None):
+    if not rfile:
+        rfile = sock.makefile('rb', -1)
+    # 1. Version
+    rfile.read(ord(rfile.read(2)[1]))
+    sock.send(b'\x05\x00');
+    # 2. Request
+    _, mode, _, addrtype = rfile.read(4)
+    if addrtype == b'\x01':       # IPv4
+        host = socket.inet_ntoa(rfile.read(4))
+    elif addrtype == b'\x03':     # Domain name
+        host = rfile.read(ord(rfile.read(1)[0]))
+    port = int(struct.unpack('>H', rfile.read(2))[0])
+    reply = b'\x05\x00\x00\x01'
+    try:
+        logging.info('socks5_server mode=%r', mode)
+        if mode == b'\x01':  # 1. TCP Connect
+            remote = socket.create_connection((host, port))
+            logging.info('TCP Connect to %s:%s', host, port)
+            local = remote.getsockname()
+            reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
+        else:
+            reply = b'\x05\x07\x00\x01' # Command not supported
+    except socket.error:
+        # Connection refused
+        reply = b'\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
+    sock.send(reply)
+    # 3. Transfering
+    if reply[1] == b'\x00':  # Success
+        if mode == b'\x01':    # 1. Tcp connect
+            socket_forward(sock, remote)
+
 def paas_socks5(environ, start_response):
     wsgi_input = environ['wsgi.input']
     sock = None
@@ -74,38 +106,7 @@ def paas_socks5(environ, start_response):
         sock = socket.fromfd(wsgi_input.fileno())
     if not sock:
         raise RuntimeError('cannot extract socket from wsgi_input=%r' % wsgi_input)
-    # 1. Version
-    if not rfile:
-        rfile = sock.makefile('rb', -1)
-    rfile.read(ord(rfile.read(2)[-1]))
-    sock.send(b'\x05\x00');
-    # 2. Request
-    data = rfile.read(4)
-    mode = ord(data[1])
-    addrtype = ord(data[3])
-    if addrtype == 1:       # IPv4
-        addr = socket.inet_ntoa(rfile.read(4))
-    elif addrtype == 3:     # Domain name
-        addr = rfile.read(ord(sock.recv(1)[0]))
-    port = struct.unpack('>H', rfile.read(2))
-    reply = b'\x05\x00\x00\x01'
-    try:
-        logging.info('paas_socks5 mode=%r', mode)
-        if mode == 1:  # 1. TCP Connect
-            remote = socket.create_connection((addr, port[0]))
-            logging.info('TCP Connect to %s:%s', addr, port[0])
-            local = remote.getsockname()
-            reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
-        else:
-            reply = b'\x05\x07\x00\x01' # Command not supported
-    except socket.error:
-        # Connection refused
-        reply = '\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
-    sock.send(reply)
-    # 3. Transfering
-    if reply[1] == '\x00':  # Success
-        if mode == 1:    # 1. Tcp connect
-            socket_forward(sock, remote)
+    socks5_server(sock, rfile=rfile)
 
 def paas_post(environ, start_response):
     request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
