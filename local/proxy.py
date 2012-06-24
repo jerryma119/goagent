@@ -1199,22 +1199,22 @@ class Sock5ProxyHandler(SocketServer.StreamRequestHandler):
 
     def handle(self):
         try:
-            paas_fetchserver = common.PAAS_FETCHSERVER
-            self.log_message('Connect to paas_server=%r', paas_fetchserver)
+            paas_fetchserver = common.SOCKS5_FETCHSERVER
+            self.log_message('Connect to socks5_server=%r', paas_fetchserver)
             sock = self.connect_paas(paas_fetchserver)
             socket_forward(self.connection, sock)
         except Exception, e:
             logging.exception('Sock5ProxyHandler.handle client_address=%r failed:%s', self.client_address[:2], e)
 
     def setup(self):
-        fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
+        fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
         if not common.PROXY_ENABLE:
-            logging.info('resolve fetchhost=%r to iplist', fetchhost)
+            logging.info('resolve socks5 fetchhost=%r to iplist', fetchhost)
             if fetchhost not in common.HOSTS:
                 with Sock5ProxyHandler.SetupLock:
                     if fetchhost not in common.HOSTS:
                         common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
-                        logging.info('resolve fetchhost=%r to iplist=%r', fetchhost, common.HOSTS[fetchhost])
+                        logging.info('resolve socks5 fetchhost=%r to iplist=%r', fetchhost, common.HOSTS[fetchhost])
         Sock5ProxyHandler.setup = SocketServer.StreamRequestHandler.setup
         SocketServer.StreamRequestHandler.setup(self)
 
