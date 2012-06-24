@@ -93,6 +93,14 @@ class Common(object):
         else:
             self.PAC_ENABLE           = 0
 
+        if self.CONFIG.has_section('socks5'):
+            self.SOCKS5_ENABLE       = self.CONFIG.getint('socks5', 'enable')
+            self.SOCKS5_LISTEN       = self.CONFIG.get('socks5', 'listen')
+            self.SOCKS5_PASSWORD     = self.CONFIG.get('socks5', 'password') if self.CONFIG.has_option('socks5', 'password') else ''
+            self.SOCKS5_FETCHSERVER  = self.CONFIG.get('socks5', 'fetchserver')
+        else:
+            self.SOCKS_ENABLE        = 0
+
         self.PROXY_ENABLE         = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_HOST           = self.CONFIG.get('proxy', 'host')
         self.PROXY_PORT           = self.CONFIG.getint('proxy', 'port')
@@ -1123,7 +1131,48 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e[0] in (10053, errno.EPIPE):
                 return
 
-class PAASProxyHandler(SocketServer.StreamRequestHandler):
+class PAASProxyHandler(GAEProxyHandler):
+
+    HOSTS = {}
+
+    def handle_fetch_error(self, error):
+        logging.error('PAASProxyHandler handle_fetch_error %s', error)
+        httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
+
+    def fetch(self, url, payload, method, headers):
+        fetchhost, fetchserver = common.PAAS_FETCH_INFO[self.server.server_address]
+        dns  = None
+        host = self.headers.get('Host')
+        if host in PAASProxyHandler.HOSTS:
+            dns = random.choice(tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)))
+        return urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=common.PAAS_PASSWORD, dns=dns, on_error=self.handle_fetch_error)
+
+    def setup(self):
+        PAASProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
+        if common.PROXY_ENABLE:
+            logging.info('Local Proxy is enable, PAASProxyHandler dont resole DNS')
+        else:
+            for fetchhost, _ in common.PAAS_FETCH_INFO.itervalues():
+                logging.info('PAASProxyHandler.setup check %s is in common.HOSTS', fetchhost)
+                if fetchhost not in common.HOSTS:
+                    with GAEProxyHandler.SetupLock:
+                        if fetchhost not in common.HOSTS:
+                            try:
+                                logging.info('Resole PAAS fetchserver address.')
+                                common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
+                                logging.info('Resole PAAS fetchserver address OK. %s', common.HOSTS[fetchhost])
+                            except Exception:
+                                logging.exception('PAASProxyHandler.setup resolve fail')
+        PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
+        PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
+        BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
+
+class Sock5ProxyHandler(SocketServer.StreamRequestHandler):
 
     SetupLock = threading.Lock()
 
@@ -1152,18 +1201,18 @@ class PAASProxyHandler(SocketServer.StreamRequestHandler):
             sock = self.connect_paas(paas_fetchserver)
             socket_forward(self.connection, sock)
         except Exception, e:
-            logging.exception('PAASProxyHandler.handle client_address=%r failed:%s', self.client_address[:2], e)
+            logging.exception('Sock5ProxyHandler.handle client_address=%r failed:%s', self.client_address[:2], e)
 
     def setup(self):
         fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
         if not common.PROXY_ENABLE:
             logging.info('resolve fetchhost=%r to iplist', fetchhost)
             if fetchhost not in common.HOSTS:
-                with PAASProxyHandler.SetupLock:
+                with Sock5ProxyHandler.SetupLock:
                     if fetchhost not in common.HOSTS:
                         common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
                         logging.info('resolve fetchhost=%r to iplist=%r', fetchhost, common.HOSTS[fetchhost])
-        PAASProxyHandler.setup = SocketServer.StreamRequestHandler.setup
+        Sock5ProxyHandler.setup = SocketServer.StreamRequestHandler.setup
         SocketServer.StreamRequestHandler.setup(self)
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -1283,6 +1332,11 @@ def main():
     if common.PAAS_ENABLE:
         host, _, port = common.PAAS_LISTEN.rpartition(':')
         httpd = LocalProxyServer((host, int(port)), PAASProxyHandler)
+        thread.start_new_thread(httpd.serve_forever, ())
+
+    if common.SOCKS5_ENABLE:
+        host, _, port = common.SOCKS5_LISTEN.rpartition(':')
+        httpd = LocalProxyServer((host, int(port)), Sock5ProxyHandler)
         thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
