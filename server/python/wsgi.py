@@ -64,8 +64,10 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
 def paas_socks5(environ, start_response):
     wsgi_input = environ['wsgi.input']
     sock = None
+    rfile = None
     if hasattr(wsgi_input, 'rfile'):
         sock = wsgi_input.rfile._sock
+        rfile = wsgi_input.rfile
     elif hasattr(wsgi_input, '_sock'):
         sock = wsgi_input._sock
     elif hasattr(wsgi_input, 'fileno'):
@@ -73,10 +75,11 @@ def paas_socks5(environ, start_response):
     if not sock:
         raise RuntimeError('cannot extract socket from wsgi_input=%r' % wsgi_input)
     # 1. Version
-    sock.recv(262)
+    if not rfile:
+        rfile = sock.makefile('rb', -1)
+    rfile.read(ord(rfile.read(2)[-1]))
     sock.send(b'\x05\x00');
     # 2. Request
-    rfile = sock.makefile('rb', -1)
     data = rfile.read(4)
     mode = ord(data[1])
     addrtype = ord(data[3])
@@ -87,13 +90,14 @@ def paas_socks5(environ, start_response):
     port = struct.unpack('>H', rfile.read(2))
     reply = b'\x05\x00\x00\x01'
     try:
+        logging.info('paas_socks5 mode=%r', mode)
         if mode == 1:  # 1. TCP Connect
             remote = socket.create_connection((addr, port[0]))
             logging.info('TCP Connect to %s:%s', addr, port[0])
+            local = remote.getsockname()
+            reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
         else:
             reply = b'\x05\x07\x00\x01' # Command not supported
-        local = remote.getsockname()
-        reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
     except socket.error:
         # Connection refused
         reply = '\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
