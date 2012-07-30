@@ -39,6 +39,10 @@ def main_macos():
 	<string>root</string>
 	<key>WorkingDirectory</key>
 	<string>%(dirname)s</string>
+    <key>StandardOutPath</key>
+    <string>/var/log/goagent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/goagent.log</string>
 </dict>
 </plist>''' % dict(dirname=os.path.dirname(__file__))
     filename = '/System/Library/LaunchDaemons/org.goagent.macos.plist'
