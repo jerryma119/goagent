@@ -44,7 +44,7 @@ def main_macos():
     <key>StandardErrorPath</key>
     <string>/var/log/goagent.log</string>
 </dict>
-</plist>''' % dict(dirname=os.path.dirname(__file__))
+</plist>''' % dict(dirname=os.path.abspath(os.path.dirname(__file__)))
     filename = '/System/Library/LaunchDaemons/org.goagent.macos.plist'
     print 'write plist to %s' % filename
     with open(filename, 'wb') as fp:
