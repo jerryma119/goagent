@@ -36,12 +36,7 @@ def io_copy(source, dest):
     except Exception as e:
         logging.exception('io_copy(source=%r, dest=%r) error: %s', source, dest, e)
     finally:
-        for fd in (source, dest):
-            if hasattr(fd, 'close'):
-                try:
-                    fd.close()
-                except:
-                    pass
+        pass
 
 def paas_application(environ, start_response):
     method       = environ['REQUEST_METHOD']
@@ -58,20 +53,22 @@ def paas_application(environ, start_response):
     headers['Connection'] = 'close'
 
     if method == 'CONNECT':
-        host, _, port = path_info.rpartition(':')
-        host = headers.get('Host', host)
+        host, _, port = headers['Host'].rpartition(':')
         port = int(port)
         try:
             logging.info('socket.create_connection((host=%r, port=%r), timeout=%r)', host, port, Deadline)
             sock = socket.create_connection((host, port), timeout=Deadline)
-            start_response('200 OK', [])
+            logging.info('CONNECT %s:%s OK', host, port)
+            start_response('201 Tunnel', [])
             if 'gevent.monkey' in sys.modules:
-                gevent.spawn(io_copy, wsgi_input, sock.dup())
+                logging.info('io_copy(wsgi_input.rfile._sock=%r, sock=%r)', wsgi_input.rfile._sock, sock)
+                gevent.spawn(io_copy, wsgi_input.rfile._sock.dup(), sock.dup())
             else:
                 thread.start_new_thread(io_copy, wsgi_input, sock.dup())
             while 1:
-                data = sock.read(8192)
+                data = sock.recv(8192)
                 if not data:
+                    sock.close()
                     raise StopIteration
                 yield data
         except socket.error as e:
@@ -117,6 +114,8 @@ def paas_application(environ, start_response):
             while 1:
                 data = response.read(8192)
                 if not data:
+                    response.close()
+                    conn.close()
                     raise StopIteration
                 else:
                     yield data

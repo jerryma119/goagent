@@ -1123,6 +1123,10 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
 
+    def log_message(self, fmt, *args):
+        host, port = self.client_address[:2]
+        sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
+
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
 
@@ -1152,12 +1156,12 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         try:
             conn = HTTPConnection(netloc, timeout=8)
-
             scheme, netloc, path, params, query, fragment = urlparse.urlparse(self.path)
             if params:
                 path += ';' + params
             if query:
                 path += '?' + query
+
             conn.request(self.command, path, body=payload, headers=headers.dict)
             response = conn.getresponse()
             headers = []
@@ -1194,6 +1198,42 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.wfile.write(data)
         except httplib.HTTPException as e:
             raise
+        finally:
+            conn.close()
+
+    def do_CONNECT(self):
+        url = common.PAAS_FETCHSERVER
+        headers = self.headers
+        payload = None
+        if 'Content-Length' in headers:
+            payload = self.rfile.read(int(headers.get('Content-Length', -1)))
+
+        scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+        HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+
+        if 'Host' in headers:
+            headers['X-Forwarded-Host'] = self.path
+            headers['Host'] = re.sub(r':\d+$', '', netloc)
+
+        try:
+            conn = HTTPConnection(netloc, timeout=8)
+            conn.request(self.command, '/', headers=headers.dict)
+            response = conn.getresponse()
+            self.send_response(response.status)
+            for keyword, value in response.getheaders():
+                self.send_header(keyword, value)
+            self.end_headers()
+            print (response.status,)
+            while 1:
+                data = conn.sock.recv(8192)
+                if not data:
+                    break
+                else:
+                    self.wfile.write(data)
+        except httplib.HTTPException as e:
+            raise
+        finally:
+            conn.close()
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
