@@ -11,6 +11,9 @@ import re
 import time
 
 def main_macos():
+    if os.getuid() != 0:
+        print 'please use sudo run this script'
+        sys.exit()
     PLIST = '''\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -50,6 +53,13 @@ def main_macos():
     with open(filename, 'wb') as fp:
         fp.write(PLIST)
     print 'write plist to %s done' % filename
+    print 'Adding CA.crt to system keychain, You may need to input your password...'
+    cmd = 'sudo security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s/CA.crt"' % os.path.abspath(os.path.dirname(__file__))
+    if os.system(cmd) != 0:
+        print 'Adding CA.crt to system keychain Failed!'
+        sys.exit(0)
+    print 'Adding CA.crt to system keychain Done'
+
 
 def main_linux():
     pass
