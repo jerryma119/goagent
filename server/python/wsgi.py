@@ -16,7 +16,7 @@ try:
 except ImportError:
     sae = None
 try:
-    import socket, select, ssl
+    import socket, select, ssl, thread
 except:
     socket = None
 
@@ -24,179 +24,104 @@ FetchMax = 3
 FetchMaxSize = 1024*1024*4
 Deadline = 30
 
-def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
-    timecount = timeout
+def io_copy(source, dest):
     try:
+        io_read  = getattr(source, 'read', None) or getattr(source, 'recv')
+        io_write = getattr(dest, 'write', None) or getattr(dest, 'sendall')
         while 1:
-            timecount -= tick
-            if timecount <= 0:
+            data = io_read(8192)
+            if not data:
                 break
-            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
-            if errors:
-                break
-            if ins:
-                for sock in ins:
-                    data = sock.recv(bufsize)
-                    if data:
-                        if sock is local:
-                            remote.sendall(data)
-                            timecount = maxping or timeout
-                        else:
-                            local.sendall(data)
-                            timecount = maxpong or timeout
-                    else:
-                        return
-            else:
-                if idlecall:
-                    try:
-                        idlecall()
-                    except Exception:
-                        logging.exception('socket_forward idlecall fail')
-                    finally:
-                        idlecall = None
-    except Exception:
-        logging.exception('socket_forward error')
-        raise
-    finally:
-        if idlecall:
-            idlecall()
-
-def socks5_server(sock, rfile=None):
-    if not rfile:
-        rfile = sock.makefile('rb', -1)
-    # 1. Version
-    rfile.read(ord(rfile.read(2)[1]))
-    sock.send(b'\x05\x00');
-    # 2. Request
-    _, mode, _, addrtype = rfile.read(4)
-    if addrtype == b'\x01':       # IPv4
-        host = socket.inet_ntoa(rfile.read(4))
-    elif addrtype == b'\x03':     # Domain name
-        host = rfile.read(ord(rfile.read(1)[0]))
-    port = int(struct.unpack('>H', rfile.read(2))[0])
-    reply = b'\x05\x00\x00\x01'
-    try:
-        logging.info('socks5_server mode=%r', mode)
-        if mode == b'\x01':  # 1. TCP Connect
-            remote = socket.create_connection((host, port))
-            logging.info('TCP Connect to %s:%s', host, port)
-            local = remote.getsockname()
-            reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
-        else:
-            reply = b'\x05\x07\x00\x01' # Command not supported
-    except socket.error:
-        # Connection refused
-        reply = b'\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
-    sock.send(reply)
-    # 3. Transfering
-    if reply[1] == b'\x00':  # Success
-        if mode == b'\x01':    # 1. Tcp connect
-            socket_forward(sock, remote)
-
-def paas_socks5(environ, start_response):
-    wsgi_input = environ['wsgi.input']
-    sock = None
-    rfile = None
-    if hasattr(wsgi_input, 'rfile'):
-        sock = wsgi_input.rfile._sock
-        rfile = wsgi_input.rfile
-    elif hasattr(wsgi_input, '_sock'):
-        sock = wsgi_input._sock
-    elif hasattr(wsgi_input, 'fileno'):
-        sock = socket.fromfd(wsgi_input.fileno())
-    if not sock:
-        raise RuntimeError('cannot extract socket from wsgi_input=%r' % wsgi_input)
-    socks5_server(sock, rfile=rfile)
-
-def paas_post(environ, start_response):
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))))
-    #logging.debug('post() get fetch request %s', request)
-
-    method = request['method']
-    url = request['url']
-    payload = request['payload'] or None
-
-    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
-    headers['Connection'] = 'close'
-
-    if 'dns' in request:
-        headers['Host'] = urlparse.urlparse(url).netloc
-        url = re.sub(r'://.+?([:/])', '://%s\\1' % request['dns'], url)
-
-    if __password__ and __password__ != request.get('password', ''):
-        # return send_notify(start_response, method, url, 403, 'Wrong password.')
-        # avoid GFW detect
-        return paas_get(environ, start_response)
-
-    deadline = Deadline
-    errors = []
-
-    scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-    HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
-    if params:
-        path += ';' + params
-    if query:
-        path += '?' + query
-    for i in xrange(FetchMax if 'fetchmax' not in request else int(request['fetchmax'])):
-        try:
-            conn = HTTPConnection(netloc, timeout=deadline)
-            conn.request(method, path, body=payload, headers=headers)
-            response = conn.getresponse()
-            if response.length and response.length > FetchMaxSize:
-                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
-                start = int(m.group(1) if m else 0)
-                headers['Range'] = 'bytes=%d-%d' % (start, start+FetchMaxSize-1)
-                response.close()
-                continue
-            break
-        except Exception, e:
-            errors.append(str(e))
-            time.sleep(1)
-            if i==0 and method=='GET':
-                deadline = Deadline * 2
-    else:
-        return send_notify(start_response, method, url, 500, 'Python PaaS Server: HTTPConnection error: %s' % errors)
-
-    headers = dict(response.getheaders())
-    if 'set-cookie' in headers:
-        scs = headers['set-cookie'].split(', ')
-        cookies = []
-        i = -1
-        for sc in scs:
-            if re.match(r'[^ =]+ ', sc):
-                try:
-                    cookies[i] = '%s, %s' % (cookies[i], sc)
-                except IndexError:
-                    pass
-            else:
-                cookies.append(sc)
-                i += 1
-        headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
-    headers['connection'] = 'close'
-
-    return send_response(start_response, response.status, headers, response.read(), 'text/html; charset=UTF-8')
-
-def paas_get(environ, start_response):
-    host = 'go%s%s' % (int(time.time()*1000000), environ['HTTP_HOST'])
-    try:
-        conn = httplib.HTTPConnection(host)
-        conn.request('GET', '/')
-        response = conn.getresponse()
-        message = '%s %s' % (response.status, response.reason)
-        start_response(message, response.getheaders())
-        return [response.read()]
+            io_write(data)
     except Exception as e:
-        start_response('503 Service Unavailable', [('Content-Type', 'text/html; charset=UTF-8')])
-        return ['']
+        logging.exception('io_copy(source=%r, dest=%r) error: %s', source, dest, e)
+    finally:
+        for fd in (source, dest):
+            if hasattr(fd, 'close'):
+                try:
+                    fd.close()
+                except:
+                    pass
 
 def paas_application(environ, start_response):
-    method = environ['REQUEST_METHOD']
-    if method == 'PUT':
-        return paas_socks5(environ, start_response)
-    elif method == 'POST':
-        return paas_post(environ, start_response)
+    method       = environ['REQUEST_METHOD']
+    path_info    = environ['PATH_INFO']
+    query_string = environ['QUERY_STRING']
+    wsgi_input   = environ['wsgi.input']
+
+    headers = dict((x.replace('HTTP_', '').replace('_', '-').title(), environ[x]) for x in environ if x.startswith('HTTP_'))
+    for keyword in ('CONTENT_LENGTH', 'CONTENT_TYPE'):
+        if keyword in environ:
+            headers[keyword.replace('_', '-').title()] = environ[keyword]
+    if 'X-Forwarded-Host' in headers:
+        headers['Host'] = headers.pop('X-Forwarded-Host')
+    headers['Connection'] = 'close'
+
+    if method == 'CONNECT':
+        host, _, port = path_info.rpartition(':')
+        host = headers.get('Host', host)
+        port = int(port)
+        try:
+            logging.info('socket.create_connection((host=%r, port=%r), timeout=%r)', host, port, Deadline)
+            sock = socket.create_connection((host, port), timeout=Deadline)
+            start_response('200 OK', [])
+            if 'gevent.monkey' in sys.modules:
+                gevent.spawn(io_copy, wsgi_input, sock.dup())
+            else:
+                thread.start_new_thread(io_copy, wsgi_input, sock.dup())
+            while 1:
+                data = sock.read(8192)
+                if not data:
+                    raise StopIteration
+                yield data
+        except socket.error as e:
+            raise
     else:
-        return paas_get(environ, start_response)
+        payload = None
+        if 'Content-Length' in headers:
+            payload = wsgi_input.read(int(headers.get('Content-Length', -1)))
+
+        url = 'http://%s%s?%s' % (headers['Host'], path_info, query_string)
+        scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+        HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+        if params:
+            path += ';' + params
+        if query:
+            path += '?' + query
+        try:
+            conn = HTTPConnection(netloc, timeout=Deadline)
+            conn.request(method, path, body=payload, headers=headers)
+            response = conn.getresponse()
+            status_line = '%s %s' % (response.status, httplib.responses.get(response.status, 'UNKNOWN'))
+            headers = []
+            for keyword, value in response.getheaders():
+                if keyword == 'connection':
+                    headers.append(('Connection', 'close'))
+                if keyword != 'set-cookie':
+                    headers.append((keyword.title(), value))
+                else:
+                    scs = value.split(', ')
+                    cookies = []
+                    i = -1
+                    for sc in scs:
+                        if re.match(r'[^ =]+ ', sc):
+                            try:
+                                cookies[i] = '%s, %s' % (cookies[i], sc)
+                            except IndexError:
+                                pass
+                        else:
+                            cookies.append(sc)
+                            i += 1
+                    headers += [('Set-Cookie', x) for x in cookies]
+            start_response(status_line, headers)
+            while 1:
+                data = response.read(8192)
+                if not data:
+                    raise StopIteration
+                else:
+                    yield data
+        except httplib.HTTPException as e:
+            raise
 
 def encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)

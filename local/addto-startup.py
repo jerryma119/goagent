@@ -60,7 +60,6 @@ def main_macos():
         sys.exit(0)
     print 'Adding CA.crt to system keychain Done'
 
-
 def main_linux():
     pass
 

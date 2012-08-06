@@ -86,20 +86,8 @@ class Common(object):
             self.PAC_IP               = self.CONFIG.get('pac','ip')
             self.PAC_PORT             = self.CONFIG.getint('pac','port')
             self.PAC_FILE             = self.CONFIG.get('pac','file').lstrip('/')
-            self.PAC_UPDATE           = self.CONFIG.getint('pac', 'update')
-            self.PAC_REMOTE           = self.CONFIG.get('pac', 'remote')
-            self.PAC_TIMEOUT          = self.CONFIG.getint('pac', 'timeout')
-            self.PAC_DIRECTS          = self.CONFIG.get('pac', 'direct').split('|') if self.CONFIG.get('pac', 'direct') else []
         else:
             self.PAC_ENABLE           = 0
-
-        if self.CONFIG.has_section('socks5'):
-            self.SOCKS5_ENABLE       = self.CONFIG.getint('socks5', 'enable')
-            self.SOCKS5_LISTEN       = self.CONFIG.get('socks5', 'listen')
-            self.SOCKS5_PASSWORD     = self.CONFIG.get('socks5', 'password') if self.CONFIG.has_option('socks5', 'password') else ''
-            self.SOCKS5_FETCHSERVER  = self.CONFIG.get('socks5', 'fetchserver')
-        else:
-            self.SOCKS_ENABLE        = 0
 
         self.PROXY_ENABLE         = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_HOST           = self.CONFIG.get('proxy', 'host')
@@ -180,9 +168,6 @@ class Common(object):
         if common.PAAS_ENABLE:
             info += 'PAAS Listen      : %s\n' % common.PAAS_LISTEN
             info += 'PAAS FetchServer : %s\n' % common.PAAS_FETCHSERVER
-        if common.SOCKS5_ENABLE:
-            info += 'Socks5 Listen    : %s\n' % common.SOCKS5_LISTEN
-            info += 'Socks5 Server    : %s\n' % common.SOCKS5_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server       : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
@@ -1134,144 +1119,88 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e[0] in (10053, errno.EPIPE):
                 return
 
-class PAASProxyHandler(GAEProxyHandler):
+class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
-    HOSTS = {}
+    protocol_version = 'HTTP/1.1'
 
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
-        httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
-
-    def fetch(self, url, payload, method, headers):
-        fetchhost, fetchserver = common.PAAS_FETCH_INFO[self.server.server_address]
-        dns  = None
-        host = self.headers.get('Host')
-        if host in PAASProxyHandler.HOSTS:
-            dns = random.choice(tuple(x[-1][0] for x in socket.getaddrinfo(host, 80)))
-        return urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=common.PAAS_PASSWORD, dns=dns, on_error=self.handle_fetch_error)
 
     def setup(self):
-        PAASProxyHandler.HOSTS = dict((k, tuple(v.split('|')) if v else None) for k, v in common.CONFIG.items('hosts'))
-        if common.PROXY_ENABLE:
-            logging.info('Local Proxy is enable, PAASProxyHandler dont resole DNS')
-        else:
-            for fetchhost, _ in common.PAAS_FETCH_INFO.itervalues():
-                logging.info('PAASProxyHandler.setup check %s is in common.HOSTS', fetchhost)
-                if fetchhost not in common.HOSTS:
-                    with GAEProxyHandler.SetupLock:
-                        if fetchhost not in common.HOSTS:
-                            try:
-                                logging.info('Resole PAAS fetchserver address.')
-                                common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
-                                logging.info('Resole PAAS fetchserver address OK. %s', common.HOSTS[fetchhost])
-                            except Exception:
-                                logging.exception('PAASProxyHandler.setup resolve fail')
-        PAASProxyHandler.do_CONNECT = GAEProxyHandler.do_CONNECT_Tunnel
-        PAASProxyHandler.do_GET     = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_POST    = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_PUT     = GAEProxyHandler.do_METHOD_Tunnel
-        PAASProxyHandler.do_DELETE  = GAEProxyHandler.do_METHOD_Tunnel
+        PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_DELETE  = PAASProxyHandler.do_METHOD
+        PAASProxyHandler.do_OPTIONS = PAASProxyHandler.do_METHOD
         PAASProxyHandler.do_HEAD    = PAASProxyHandler.do_METHOD
-        PAASProxyHandler.setup      = BaseHTTPServer.BaseHTTPRequestHandler.setup
+        PAASProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
-class Sock5ProxyHandler(SocketServer.StreamRequestHandler):
+    def do_METHOD(self):
+        url = common.PAAS_FETCHSERVER
+        headers = self.headers
+        payload = None
+        if 'Content-Length' in headers:
+            payload = self.rfile.read(int(headers.get('Content-Length', -1)))
 
-    SetupLock = threading.Lock()
+        scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+        HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
 
-    def log_message(self, fmt, *args):
-        host, port = self.client_address[:2]
-        sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
+        if 'Host' in headers:
+            headers['X-Forwarded-Host'] = headers['Host']
+            headers['Host'] = re.sub(r':\d+$', '', netloc)
 
-    def connect_paas(self, paas_fetchserver):
-        scheme, netloc, path, params, query, fragment = urlparse.urlparse(paas_fetchserver)
-        if re.search(r':\d+$', netloc):
-            host, _, port = netloc.rpartition(':')
-            port = int(port)
-        else:
-            host = netloc
-            port = {'https':443,'http':80}.get(scheme, 80)
-        sock = socket.create_connection((host, port))
-        if scheme == 'https':
-            sock = ssl.wrap_socket(sock)
-        sock.sendall('PUT / HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n' % host)
-        return sock
-
-    def handle(self):
         try:
-            paas_fetchserver = common.SOCKS5_FETCHSERVER
-            self.log_message('Connect to socks5_server=%r', paas_fetchserver)
-            sock = self.connect_paas(paas_fetchserver)
-            socket_forward(self.connection, sock)
-        except Exception, e:
-            logging.exception('Sock5ProxyHandler.handle client_address=%r failed:%s', self.client_address[:2], e)
+            conn = HTTPConnection(netloc, timeout=8)
 
-    def setup(self):
-        fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
-        if not common.PROXY_ENABLE:
-            logging.info('resolve socks5 fetchhost=%r to iplist', fetchhost)
-            if fetchhost not in common.HOSTS:
-                with Sock5ProxyHandler.SetupLock:
-                    if fetchhost not in common.HOSTS:
-                        common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
-                        logging.info('resolve socks5 fetchhost=%r to iplist=%r', fetchhost, common.HOSTS[fetchhost])
-        Sock5ProxyHandler.setup = SocketServer.StreamRequestHandler.setup
-        SocketServer.StreamRequestHandler.setup(self)
+            scheme, netloc, path, params, query, fragment = urlparse.urlparse(self.path)
+            if params:
+                path += ';' + params
+            if query:
+                path += '?' + query
+            conn.request(self.command, path, body=payload, headers=headers.dict)
+            response = conn.getresponse()
+            headers = []
+            for keyword, value in response.getheaders():
+                keyword = keyword.title()
+                if keyword == 'Connection':
+                    headers.append(('Connection', 'close'))
+                elif keyword != 'Set-Cookie':
+                    headers.append((keyword.title(), value))
+                else:
+                    scs = value.split(', ')
+                    cookies = []
+                    i = -1
+                    for sc in scs:
+                        if re.match(r'[^ =]+ ', sc):
+                            try:
+                                cookies[i] = '%s, %s' % (cookies[i], sc)
+                            except IndexError:
+                                pass
+                        else:
+                            cookies.append(sc)
+                            i += 1
+                    headers += [('Set-Cookie', x) for x in cookies]
+
+            self.send_response(response.status)
+            for keyword, value in headers:
+                self.send_header(keyword, value)
+            self.end_headers()
+            while 1:
+                data = response.fp.read(8192)
+                if not data:
+                    break
+                else:
+                    self.wfile.write(data)
+        except httplib.HTTPException as e:
+            raise
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    def _generate_pac(self):
-        url = common.PAC_REMOTE
-        logging.info('PacServerHandler._generate_pac url=%r, timeout=%r', url, common.PAC_TIMEOUT)
-        content = urllib2.urlopen(url, timeout=common.PAC_TIMEOUT).read()
-        cndatas = re.findall(r'(?i)apnic\|cn\|ipv4\|([0-9\.]+)\|([0-9]+)\|[0-9]+\|a.*', content)
-        logging.info('PacServerHandler._generate_pac download %s bytes %s items', len(content), len(cndatas))
-        assert len(cndatas) > 0
-        cndatas = [(ip, socket.inet_ntoa(struct.pack('!I', (int(n)-1)^0xffffffff))) for ip, n in cndatas]
-        cndataslist = [[] for i in xrange(256)]
-        for ip, mask in cndatas:
-            i = int(ip.partition('.')[0])
-            cndataslist[i].append([ip, mask])
-        if common.LISTEN_IP in ('', '0.0.0.0', '::'):
-            proxy = 'PROXY %s:%d' % (socket.gethostbyname(socket.gethostname()), common.LISTEN_PORT)
-        else:
-            proxy = 'PROXY %s:%d' % (common.LISTEN_IP, common.LISTEN_PORT)
-        PAC_TEMPLATE = '''\
-            //inspired from https://github.com/Leask/Flora_Pac
-            function FindProxyForURL(url, host)
-            {
-                if (false %s) {
-                    return 'DIRECT';
-                }
-                var ip = dnsResolve(host);
-                if (ip == null) {
-                    return '%s';
-                }
-                var lists = %s;
-                var index  = parseInt(ip.split('.', 1)[0], 10);
-                var list = lists[index];
-                for (var i in list) {
-                    if (isInNet(ip, list[i][0], list[i][1])) {
-                        return 'DIRECT';
-                    }
-                }
-                return '%s';
-            }'''
-        directs = '||'.join(['dnsDomainIs(host, "%s")' % x for x in common.PAC_DIRECTS]) if common.PAC_DIRECTS else ''
-        return PAC_TEMPLATE % (directs, proxy, repr(cndataslist), proxy)
 
     def do_GET(self):
         filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
         if self.path != '/'+common.PAC_FILE or not os.path.isfile(filename):
             return self.send_error(404, 'Not Found')
-        if common.PAC_UPDATE and time.time() - os.path.getmtime(common.PAC_FILE) > 86400:
-            try:
-                logging.info('PacServerHandler begin sync remote pac')
-                content = self._generate_pac()
-                with open(filename, 'wb') as fp:
-                    fp.write(content)
-                logging.info('PacServerHandler end sync remote pac')
-            except Exception:
-                logging.exception('PacServerHandler sync remote pac failed')
         with open(filename, 'rb') as fp:
             data = fp.read()
             self.send_response(200)
@@ -1335,11 +1264,6 @@ def main():
     if common.PAAS_ENABLE:
         host, _, port = common.PAAS_LISTEN.rpartition(':')
         httpd = LocalProxyServer((host, int(port)), PAASProxyHandler)
-        thread.start_new_thread(httpd.serve_forever, ())
-
-    if common.SOCKS5_ENABLE:
-        host, _, port = common.SOCKS5_LISTEN.rpartition(':')
-        httpd = LocalProxyServer((host, int(port)), Sock5ProxyHandler)
         thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
