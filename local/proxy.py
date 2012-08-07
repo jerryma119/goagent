@@ -379,6 +379,30 @@ def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accep
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
+def httplib_headers_normalize(response_headers):
+    """return (headers, content_encoding, transfer_encoding)"""
+    headers = []
+    for keyword, value in response_headers:
+        if keyword == 'connection':
+            headers.append(('Connection', 'close'))
+        elif keyword != 'set-cookie':
+            headers.append((keyword.title(), value))
+        else:
+            scs = value.split(', ')
+            cookies = []
+            i = -1
+            for sc in scs:
+                if re.match(r'[^ =]+ ', sc):
+                    try:
+                        cookies[i] = '%s, %s' % (cookies[i], sc)
+                    except IndexError:
+                        pass
+                else:
+                    cookies.append(sc)
+                    i += 1
+            headers += [('Set-Cookie', x) for x in cookies]
+    return headers
+
 class CertUtil(object):
     '''CertUtil module, based on WallProxy 0.4.0'''
 
@@ -1119,6 +1143,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e[0] in (10053, errno.EPIPE):
                 return
 
+class HTTPNoRedirectHandler(urllib2.HTTPRedirectHandler):
+    def http_error_302(self, req, fp, code, msg, headers):
+        return urllib2.HTTPRedirectHandler.http_error_302(self, req, fp, code, msg, headers)
+    http_error_301 = http_error_303 = http_error_304 = http_error_307 = http_error_302
+
 class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
@@ -1149,59 +1178,36 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip()}
 
         payload = None
-        if int(self.headers.get('Content-Length',0)):
-            payload = self.rfile
-
-        scheme, netloc, path, params, query, fragment = urlparse.urlparse(common.PAAS_FETCHSERVER)
-        HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+        content_length = int(self.headers.get('Content-Length',0))
+        if content_length:
+            payload = self.rfile.read(content_length)
 
         try:
-            conn = HTTPConnection(netloc, timeout=8)
-            conn.request('POST', '/', body=payload, headers=headers)
-            response = conn.getresponse()
-            headers = []
-            content_encoding = ''
-            for keyword, value in response.getheaders():
-                keyword = keyword.title()
+            opener   = urllib2.build_opener(HTTPNoRedirectHandler)
+            request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=headers)
 
-                if keyword == 'Content-Encoding':
-                    content_encoding = value
+            try:
+                response = opener.open(request)
+            except urllib2.HTTPError as http_error:
+                response = http_error
 
-                if keyword == 'Connection':
-                    headers.append(('Connection', 'close'))
-                elif keyword != 'Set-Cookie':
-                    headers.append((keyword.title(), value))
-                else:
-                    scs = value.split(', ')
-                    cookies = []
-                    i = -1
-                    for sc in scs:
-                        if re.match(r'[^ =]+ ', sc):
-                            try:
-                                cookies[i] = '%s, %s' % (cookies[i], sc)
-                            except IndexError:
-                                pass
-                        else:
-                            cookies.append(sc)
-                            i += 1
-                    headers += [('Set-Cookie', x) for x in cookies]
+            headers = [(k.title(), v.strip()) for k, _, v in (line.partition(':') for line in response.headers.headers) if k.title() != 'Transfer-Encoding']
 
-            self.send_response(response.status)
+            self.send_response(response.code, response.msg)
             for keyword, value in headers:
                 self.send_header(keyword, value)
             self.end_headers()
-            if response.status in (204, 304):
-                return
+
             while 1:
                 data = response.read(8192)
                 if not data:
+                    response.close()
                     break
                 else:
                     self.wfile.write(data)
         except httplib.HTTPException as e:
             raise
-        finally:
-            conn.close()
+
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
