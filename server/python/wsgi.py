@@ -93,6 +93,8 @@ def paas_application(environ, start_response):
                 response = opener.open(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
+            except urllib2.URLError as url_error:
+                raise
 
             headers = [(k, v.strip()) for k, _, v in (line.partition(':') for line in response.headers.headers) if k != 'Transfer-Encoding']
             start_response('%d %s' % (response.code, response.msg), headers)

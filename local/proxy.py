@@ -1190,6 +1190,8 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = opener.open(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
+            except urllib2.URLError as url_error:
+                raise
 
             headers = [(k.title(), v.strip()) for k, _, v in (line.partition(':') for line in response.headers.headers) if k.title() != 'Transfer-Encoding']
 
