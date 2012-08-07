@@ -1141,29 +1141,23 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
     def do_METHOD(self):
-        url = common.PAAS_FETCHSERVER
-        headers = self.headers
+        if self.path[0] == '/':
+            self.path = 'http://%s%s' % (host, self.path)
+
+        params  = {'url':self.path, 'method':self.command, 'headers':str(self.headers)}
+        params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+        headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip()}
+
         payload = None
-        if 'Content-Length' in headers:
-            payload = self.rfile.read(int(headers.get('Content-Length', -1)))
+        if int(self.headers.get('Content-Length',0)):
+            payload = self.rfile
 
-        scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+        scheme, netloc, path, params, query, fragment = urlparse.urlparse(common.PAAS_FETCHSERVER)
         HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
-
-        if 'Host' in headers:
-            headers['X-Forwarded-Host'] = headers['Host']
-            headers['Host'] = re.sub(r':\d+$', '', netloc)
 
         try:
             conn = HTTPConnection(netloc, timeout=8)
-            scheme, netloc, path, params, query, fragment = urlparse.urlparse(self.path)
-            if params:
-                path += ';' + params
-            if query:
-                path += '?' + query
-            headers['X-Forwarded-Scheme'] = scheme
-
-            conn.request(self.command, path, body=payload, headers=headers.dict)
+            conn.request('POST', '/', body=payload, headers=headers)
             response = conn.getresponse()
             headers = []
             for keyword, value in response.getheaders():

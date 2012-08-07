@@ -39,48 +39,23 @@ def io_copy(source, dest):
         pass
 
 def paas_application(environ, start_response):
-    method       = environ['REQUEST_METHOD']
-    path_info    = environ['PATH_INFO']
-    query_string = environ['QUERY_STRING']
-    wsgi_input   = environ['wsgi.input']
+    cookie  = environ['HTTP_COOKIE']
+    request = decode_data(zlib.decompress(cookie.decode('base64')))
 
-    headers = dict((x.replace('HTTP_', '').replace('_', '-').title(), environ[x]) for x in environ if x.startswith('HTTP_'))
-    for keyword in ('CONTENT_LENGTH', 'CONTENT_TYPE'):
-        if keyword in environ:
-            headers[keyword.replace('_', '-').title()] = environ[keyword]
-    if 'X-Forwarded-Host' in headers:
-        headers['Host'] = headers.pop('X-Forwarded-Host')
-    headers['Connection'] = 'close'
+    url     = request['url']
+    method  = request['method']
 
-    if method == 'CONNECT':
-        host, _, port = headers['Host'].rpartition(':')
-        port = int(port)
-        try:
-            logging.info('socket.create_connection((host=%r, port=%r), timeout=%r)', host, port, Deadline)
-            sock = socket.create_connection((host, port), timeout=Deadline)
-            logging.info('CONNECT %s:%s OK', host, port)
-            start_response('201 Tunnel', [])
-            if 'gevent.monkey' in sys.modules:
-                logging.info('io_copy(wsgi_input.rfile._sock=%r, sock=%r)', wsgi_input.rfile._sock, sock)
-                gevent.spawn(io_copy, wsgi_input.rfile._sock.dup(), sock.dup())
-            else:
-                thread.start_new_thread(io_copy, wsgi_input, sock.dup())
-            while 1:
-                data = sock.recv(8192)
-                if not data:
-                    sock.close()
-                    raise StopIteration
-                yield data
-        except socket.error as e:
-            raise
-    else:
-        payload = None
-        if 'Content-Length' in headers:
-            payload = wsgi_input.read(int(headers.get('Content-Length', -1)))
+    logging.info('%s:%s "%s %s %s" - -', environ['REMOTE_ADDR'], environ['REMOTE_PORT'], method, url, 'HTTP/1.1')
 
-        url = 'http://%s%s?%s' % (headers['Host'], path_info, query_string)
+    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+
+    payload = None
+    if int(headers.get('Content-Length',0)):
+        payload = environ['wsgi.input']
+
+    if method != 'CONNECT':
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-        HTTPConnection = httplib.HTTPSConnection if headers.pop('X-Forwarded-Scheme', 'http') == 'https' else httplib.HTTPConnection
+        HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
         if params:
             path += ';' + params
         if query:
