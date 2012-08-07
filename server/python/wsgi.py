@@ -66,10 +66,13 @@ def paas_application(environ, start_response):
             response = conn.getresponse()
             status_line = '%s %s' % (response.status, httplib.responses.get(response.status, 'UNKNOWN'))
             headers = []
+            content_encoding = ''
             for keyword, value in response.getheaders():
                 if keyword == 'connection':
                     headers.append(('Connection', 'close'))
-                if keyword != 'set-cookie':
+                elif keyword == 'transfer-encoding':
+                    pass
+                elif keyword != 'set-cookie':
                     headers.append((keyword.title(), value))
                 else:
                     scs = value.split(', ')
@@ -86,6 +89,9 @@ def paas_application(environ, start_response):
                             i += 1
                     headers += [('Set-Cookie', x) for x in cookies]
             start_response(status_line, headers)
+            if response.status in (204, 304):
+                yield ''
+                raise StopIteration
             while 1:
                 data = response.read(8192)
                 if not data:
@@ -229,7 +235,7 @@ if __name__ == '__main__':
         ssl_args = dict(certfile=os.path.splitext(__file__)[0]+'.pem')
     else:
         ssl_args = dict()
-    server = gevent.pywsgi.WSGIServer((host, int(port)), application, **ssl_args)
+    server = gevent.pywsgi.WSGIServer((host, int(port)), application, log=None, **ssl_args)
     server.environ.pop('SERVER_SOFTWARE')
     logging.info('serving %s://%s:%s/wsgi.py', 'https' if ssl_args else 'http', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()

@@ -1160,8 +1160,13 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             conn.request('POST', '/', body=payload, headers=headers)
             response = conn.getresponse()
             headers = []
+            content_encoding = ''
             for keyword, value in response.getheaders():
                 keyword = keyword.title()
+
+                if keyword == 'Content-Encoding':
+                    content_encoding = value
+
                 if keyword == 'Connection':
                     headers.append(('Connection', 'close'))
                 elif keyword != 'Set-Cookie':
@@ -1185,8 +1190,10 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for keyword, value in headers:
                 self.send_header(keyword, value)
             self.end_headers()
+            if response.status in (204, 304):
+                return
             while 1:
-                data = response.fp.read(8192)
+                data = response.read(8192)
                 if not data:
                     break
                 else:
