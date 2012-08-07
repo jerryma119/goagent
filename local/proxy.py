@@ -375,7 +375,7 @@ def dns_resolve(host, dnsserver='8.8.8.8', dnscache=common.HOSTS, dnslock=thread
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    self._output('\r\n\r\n')
+    #self._output('\r\n\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
@@ -1161,6 +1161,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 path += ';' + params
             if query:
                 path += '?' + query
+            headers['X-Forwarded-Scheme'] = scheme
 
             conn.request(self.command, path, body=payload, headers=headers.dict)
             response = conn.getresponse()
