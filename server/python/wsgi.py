@@ -80,7 +80,7 @@ def paas_application(environ, start_response):
 
         url = 'http://%s%s?%s' % (headers['Host'], path_info, query_string)
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-        HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+        HTTPConnection = httplib.HTTPSConnection if headers.pop('X-Forwarded-Scheme', 'http') == 'https' else httplib.HTTPConnection
         if params:
             path += ';' + params
         if query:
