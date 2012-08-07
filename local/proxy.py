@@ -1202,38 +1202,39 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             conn.close()
 
     def do_CONNECT(self):
-        url = common.PAAS_FETCHSERVER
-        headers = self.headers
-        payload = None
-        if 'Content-Length' in headers:
-            payload = self.rfile.read(int(headers.get('Content-Length', -1)))
-
-        scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-        HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
-
-        if 'Host' in headers:
-            headers['X-Forwarded-Host'] = self.path
-            headers['Host'] = re.sub(r':\d+$', '', netloc)
-
+        host, _, port = self.path.rpartition(':')
+        keyFile, crtFile = CertUtil.getCertificate(host)
+        self.log_request(200)
+        self.connection.sendall('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
-            conn = HTTPConnection(netloc, timeout=8)
-            conn.request(self.command, '/', headers=headers.dict)
-            response = conn.getresponse()
-            self.send_response(response.status)
-            for keyword, value in response.getheaders():
-                self.send_header(keyword, value)
-            self.end_headers()
-            print (response.status,)
-            while 1:
-                data = conn.sock.recv(8192)
-                if not data:
-                    break
+            self._realpath = self.path
+            self._realrfile = self.rfile
+            self._realwfile = self.wfile
+            self._realconnection = self.connection
+            self.connection = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
+            self.rfile = self.connection.makefile('rb', self.rbufsize)
+            self.wfile = self.connection.makefile('wb', self.wbufsize)
+            self.raw_requestline = self.rfile.readline(8192)
+            if self.raw_requestline == '':
+                return
+            self.parse_request()
+            if self.path[0] == '/':
+                if 'Host' in self.headers:
+                    self.path = 'https://%s:%s%s' % (self.headers['Host'].partition(':')[0], port or 443, self.path)
                 else:
-                    self.wfile.write(data)
-        except httplib.HTTPException as e:
-            raise
+                    self.path = 'https://%s%s' % (self._realpath, self.path)
+                self.requestline = '%s %s %s' % (self.command, self.path, self.protocol_version)
+            self.do_METHOD()
+        except socket.error as e:
+            logging.exception('PAASProxyHandler.do_CONNECT socket.error %s', e)
         finally:
-            conn.close()
+            try:
+                self.connection.shutdown(socket.SHUT_WR)
+            except socket.error:
+                pass
+            self.rfile = self._realrfile
+            self.wfile = self._realwfile
+            self.connection = self._realconnection
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
