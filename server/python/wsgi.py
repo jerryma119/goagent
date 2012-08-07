@@ -74,14 +74,14 @@ def paas_application(environ, start_response):
     url     = request['url']
     method  = request['method']
 
-    logging.info('%s:%s "%s %s %s" - -', environ['REMOTE_ADDR'], environ['REMOTE_PORT'], method, url, 'HTTP/1.1')
+    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
 
     payload = None
     content_length = int(headers.get('Content-Length',0))
     if content_length:
-        payload = self.rfile.read(content_length)
+        payload = environ['wsgi.input'].read(content_length)
 
     if method != 'CONNECT':
         try:
