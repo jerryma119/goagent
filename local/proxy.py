@@ -53,6 +53,9 @@ try:
 except ImportError:
     OpenSSL = None
 
+class HTTPNoRedirectHandler(urllib2.HTTPRedirectHandler):
+    http_error_301 = http_error_302 = http_error_303 = http_error_304 = http_error_307 = urllib2.HTTPDefaultErrorHandler.http_error_default
+
 class Common(object):
     """global config object"""
 
@@ -146,11 +149,12 @@ class Common(object):
     def install_opener(self):
         """install urllib2 opener"""
         httplib.HTTPMessage = SimpleMessageClass
+        handlers = [HTTPNoRedirectHandler]
         if self.PROXY_ENABLE:
             proxy = '%s:%s@%s:%d'%(self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
-            handlers = [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
+            handlers += [urllib2.ProxyHandler({'http':proxy,'https':proxy})]
         else:
-            handlers = [urllib2.ProxyHandler({})]
+            handlers += [urllib2.ProxyHandler({})]
         opener = urllib2.build_opener(*handlers)
         opener.addheaders = []
         urllib2.install_opener(opener)
@@ -1143,9 +1147,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e[0] in (10053, errno.EPIPE):
                 return
 
-class HTTPNoRedirectHandler(urllib2.HTTPRedirectHandler):
-    http_error_301 = http_error_302 = http_error_303 = http_error_304 = http_error_307 = urllib2.HTTPDefaultErrorHandler.http_error_default
-
 class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
@@ -1181,11 +1182,10 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             payload = self.rfile.read(content_length)
 
         try:
-            opener   = urllib2.build_opener(HTTPNoRedirectHandler)
             request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=headers)
 
             try:
-                response = opener.open(request)
+                response = urllib2.urlopen(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
             except urllib2.URLError as url_error:
