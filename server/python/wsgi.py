@@ -5,7 +5,7 @@ __version__ = '1.8.11'
 __author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
-import sys, os, re, time, struct, zlib, binascii, logging, httplib, urllib2, urlparse
+import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse
 try:
     from google.appengine.api import urlfetch
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
@@ -59,10 +59,24 @@ def gzip_warpper(fileobj):
         yield zdata
     yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
 
-def httplib_headers_normalize(response_headers):
+def httplib_request(method, url, body=None, headers={}, timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
+    scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+    HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+    if params:
+        path += ';' + params
+    if query:
+        path += '?' + query
+    conn = HTTPConnection(netloc, timeout=timeout)
+    conn.request(method, path, body=body, headers=headers)
+    response = conn.getresponse()
+    return response
+
+def httplib_normalize_headers(response_headers, skip_headers=[]):
     """return (headers, content_encoding, transfer_encoding)"""
     headers = []
     for keyword, value in response_headers:
+        if keyword in skip_headers:
+            continue
         if keyword == 'connection':
             headers.append(('Connection', 'close'))
         elif keyword != 'set-cookie':
@@ -83,9 +97,6 @@ def httplib_headers_normalize(response_headers):
             headers += [('Set-Cookie', x) for x in cookies]
     return headers
 
-class HTTPNoRedirectHandler(urllib2.HTTPRedirectHandler):
-    http_error_301 = http_error_302 = http_error_303 = http_error_304 = http_error_307 = urllib2.HTTPDefaultErrorHandler.http_error_default
-
 def paas_application(environ, start_response):
     cookie  = environ['HTTP_COOKIE']
     request = decode_data(zlib.decompress(cookie.decode('base64')))
@@ -97,26 +108,16 @@ def paas_application(environ, start_response):
 
     headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
 
-    payload = None
-    content_length = int(headers.get('Content-Length',0))
-    if content_length:
-        payload = environ['wsgi.input'].read(content_length)
+    data = environ['wsgi.input'] if int(headers.get('Content-Length',0)) else None
 
     if method != 'CONNECT':
         try:
-            opener   = urllib2.build_opener(HTTPNoRedirectHandler)
-            request  = urllib2.Request(url, data=payload, headers=headers)
-            request.get_method = lambda:method
+            response = httplib_request(method, url, body=data, headers=headers, timeout=16)
 
-            try:
-                response = opener.open(request)
-            except urllib2.HTTPError as http_error:
-                response = http_error
-            except urllib2.URLError as url_error:
-                raise
+            status_line = '%d %s' % (response.status, httplib.responses.get(response.status, 'OK'))
+            headers = httplib_normalize_headers(response.getheaders(), skip_headers=['transfer-encoding'])
 
-            headers = [(k, v.strip()) for k, _, v in (line.partition(':') for line in response.headers.headers) if k != 'Transfer-Encoding']
-            start_response('%d %s' % (response.code, response.msg), headers)
+            start_response(status_line, headers)
             while 1:
                 data = response.read(8192)
                 if not data:
