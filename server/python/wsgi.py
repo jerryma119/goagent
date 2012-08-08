@@ -126,10 +126,10 @@ def paas_application(environ, start_response):
             headers = httplib_normalize_headers(response.getheaders(), skip_headers=['Transfer-Encoding'])
 
             gzipped = False
-            if response.getheader('content-encoding') != 'gzip':
-                if response.getheader('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
-                    headers += [('Content-Encoding', 'gzip')]
-                    gzipped = True
+##            if response.getheader('content-encoding') != 'gzip' and response.getheader('content-length'):
+##                if response.getheader('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+##                    headers += [('Content-Encoding', 'gzip')]
+##                    gzipped = True
 
             start_response(status_line, headers)
             return fileobj_to_generator(response, gzipped=gzipped)
