@@ -63,9 +63,7 @@ def httplib_headers_normalize(response_headers):
     return headers
 
 class HTTPNoRedirectHandler(urllib2.HTTPRedirectHandler):
-    def http_error_302(self, req, fp, code, msg, headers):
-        return urllib2.HTTPRedirectHandler.http_error_302(self, req, fp, code, msg, headers)
-    http_error_301 = http_error_303 = http_error_304 = http_error_307 = http_error_302
+    http_error_301 = http_error_302 = http_error_303 = http_error_304 = http_error_307 = urllib2.HTTPDefaultErrorHandler.http_error_default
 
 def paas_application(environ, start_response):
     cookie  = environ['HTTP_COOKIE']
