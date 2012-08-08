@@ -38,6 +38,27 @@ def io_copy(source, dest):
     finally:
         pass
 
+def gzip_warpper(fileobj):
+    assert hasattr(fileobj, 'read')
+    compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
+    crc         = zlib.crc32('')
+    size        = 0
+
+    yield '\037\213\010\000' '\0\0\0\0' '\002\377'
+    while 1:
+        data = fileobj.read(8192)
+        if not data:
+            break
+        crc = zlib.crc32(data, crc)
+        size += len(data)
+        zdata = compressobj.compress(data)
+        if zdata:
+            yield zdata
+    zdata = compressobj.flush()
+    if zdata:
+        yield zdata
+    yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
+
 def httplib_headers_normalize(response_headers):
     """return (headers, content_encoding, transfer_encoding)"""
     headers = []
