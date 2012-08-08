@@ -38,26 +38,34 @@ def io_copy(source, dest):
     finally:
         pass
 
-def gzip_warpper(fileobj):
+def fileobj_to_generator(fileobj, bufsize=8192, gzipped=False):
     assert hasattr(fileobj, 'read')
-    compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
-    crc         = zlib.crc32('')
-    size        = 0
-
-    yield '\037\213\010\000' '\0\0\0\0' '\002\377'
-    while 1:
-        data = fileobj.read(8192)
-        if not data:
-            break
-        crc = zlib.crc32(data, crc)
-        size += len(data)
-        zdata = compressobj.compress(data)
+    if not gzipped:
+        while 1:
+            data = fileobj.read(bufsize)
+            if not data:
+                fileobj.close()
+                break
+            else:
+                yield data
+    else:
+        compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
+        crc         = zlib.crc32('')
+        size        = 0
+        yield '\037\213\010\000' '\0\0\0\0' '\002\377'
+        while 1:
+            data = fileobj.read(bufsize)
+            if not data:
+                break
+            crc = zlib.crc32(data, crc)
+            size += len(data)
+            zdata = compressobj.compress(data)
+            if zdata:
+                yield zdata
+        zdata = compressobj.flush()
         if zdata:
             yield zdata
-    zdata = compressobj.flush()
-    if zdata:
-        yield zdata
-    yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
+        yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
 
 def httplib_request(method, url, body=None, headers={}, timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
     scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
@@ -75,7 +83,7 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
     """return (headers, content_encoding, transfer_encoding)"""
     headers = []
     for keyword, value in response_headers:
-        if keyword in skip_headers:
+        if keyword.title() in skip_headers:
             continue
         if keyword == 'connection':
             headers.append(('Connection', 'close'))
@@ -115,16 +123,16 @@ def paas_application(environ, start_response):
             response = httplib_request(method, url, body=data, headers=headers, timeout=16)
 
             status_line = '%d %s' % (response.status, httplib.responses.get(response.status, 'OK'))
-            headers = httplib_normalize_headers(response.getheaders(), skip_headers=['transfer-encoding'])
+            headers = httplib_normalize_headers(response.getheaders(), skip_headers=['Transfer-Encoding'])
+
+            gzipped = False
+            if response.getheader('content-encoding') != 'gzip':
+                if response.getheader('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+                    headers += [('Content-Encoding', 'gzip')]
+                    gzipped = True
 
             start_response(status_line, headers)
-            while 1:
-                data = response.read(8192)
-                if not data:
-                    response.close()
-                    raise StopIteration
-                else:
-                    yield data
+            return fileobj_to_generator(response, gzipped=gzipped)
         except httplib.HTTPException as e:
             raise
 

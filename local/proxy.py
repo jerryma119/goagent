@@ -53,7 +53,7 @@ try:
 except ImportError:
     OpenSSL = None
 
-class HTTPNoRedirectHandler(urllib2.HTTPRedirectHandler):
+class HTTPNoRedirectHandler(urllib2.HTTPRedirectHandler, urllib2.HTTPDefaultErrorHandler):
     http_error_301 = http_error_302 = http_error_303 = http_error_304 = http_error_307 = urllib2.HTTPDefaultErrorHandler.http_error_default
 
 class Common(object):
@@ -383,10 +383,12 @@ def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accep
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
-def httplib_headers_normalize(response_headers):
+def httplib_normalize_headers(response_headers, skip_headers=[]):
     """return (headers, content_encoding, transfer_encoding)"""
     headers = []
     for keyword, value in response_headers:
+        if keyword.title() in skip_headers:
+            continue
         if keyword == 'connection':
             headers.append(('Connection', 'close'))
         elif keyword != 'set-cookie':
@@ -1191,7 +1193,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except urllib2.URLError as url_error:
                 raise
 
-            headers = [(k.title(), v.strip()) for k, _, v in (line.partition(':') for line in response.headers.headers) if k.title() != 'Transfer-Encoding']
+            headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
 
             self.send_response(response.code, response.msg)
             for keyword, value in headers:
