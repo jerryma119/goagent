@@ -1185,6 +1185,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         try:
             request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=headers)
+            request.get_method = lambda: 'POST'
 
             try:
                 response = urllib2.urlopen(request)
