@@ -77,11 +77,18 @@ class Common(object):
         self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
-        paas_section = 'paas' if self.CONFIG.has_section('paas') else 'php'
-        self.PAAS_ENABLE           = self.CONFIG.getint(paas_section, 'enable')
-        self.PAAS_LISTEN           = self.CONFIG.get(paas_section, 'listen')
-        self.PAAS_PASSWORD         = self.CONFIG.get(paas_section, 'password') if self.CONFIG.has_option(paas_section, 'password') else ''
-        self.PAAS_FETCHSERVER      = self.CONFIG.get(paas_section, 'fetchserver')
+        self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
+        self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
+        self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
+        self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
+
+        if self.CONFIG.has_section('socks5'):
+            self.SOCKS5_ENABLE           = self.CONFIG.getint('socks5', 'enable')
+            self.SOCKS5_LISTEN           = self.CONFIG.get('socks5', 'listen')
+            self.SOCKS5_PASSWORD         = self.CONFIG.get('socks5', 'password') if self.CONFIG.has_option('socks5', 'password') else ''
+            self.SOCKS5_FETCHSERVER      = self.CONFIG.get('socks5', 'fetchserver')
+        else:
+            self.SOCKS5_ENABLE           = 0
 
         if self.CONFIG.has_section('pac'):
             # XXX, cowork with GoAgentX
@@ -162,21 +169,24 @@ class Common(object):
     def info(self):
         info = ''
         info += '------------------------------------------------------\n'
-        info += 'GoAgent Version  : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
-        info += 'Listen Address   : %s:%d\n' % (self.LISTEN_IP,self.LISTEN_PORT)
-        info += 'Local Proxy      : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
-        info += 'Debug Level      : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
-        info += 'GAE Mode         : %s\n' % self.GOOGLE_MODE if self.GAE_ENABLE else ''
-        info += 'GAE Profile      : %s\n' % self.GAE_PROFILE
-        info += 'GAE APPID        : %s\n' % '|'.join(self.GAE_APPIDS)
+        info += 'GoAgent Version   : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
+        info += 'Listen Address    : %s:%d\n' % (self.LISTEN_IP,self.LISTEN_PORT)
+        info += 'Local Proxy       : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
+        info += 'Debug Level       : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
+        info += 'GAE Mode          : %s\n' % self.GOOGLE_MODE if self.GAE_ENABLE else ''
+        info += 'GAE Profile       : %s\n' % self.GAE_PROFILE
+        info += 'GAE APPID         : %s\n' % '|'.join(self.GAE_APPIDS)
         if common.PAAS_ENABLE:
-            info += 'PAAS Listen      : %s\n' % common.PAAS_LISTEN
-            info += 'PAAS FetchServer : %s\n' % common.PAAS_FETCHSERVER
+            info += 'PAAS Listen       : %s\n' % common.PAAS_LISTEN
+            info += 'PAAS FetchServer  : %s\n' % common.PAAS_FETCHSERVER
+        if common.SOCKS5_ENABLE:
+            info += 'SOCKS5 Listen      : %s\n' % common.PAAS_LISTEN
+            info += 'SOCKS5 FetchServer : %s\n' % common.PAAS_FETCHSERVER
         if common.PAC_ENABLE:
-            info += 'Pac Server       : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
+            info += 'Pac Server        : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
             #http://www.acunetix.com/websitesecurity/crlf-injection.htm
-            info += 'CRLF Injection   : %s\n' % '|'.join(self.CRLF_SITES)
+            info += 'CRLF Injection    : %s\n' % '|'.join(self.CRLF_SITES)
         info += '------------------------------------------------------\n'
         return info
 
@@ -1247,6 +1257,49 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile = self._realwfile
             self.connection = self._realconnection
 
+class Sock5ProxyHandler(SocketServer.StreamRequestHandler):
+
+    setup_lock = threading.Lock()
+
+    def log_message(self, fmt, *args):
+        host, port = self.client_address[:2]
+        sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
+
+    def connect_paas(self, paas_fetchserver):
+        scheme, netloc, path, params, query, fragment = urlparse.urlparse(paas_fetchserver)
+        if re.search(r':\d+$', netloc):
+            host, _, port = netloc.rpartition(':')
+            port = int(port)
+        else:
+            host = netloc
+            port = {'https':443,'http':80}.get(scheme, 80)
+        sock = socket.create_connection((host, port))
+        if scheme == 'https':
+            sock = ssl.wrap_socket(sock)
+        sock.sendall('PUT /socks5 HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n' % host)
+        return sock
+
+    def handle(self):
+        try:
+            paas_fetchserver = common.SOCKS5_FETCHSERVER
+            self.log_message('Connect to socks5_server=%r', paas_fetchserver)
+            sock = self.connect_paas(paas_fetchserver)
+            socket_forward(self.connection, sock)
+        except Exception, e:
+            logging.exception('Sock5ProxyHandler.handle client_address=%r failed:%s', self.client_address[:2], e)
+
+    def setup(self):
+        fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
+        if not common.PROXY_ENABLE:
+            logging.info('resolve socks5 fetchhost=%r to iplist', fetchhost)
+            if fetchhost not in common.HOSTS:
+                with Sock5ProxyHandler.setup_lock:
+                    if fetchhost not in common.HOSTS:
+                        common.HOSTS[fetchhost] = tuple(x[-1][0] for x in socket.getaddrinfo(fetchhost, 80))
+                        logging.info('resolve socks5 fetchhost=%r to iplist=%r', fetchhost, common.HOSTS[fetchhost])
+        Sock5ProxyHandler.setup = SocketServer.StreamRequestHandler.setup
+        SocketServer.StreamRequestHandler.setup(self)
+
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_GET(self):
@@ -1316,6 +1369,11 @@ def main():
     if common.PAAS_ENABLE:
         host, _, port = common.PAAS_LISTEN.rpartition(':')
         httpd = LocalProxyServer((host, int(port)), PAASProxyHandler)
+        thread.start_new_thread(httpd.serve_forever, ())
+
+    if common.SOCKS5_ENABLE:
+        host, _, port = common.SOCKS5_LISTEN.rpartition(':')
+        httpd = LocalProxyServer((host, int(port)), Sock5ProxyHandler)
         thread.start_new_thread(httpd.serve_forever, ())
 
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:

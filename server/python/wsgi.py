@@ -136,6 +136,89 @@ def paas_application(environ, start_response):
         except httplib.HTTPException as e:
             raise
 
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
+    timecount = timeout
+    try:
+        while 1:
+            timecount -= tick
+            if timecount <= 0:
+                break
+            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
+            if errors:
+                break
+            if ins:
+                for sock in ins:
+                    data = sock.recv(bufsize)
+                    if data:
+                        if sock is local:
+                            remote.sendall(data)
+                            timecount = maxping or timeout
+                        else:
+                            local.sendall(data)
+                            timecount = maxpong or timeout
+                    else:
+                        return
+            else:
+                if idlecall:
+                    try:
+                        idlecall()
+                    except Exception:
+                        logging.exception('socket_forward idlecall fail')
+                    finally:
+                        idlecall = None
+    except Exception:
+        logging.exception('socket_forward error')
+        raise
+    finally:
+        if idlecall:
+            idlecall()
+
+def paas_socks5(environ, start_response):
+    wsgi_input = environ['wsgi.input']
+    sock = None
+    rfile = None
+    if hasattr(wsgi_input, 'rfile'):
+        sock = wsgi_input.rfile._sock
+        rfile = wsgi_input.rfile
+    elif hasattr(wsgi_input, '_sock'):
+        sock = wsgi_input._sock
+    elif hasattr(wsgi_input, 'fileno'):
+        sock = socket.fromfd(wsgi_input.fileno())
+    if not sock:
+        raise RuntimeError('cannot extract socket from wsgi_input=%r' % wsgi_input)
+    # 1. Version
+    if not rfile:
+        rfile = sock.makefile('rb', -1)
+    rfile.read(ord(rfile.read(2)[-1]))
+    sock.send(b'\x05\x00');
+    # 2. Request
+    data = rfile.read(4)
+    mode = ord(data[1])
+    addrtype = ord(data[3])
+    if addrtype == 1:       # IPv4
+        addr = socket.inet_ntoa(rfile.read(4))
+    elif addrtype == 3:     # Domain name
+        addr = rfile.read(ord(sock.recv(1)[0]))
+    port = struct.unpack('>H', rfile.read(2))
+    reply = b'\x05\x00\x00\x01'
+    try:
+        logging.info('paas_socks5 mode=%r', mode)
+        if mode == 1:  # 1. TCP Connect
+            remote = socket.create_connection((addr, port[0]))
+            logging.info('TCP Connect to %s:%s', addr, port[0])
+            local = remote.getsockname()
+            reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
+        else:
+            reply = b'\x05\x07\x00\x01' # Command not supported
+    except socket.error:
+        # Connection refused
+        reply = '\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
+    sock.send(reply)
+    # 3. Transfering
+    if reply[1] == '\x00':  # Success
+        if mode == 1:    # 1. Tcp connect
+            socket_forward(sock, remote)
+
 def encode_data(dic):
     return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)
 
@@ -244,7 +327,10 @@ def app(environ, start_response):
     if urlfetch and environ['REQUEST_METHOD'] == 'POST':
         return gae_post(environ, start_response)
     elif not urlfetch:
-        return paas_application(environ, start_response)
+        if environ['PATH_INFO'] == 'socks5':
+            return paas_socks5(environ, start_response)
+        else:
+            return paas_application(environ, start_response)
     else:
         return gae_get(environ, start_response)
 
