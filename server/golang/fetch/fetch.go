@@ -1,4 +1,6 @@
-// Copyright 2012 Phus Lu. All rights reserved.
+// GoAgent Golang Fetch Server
+// Contributor:
+//      Phus Lu        <phus.lu@gmail.com>
 
 package fetch
 
@@ -21,7 +23,6 @@ import (
 
 const (
     Version  = "1.8.6"
-    Author   = "phus.lu@gmail.com"
     Password = ""
 
     FetchMax     = 3

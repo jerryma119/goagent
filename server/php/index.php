@@ -1,6 +1,8 @@
 <?php
 
-$__author__   = 'phus.lu@gmail.com';
+// Contributor:
+//      Phus Lu        <phus.lu@gmail.com>
+
 $__version__  = '1.10.0';
 $__password__ = '';
 

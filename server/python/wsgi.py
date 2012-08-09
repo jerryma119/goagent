@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # coding=utf-8
+# Contributor:
+#      Phus Lu        <phus.lu@gmail.com>
 
 __version__ = '1.10.0'
-__author__ =  'phus.lu@gmail.com'
 __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse

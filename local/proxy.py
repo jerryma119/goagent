@@ -2,11 +2,17 @@
 # coding:utf-8
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang@188.com>
 # Based on WallProxy 0.4.0 by hexieshe <www.ehust@gmail.com>
+# Contributor:
+#      Phus Lu        <phus.lu@gmail.com>
+#      Hewig Xu       <hewigovens@gmail.com>
+#      Ayanamist Yang <ayanamist@gmail.com>
+#      Max Lv         <https://twitter.com/ofmax>
+#      AlsoTang       <alsotang@gmail.com>
+#      Yonsm          <http://www.yonsm.net/>
 
 from __future__ import with_statement
 
 __version__ = '1.10.0'
-__author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
 try:
