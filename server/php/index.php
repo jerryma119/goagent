@@ -1,7 +1,7 @@
 <?php
 
 $__author__   = 'phus.lu@gmail.com';
-$__version__  = '1.9.0';
+$__version__  = '1.10.0';
 $__password__ = '';
 
 function encode_data($dic) {

@@ -5,7 +5,7 @@
 
 from __future__ import with_statement
 
-__version__ = '1.8.11'
+__version__ = '1.10.0'
 __author__  = "{phus.lu,hewigovens}@gmail.com (Phus Lu and Hewig Xu)"
 __config__  = 'proxy.ini'
 
