@@ -514,7 +514,7 @@ class CertUtil(object):
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
         sans = sans or CertUtil.SubjectAltNames
-        req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
+        cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
         keyfile  = os.path.join(certdir, commonname + '.key')
