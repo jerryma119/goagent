@@ -557,6 +557,10 @@ class CertUtil(object):
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warning('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
+        #Check Certs Dir
+        certdir = os.path.join(os.path.dirname(__file__), 'certs')
+        if not os.path.exists(certdir):
+            os.makedirs(certdir)
 
 
 class SimpleLogging(object):
