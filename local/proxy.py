@@ -453,12 +453,16 @@ class CertUtil(object):
     @staticmethod
     def create_ca():
         key = OpenSSL.crypto.PKey()
-        key.generate_key(OpenSSL.crypto.TYPE_RSA, 1024)
+        key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
         ca = OpenSSL.crypto.X509()
-        ca.set_serial_number(int(time()*10000))
+        ca.set_serial_number(0)
         ca.set_version(2)
-        ca.get_subject().CN = "GoAgent CA"
-        ca.get_subject().O = "GoAgent CA"
+        ca.countryName = 'CN'
+        ca.stateOrProvinceName = 'Internet'
+        ca.localityName = 'Cernet'
+        ca.organizationName = 'GoAgent'
+        ca.organizationalUnitName = 'GoAgent Root'
+        ca.commonName = 'GoAgent'
         ca.gmtime_adj_notBefore(0)
         ca.gmtime_adj_notAfter(24 * 60 * 60 * 3652)
         ca.set_issuer(ca.get_subject())
@@ -506,8 +510,11 @@ class CertUtil(object):
         req.sign(pkey, 'sha1')
 
         cert = OpenSSL.crypto.X509()
-        cert.set_version(3)
-        cert.set_serial_number(int(hashlib.md5(commonname).hexdigest(), 16))
+        cert.set_version(2)
+        try:
+            cert.set_serial_number(int(hashlib.md5(commonname).hexdigest(), 16))
+        except:
+            cert.set_serial_number(int(time.time()*1000))
         cert.gmtime_adj_notBefore(0)
         cert.gmtime_adj_notAfter(60 * 60 * 24 * 3652)
         cert.set_issuer(ca.get_subject())
