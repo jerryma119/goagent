@@ -395,7 +395,7 @@ def dns_resolve(host, dnsserver='8.8.8.8', dnscache=common.HOSTS, dnslock=thread
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    #self._output('\r\n\r\n')
+    self._output('\r\n\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
@@ -426,7 +426,7 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
     return headers
 
 class CertUtil(object):
-    '''CertUtil module, based on WallProxy 0.4.0'''
+    '''CertUtil module, based on mitmproxy'''
 
     ca_lock = threading.Lock()
 
@@ -536,10 +536,10 @@ class CertUtil(object):
             return ca_keyfile, ca_certfile
         else:
             with CertUtil.ca_lock:
-                if not os.path.exists(certfile):
-                    return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile, sans)
-                else:
+                if os.path.exists(certfile):
                     return keyfile, certfile
+                return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile, sans)
+
 
     @staticmethod
     def check_ca():
