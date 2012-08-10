@@ -538,6 +538,8 @@ class CertUtil(object):
             with CertUtil.ca_lock:
                 if not os.path.exists(certfile):
                     return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile, sans)
+                else:
+                    return keyfile, certfile
 
     @staticmethod
     def check_ca():
