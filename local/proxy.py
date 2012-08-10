@@ -6,9 +6,9 @@
 #      Phus Lu        <phus.lu@gmail.com>
 #      Hewig Xu       <hewigovens@gmail.com>
 #      Ayanamist Yang <ayanamist@gmail.com>
-#      Max Lv         <https://twitter.com/ofmax>
+#      Max Lv         <max.c.lv@gmail.com>
 #      AlsoTang       <alsotang@gmail.com>
-#      Yonsm          <http://www.yonsm.net/>
+#      Yonsm          <YonsmGuo@gmail.com>
 
 from __future__ import with_statement
 
@@ -428,158 +428,135 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
 class CertUtil(object):
     '''CertUtil module, based on WallProxy 0.4.0'''
 
-    CA = None
-    CALock = threading.Lock()
+    ca_lock = threading.Lock()
 
-    SubjectAltNames = \
-            'DNS: twitter.com, DNS: facebook.com, \
-            DNS: *.twitter.com, DNS: *.twimg.com, \
-            DNS: *.akamaihd.net, DNS: *.google.com, \
-            DNS: *.facebook.com, DNS: *.ytimg.com, \
-            DNS: *.appspot.com, DNS: *.google.com, \
-            DNS: *.youtube.com, DNS: *.googleusercontent.com, \
-            DNS: *.gstatic.com, DNS: *.live.com, \
-            DNS: *.ak.fbcdn.net, DNS: *.ak.facebook.com, \
-            DNS: *.android.com, DNS: *.fbcdn.net'
-
-    @staticmethod
-    def readFile(filename):
-        content = None
-        with open(filename, 'rb') as fp:
-            content = fp.read()
-        return content
-
-    @staticmethod
-    def writeFile(filename, content):
-        with open(filename, 'wb') as fp:
-            fp.write(str(content))
+    SubjectAltNames = ['twitter.com',
+                       'facebook.com',
+                       '*.twimg.com',
+                       '*.twitter.com',
+                       '*.akamaihd.net',
+                       '*.google.com',
+                       '*.facebook.com',
+                       '*.ytimg.com',
+                       '*.appspot.com',
+                       '*.google.com',
+                       '*.youtube.com',
+                       '*.googleusercontent.com',
+                       '*.gstatic.com',
+                       '*.live.com',
+                       '*.ak.fbcdn.net',
+                       '*.ak.facebook.com',
+                       '*.android.com',
+                       '*.fbcdn.net',
+                       ]
 
     @staticmethod
-    def createKeyPair(type=None, bits=1024):
-        if type is None:
-            type = OpenSSL.crypto.TYPE_RSA
+    def create_ca():
+        key = OpenSSL.crypto.PKey()
+        key.generate_key(OpenSSL.crypto.TYPE_RSA, 1024)
+        ca = OpenSSL.crypto.X509()
+        ca.set_serial_number(int(time()*10000))
+        ca.set_version(2)
+        ca.get_subject().CN = "GoAgent CA"
+        ca.get_subject().O = "GoAgent CA"
+        ca.gmtime_adj_notBefore(0)
+        ca.gmtime_adj_notAfter(24 * 60 * 60 * 3652)
+        ca.set_issuer(ca.get_subject())
+        ca.set_pubkey(key)
+        ca.add_extensions([
+          OpenSSL.crypto.X509Extension(b"basicConstraints", True, b"CA:TRUE"),
+          OpenSSL.crypto.X509Extension(b"nsCertType", True, b"sslCA"),
+          OpenSSL.crypto.X509Extension(b"extendedKeyUsage", True,
+            b"serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC"),
+          OpenSSL.crypto.X509Extension(b"keyUsage", False, b"keyCertSign, cRLSign"),
+          OpenSSL.crypto.X509Extension(b"subjectKeyIdentifier", False, b"hash", subject=ca),
+          ])
+        ca.sign(key, "sha1")
+        return key, ca
+
+    @staticmethod
+    def dump_ca(keyfile='CA.key', certfile='CA.crt'):
+        key, ca = CertUtil.create_ca()
+        with open(keyfile, 'wb') as fp:
+            fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
+        with open(certfile, 'wb') as fp:
+            fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca))
+
+    @staticmethod
+    def _get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans = []):
+        with open(ca_keyfile, 'rb') as fp:
+            key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, fp.read())
+        with open(ca_certfile, 'rb') as fp:
+            ca = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
+
         pkey = OpenSSL.crypto.PKey()
-        pkey.generate_key(type, bits)
-        return pkey
+        pkey.generate_key(OpenSSL.crypto.TYPE_RSA, 1024)
 
-    @staticmethod
-    def createCertRequest(pkey, digest='sha1', **subj):
         req = OpenSSL.crypto.X509Req()
-        subject = req.get_subject()
-        for k,v in subj.iteritems():
-            setattr(subject, k, v)
+        subj = req.get_subject()
+        subj.countryName = 'CN'
+        subj.stateOrProvinceName = 'Internet'
+        subj.localityName = 'Cernet'
+        subj.organizationName = commonname
+        subj.organizationalUnitName = 'GoAgent Branch'
+        subj.commonName = commonname
+        sans = sans or CertUtil.SubjectAltNames
+        req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         req.set_pubkey(pkey)
-        req.sign(pkey, digest)
-        return req
+        req.sign(pkey, 'sha1')
 
-    @staticmethod
-    def createCertificate(req, (issuerKey, issuerCert), serial, (notBefore,
-        notAfter), digest='sha1', host=None):
         cert = OpenSSL.crypto.X509()
         cert.set_version(3)
-        cert.set_serial_number(serial)
-        cert.gmtime_adj_notBefore(notBefore)
-        cert.gmtime_adj_notAfter(notAfter)
-        cert.set_issuer(issuerCert.get_subject())
+        cert.set_serial_number(int(hashlib.md5(commonname).hexdigest(), 16))
+        cert.gmtime_adj_notBefore(0)
+        cert.gmtime_adj_notAfter(60 * 60 * 24 * 3652)
+        cert.set_issuer(ca.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
-        if CertUtil.SubjectAltNames:
-            alts = CertUtil.SubjectAltNames
-            if host is not None:
-                alts += ", DNS: %s" % host
-            cert.add_extensions([OpenSSL.crypto.X509Extension("subjectAltName",
-                True, alts)])
-        cert.sign(issuerKey, digest)
-        return cert
+        sans = sans or CertUtil.SubjectAltNames
+        req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
+        cert.sign(key, 'sha1')
+
+        keyfile  = os.path.join(certdir, commonname + '.key')
+        with open(keyfile, 'wb') as fp:
+            fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, pkey))
+        certfile = os.path.join(certdir, commonname + '.crt')
+        with open(certfile, 'wb') as fp:
+            fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, cert))
+
+        return keyfile, certfile
 
     @staticmethod
-    def loadPEM(pem, type):
-        handlers = ('load_privatekey', 'load_certificate_request', 'load_certificate')
-        return getattr(OpenSSL.crypto, handlers[type])(OpenSSL.crypto.FILETYPE_PEM, pem)
+    def get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans = []):
+        keyfile  = os.path.join(certdir, commonname + '.key')
+        certfile = os.path.join(certdir, commonname + '.crt')
+        if os.path.exists(certfile):
+            return keyfile, certfile
+        elif OpenSSL is None:
+            return ca_keyfile, ca_certfile
+        else:
+            with CertUtil.ca_lock:
+                if not os.path.exists(certfile):
+                    return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile, sans)
 
     @staticmethod
-    def dumpPEM(obj, type):
-        handlers = ('dump_privatekey', 'dump_certificate_request', 'dump_certificate')
-        return getattr(OpenSSL.crypto, handlers[type])(OpenSSL.crypto.FILETYPE_PEM, obj)
-
-    @staticmethod
-    def makeCA():
-        pkey = CertUtil.createKeyPair(bits=2048)
-        subj = {'countryName': 'CN', 'stateOrProvinceName': 'Internet',
-                'localityName': 'Cernet', 'organizationName': 'GoAgent',
-                'organizationalUnitName': 'GoAgent Root', 'commonName': 'GoAgent CA'}
-        req = CertUtil.createCertRequest(pkey, **subj)
-        cert = CertUtil.createCertificate(req, (pkey, req), 0, (0, 60*60*24*7305))  #20 years
-        return (CertUtil.dumpPEM(pkey, 0), CertUtil.dumpPEM(cert, 2))
-
-    @staticmethod
-    def makeCert(host, (cakey, cacrt), serial):
-        pkey = CertUtil.createKeyPair()
-        subj = {'countryName': 'CN', 'stateOrProvinceName': 'Internet',
-                'localityName': 'Cernet', 'organizationName': host,
-                'organizationalUnitName': 'GoAgent Branch', 'commonName': host}
-        req = CertUtil.createCertRequest(pkey, **subj)
-        cert = CertUtil.createCertificate(req, (cakey, cacrt), serial, (0,
-            60*60*24*7305), host=host)
-        return (CertUtil.dumpPEM(pkey, 0), CertUtil.dumpPEM(cert, 2))
-
-    @staticmethod
-    def getCertificate(host):
-        basedir = os.path.dirname(__file__)
-        keyFile = os.path.join(basedir, 'certs/%s.key' % host)
-        crtFile = os.path.join(basedir, 'certs/%s.crt' % host)
-        if os.path.exists(keyFile):
-            return (keyFile, crtFile)
-        if OpenSSL is None:
-            keyFile = os.path.join(basedir, 'CA.key')
-            crtFile = os.path.join(basedir, 'CA.crt')
-            return (keyFile, crtFile)
-        if not os.path.isfile(keyFile):
-            with CertUtil.CALock:
-                if not os.path.isfile(keyFile):
-                    logging.info('CertUtil getCertificate for %r', host)
-                    # FIXME: howto generate a suitable serial number?
-                    for serial in (int(hashlib.md5(host).hexdigest(), 16), int(time.time()*100)):
-                        try:
-                            key, crt = CertUtil.makeCert(host, CertUtil.CA, serial)
-                            CertUtil.writeFile(crtFile, crt)
-                            CertUtil.writeFile(keyFile, key)
-                            break
-                        except Exception:
-                            logging.exception('CertUtil.makeCert failed: host=%r, serial=%r', host, serial)
-                    else:
-                        keyFile = os.path.join(basedir, 'CA.key')
-                        crtFile = os.path.join(basedir, 'CA.crt')
-        return (keyFile, crtFile)
-
-    @staticmethod
-    def checkCA():
+    def check_ca():
         #Check CA exists
-        keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
-        crtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
-        if not os.path.exists(keyFile):
+        capath = os.path.join(os.path.dirname(__file__), 'CA.key')
+        if not os.path.exists(capath):
             if not OpenSSL:
-                logging.critical('CA.crt is not exist and OpenSSL is disabled, ABORT!')
+                logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
                 sys.exit(-1)
             if os.name == 'nt':
                 os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
             [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
-            key, crt = CertUtil.makeCA()
-            CertUtil.writeFile(keyFile, key)
-            CertUtil.writeFile(crtFile, crt)
+            CertUtil.dump_ca('CA.key', 'CA.crt')
         #Check CA imported
         cmd = {
                 'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
-                #'darwin' : r'sudo security add-trusted-cert -d �Cr trustRoot �Ck /Library/Keychains/System.keychain CA.crt',
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warning('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
-        if OpenSSL:
-            keyFile = os.path.join(os.path.dirname(__file__), 'CA.key')
-            crtFile = os.path.join(os.path.dirname(__file__), 'CA.crt')
-            cakey = CertUtil.readFile(keyFile)
-            cacrt = CertUtil.readFile(crtFile)
-            CertUtil.CA = (CertUtil.loadPEM(cakey, 0), CertUtil.loadPEM(cacrt, 2))
 
 
 class SimpleLogging(object):
@@ -994,7 +971,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_CONNECT_Tunnel(self):
         # for ssl proxy
         host, _, port = self.path.rpartition(':')
-        keyFile, crtFile = CertUtil.getCertificate(host)
+        keyfile, certfile = CertUtil.get_cert(host)
         self.log_request(200)
         self.connection.sendall('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
@@ -1002,7 +979,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self._realrfile = self.rfile
             self._realwfile = self.wfile
             self._realconnection = self.connection
-            self.connection = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
+            self.connection = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=keyfile, server_side=True)
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
             self.raw_requestline = self.rfile.readline(8192)
@@ -1230,7 +1207,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')
-        keyFile, crtFile = CertUtil.getCertificate(host)
+        keyfile, certfile = CertUtil.get_cert(host)
         self.log_request(200)
         self.connection.sendall('%s 200 OK\r\n\r\n' % self.protocol_version)
         try:
@@ -1238,7 +1215,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self._realrfile = self.rfile
             self._realwfile = self.wfile
             self._realconnection = self.connection
-            self.connection = ssl.wrap_socket(self.connection, keyFile, crtFile, True)
+            self.connection = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=keyfile, server_side=True)
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
             self.raw_requestline = self.rfile.readline(8192)
@@ -1366,7 +1343,7 @@ def main():
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', __config__)
         sys.exit(-1)
-    CertUtil.checkCA()
+    CertUtil.check_ca()
     common.install_opener()
     sys.stdout.write(common.info())
 
