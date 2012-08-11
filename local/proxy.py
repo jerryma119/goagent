@@ -1202,8 +1202,6 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except urllib2.URLError as url_error:
                 raise
 
-            #content_length = int(response.headers.getheader('Content-Length', content_length))
-
             while 1:
                 data = response.read(8192)
                 if not data or current_length >= content_length:
