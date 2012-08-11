@@ -5,7 +5,7 @@
 
 $__version__  = '1.10.0';
 $__password__ = '';
-$__timeout__  = 20
+$__timeout__  = 20;
 
 function encode_data($dic) {
     $a = array();
