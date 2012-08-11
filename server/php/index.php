@@ -5,6 +5,7 @@
 
 $__version__  = '1.10.0';
 $__password__ = '';
+$__timeout__  = 20
 
 function encode_data($dic) {
     $a = array();
@@ -52,7 +53,7 @@ function post()
     }
     $headers['connection'] = 'close';
     $body = @gzuncompress(@file_get_contents('php://input'));
-    $timeout = 16;
+    $timeout = $GLOBALS['__timeout__'];
 
     $response_headers = array();
 

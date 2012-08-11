@@ -1187,7 +1187,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
     def rangefetch(self, method, url, headers, payload, current_length, content_length):
-        logging.info('PAASProxyHandler.rangefetch "%s %s" %r/%r', method, url, current_length, content_length)
+        logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', url)
         if current_length < content_length:
             headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+common.AUTORANGE_MAXSIZE-1, content_length-1))
             params  = {'url':url, 'method':method, 'headers':str(headers)}
@@ -1202,6 +1202,9 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except urllib2.URLError as url_error:
                 raise
 
+            content_range = response.headers.get('Content-Range')
+            logging.info('>>>>>>>>>>>>>>> %s %d' % (content_range or 'UNKOWN', content_length))
+
             while 1:
                 data = response.read(8192)
                 if not data or current_length >= content_length:
@@ -1212,6 +1215,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
             if current_length < content_length:
                 return self.rangefetch(method, url, headers, payload, current_length, content_length)
+        logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', url)
 
     def do_METHOD(self):
         if self.path[0] == '/':
