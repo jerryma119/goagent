@@ -68,7 +68,7 @@ def fileobj_to_generator(fileobj, bufsize=8192, gzipped=False):
             yield zdata
         yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
 
-def httplib_request(method, url, body=None, headers={}, timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
+def httplib_request(method, url, body=None, headers={}, timeout=None):
     scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
     HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
     if params:
