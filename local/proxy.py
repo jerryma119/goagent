@@ -457,12 +457,13 @@ class CertUtil(object):
         ca = OpenSSL.crypto.X509()
         ca.set_serial_number(0)
         ca.set_version(2)
-        ca.countryName = 'CN'
-        ca.stateOrProvinceName = 'Internet'
-        ca.localityName = 'Cernet'
-        ca.organizationName = 'GoAgent'
-        ca.organizationalUnitName = 'GoAgent Root'
-        ca.commonName = 'GoAgent'
+        subj = ca.get_subject()
+        subj.countryName = 'CN'
+        subj.stateOrProvinceName = 'Internet'
+        subj.localityName = 'Cernet'
+        subj.organizationName = 'GoAgent'
+        subj.organizationalUnitName = 'GoAgent Root'
+        subj.commonName = 'GoAgent'
         ca.gmtime_adj_notBefore(0)
         ca.gmtime_adj_notAfter(24 * 60 * 60 * 3652)
         ca.set_issuer(ca.get_subject())
@@ -504,7 +505,7 @@ class CertUtil(object):
         subj.organizationName = commonname
         subj.organizationalUnitName = 'GoAgent Branch'
         subj.commonName = commonname
-        sans = sans or CertUtil.SubjectAltNames
+        sans = (sans or [commonname]) + CertUtil.SubjectAltNames
         req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         req.set_pubkey(pkey)
         req.sign(pkey, 'sha1')
@@ -520,7 +521,7 @@ class CertUtil(object):
         cert.set_issuer(ca.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
-        sans = sans or CertUtil.SubjectAltNames
+        sans = (sans or [commonname]) + CertUtil.SubjectAltNames
         cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
