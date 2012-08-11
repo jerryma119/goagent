@@ -1186,14 +1186,40 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         PAASProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
-    def rangefetch(self, method, url, headers, current_length, content_length):
-        logging.info('PAASProxyHandler.rangefetch begin, method=%r url=%r %r/%r', method, url, current_length, content_length)
+    def rangefetch(self, method, url, headers, payload, current_length, content_length):
+        logging.info('PAASProxyHandler.rangefetch "%s %s" %r/%r', method, url, current_length, content_length)
+        if current_length < content_length:
+            headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+common.AUTORANGE_MAXSIZE-1, content_length-1))
+            params  = {'url':url, 'method':method, 'headers':str(headers)}
+            params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+            request_headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip()}
+            request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=request_headers)
+            request.get_method = lambda: 'POST'
+            try:
+                response = urllib2.urlopen(request)
+            except urllib2.HTTPError as http_error:
+                response = http_error
+            except urllib2.URLError as url_error:
+                raise
+
+            #content_length = int(response.headers.getheader('Content-Length', content_length))
+
+            while 1:
+                data = response.read(8192)
+                if not data or current_length >= content_length:
+                    response.close()
+                    break
+                current_length += len(data)
+                self.wfile.write(data)
+
+            if current_length < content_length:
+                return self.rangefetch(method, url, headers, payload, current_length, content_length)
 
     def do_METHOD(self):
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
 
-        params  = {'url':self.path, 'method':self.command, 'headers':str(self.headers)}
+        params  = {'method':self.command, 'url':self.path, 'headers':str(self.headers)}
         params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
         headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip()}
 
@@ -1230,7 +1256,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 length += len(data)
                 self.wfile.write(data)
             if content_length and length < content_length:
-                self.rangefetch(self.command, self.path, self.headers, length, content_length)
+                self.rangefetch(self.command, self.path, self.headers, payload, length, content_length)
         except httplib.HTTPException as e:
             raise
 
