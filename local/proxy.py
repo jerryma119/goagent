@@ -468,14 +468,14 @@ class CertUtil(object):
         ca.set_issuer(ca.get_subject())
         ca.set_pubkey(key)
         ca.add_extensions([
-          OpenSSL.crypto.X509Extension(b"basicConstraints", True, b"CA:TRUE"),
-          OpenSSL.crypto.X509Extension(b"nsCertType", True, b"sslCA"),
-          OpenSSL.crypto.X509Extension(b"extendedKeyUsage", True,
-            b"serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC"),
-          OpenSSL.crypto.X509Extension(b"keyUsage", False, b"keyCertSign, cRLSign"),
-          OpenSSL.crypto.X509Extension(b"subjectKeyIdentifier", False, b"hash", subject=ca),
+          OpenSSL.crypto.X509Extension(b'basicConstraints', True, b'CA:TRUE'),
+          OpenSSL.crypto.X509Extension(b'nsCertType', True, b'sslCA'),
+          OpenSSL.crypto.X509Extension(b'extendedKeyUsage', True,
+            b'serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC'),
+          OpenSSL.crypto.X509Extension(b'keyUsage', False, b'keyCertSign, cRLSign'),
+          OpenSSL.crypto.X509Extension(b'subjectKeyIdentifier', False, b'hash', subject=ca),
           ])
-        ca.sign(key, "sha1")
+        ca.sign(key, 'sha1')
         return key, ca
 
     @staticmethod
@@ -494,7 +494,7 @@ class CertUtil(object):
             ca = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
 
         pkey = OpenSSL.crypto.PKey()
-        pkey.generate_key(OpenSSL.crypto.TYPE_RSA, 1024)
+        pkey.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
 
         req = OpenSSL.crypto.X509Req()
         subj = req.get_subject()
