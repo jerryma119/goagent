@@ -1186,6 +1186,9 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         PAASProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
+    def rangefetch(self, method, url, headers, current_length, content_length):
+        logging.info('PAASProxyHandler.rangefetch begin, method=%r url=%r %r/%r', method, url, current_length, content_length)
+
     def do_METHOD(self):
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
@@ -1211,19 +1214,23 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
 
             headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
+            content_length = int(response.headers.getheader('Content-Length', 0))
 
             self.send_response(response.code, response.msg)
             for keyword, value in headers:
                 self.send_header(keyword, value)
             self.end_headers()
 
+            length = 0
             while 1:
                 data = response.read(8192)
-                if not data:
+                if not data or content_length and length >= content_length:
                     response.close()
                     break
-                else:
-                    self.wfile.write(data)
+                length += len(data)
+                self.wfile.write(data)
+            if content_length and length < content_length:
+                self.rangefetch(self.command, self.path, self.headers, length, content_length)
         except httplib.HTTPException as e:
             raise
 
