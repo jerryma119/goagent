@@ -335,10 +335,7 @@ def app(environ, start_response):
     else:
         return gae_get(environ, start_response)
 
-if sae:
-    application = sae.create_wsgi_app(app)
-else:
-    application = app
+application = app if sae is None else sae.create_wsgi_app(app)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')

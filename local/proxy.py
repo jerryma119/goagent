@@ -87,6 +87,7 @@ class Common(object):
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
         self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
+        self.PAAS_FETCHHOST        = urlparse.urlparse(self.CONFIG.get('paas', 'fetchserver')).netloc.rsplit(':', 1)[0]
 
         if self.CONFIG.has_section('socks5'):
             self.SOCKS5_ENABLE           = self.CONFIG.getint('socks5', 'enable')
@@ -1159,6 +1160,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     protocol_version = 'HTTP/1.1'
+    setup_lock = threading.Lock()
 
     def log_message(self, fmt, *args):
         host, port = self.client_address[:2]
@@ -1168,6 +1170,13 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
 
     def setup(self):
+        host = common.PAAS_FETCHHOST
+        if host not in common.HOSTS:
+            logging.info('resolve host domian=%r to iplist', host)
+            with PAASProxyHandler.setup_lock:
+                if host not in common.HOSTS:
+                    common.HOSTS[host] = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
+                    logging.info('resolve host domian to iplist=%r', common.HOSTS[host])
         PAASProxyHandler.do_GET     = PAASProxyHandler.do_METHOD
         PAASProxyHandler.do_POST    = PAASProxyHandler.do_METHOD
         PAASProxyHandler.do_PUT     = PAASProxyHandler.do_METHOD
