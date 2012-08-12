@@ -785,88 +785,37 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def fetch(self, url, payload, method, headers):
         return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD, on_error=self.handle_fetch_error)
 
-    def rangefetch(self, m, data):
-        m = map(int, m.groups())
-        if 'range' in self.headers:
-            content_range = 'bytes %d-%d/%d' % (m[0], m[1], m[2])
-            req_range = re.search(r'(\d+)?-(\d+)?', self.headers['range'])
-            if req_range:
-                req_range = [u and int(u) for u in req_range.groups()]
-                if req_range[0] is None:
-                    if req_range[1] is not None:
-                        if not (m[1]-m[0]+1==req_range[1] and m[1]+1==m[2]):
-                            return False
-                        if m[2] >= req_range[1]:
-                            content_range = 'bytes %d-%d/%d' % (req_range[1], m[2]-1, m[2])
-                else:
-                    if req_range[1] is not None:
-                        if not (m[0]==req_range[0] and m[1]==req_range[1]):
-                            return False
-                        if m[2] - 1 > req_range[1]:
-                            content_range = 'bytes %d-%d/%d' % (req_range[0], req_range[1], m[2])
-            data['headers']['Content-Range'] = content_range
-            data['headers']['Content-Length'] = m[2]-m[0]
-        elif m[0] == 0:
-            data['code'] = 200
-            data['headers']['Content-Length'] = m[2]
-            del data['headers']['Content-Range']
+    def rangefetch(self, method, url, headers, payload, current_length, content_length):
+        if current_length < content_length:
+            headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+common.AUTORANGE_MAXSIZE-1, content_length-1))
+            params  = {'url':url, 'method':method, 'headers':str(headers)}
+            params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+            request_headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip()}
+            request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=request_headers)
+            request.get_method = lambda: 'POST'
+            try:
+                response = urllib2.urlopen(request)
+            except urllib2.HTTPError as http_error:
+                response = http_error
+            except urllib2.URLError as url_error:
+                raise
 
-        self.wfile.write('%s %d %s\r\n%s\r\n' % (self.protocol_version, data['code'], 'OK', data['headers']))
-        if 'response' in data:
-            response = data['response']
-            bufsize = common.AUTORANGE_BUFSIZE
-            if data['headers'].get('Content-Type', '').startswith('video/'):
-                bufsize = common.AUTORANGE_WAITSIZE
+            content_range = response.headers.get('Content-Range')
+            if not content_range:
+                logging.error('rangefetch "%s %s" failed', method, url)
+                return
+
+            logging.error('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
             while 1:
-                content = response.read(bufsize)
-                if not content:
+                data = response.read(8192)
+                if not data or current_length >= content_length:
                     response.close()
                     break
-                self.wfile.write(content)
-                bufsize = common.AUTORANGE_BUFSIZE
-        else:
-            self.wfile.write(data['content'])
+                current_length += len(data)
+                self.wfile.write(data)
 
-        start = m[1] + 1
-        end   = m[2] - 1
-        failed = 0
-        logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.headers.get('Host'))
-        while start < end:
-            if failed > 16:
-                break
-            self.headers['Range'] = 'bytes=%d-%d' % (start, min(start+common.AUTORANGE_MAXSIZE-1, end))
-            retval, data = self.fetch(self.path, '', self.command, str(self.headers))
-            if retval != 0 or data['code'] >= 400:
-                failed += 1
-                seconds = random.randint(2*failed, 2*(failed+1))
-                logging.error('Range Fetch fail %d times, retry after %d secs!', failed, seconds)
-                time.sleep(seconds)
-                continue
-            if 'Location' in data['headers']:
-                logging.info('Range Fetch got a redirect location:%r', data['headers']['Location'])
-                self.path = data['headers']['Location']
-                failed += 1
-                continue
-            m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('Content-Range',''))
-            if not m:
-                failed += 1
-                logging.error('Range Fetch fail %d times, data[\'headers\']=%s', failed, data['headers'])
-                continue
-            start = int(m.group(2)) + 1
-            logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['Content-Range'], end+1))
-            failed = 0
-            if 'response' in data:
-                response = data['response']
-                while 1:
-                    content = response.read(common.AUTORANGE_BUFSIZE)
-                    if not content:
-                        response.close()
-                        break
-                    self.wfile.write(content)
-            else:
-                self.wfile.write(data['content'])
-        logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.headers.get('Host'))
-        return True
+            if current_length < content_length:
+                return self.rangefetch(method, url, headers, payload, current_length, content_length)
 
     def log_message(self, fmt, *args):
         host, port = self.client_address[:2]
@@ -1094,64 +1043,61 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 pass
 
     def do_METHOD_Tunnel(self):
-        headers = self.headers
-        host = headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
+        host = self.headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
-        payload_len = int(headers.get('Content-Length', 0))
-        if payload_len:
-            payload = self.rfile.read(payload_len)
-        else:
-            payload = ''
 
         if common.USERAGENT_ENABLE:
-            headers['User-Agent'] = common.USERAGENT_STRING
+            self.headers['User-Agent'] = common.USERAGENT_STRING
 
-        if 'Range' in headers.dict:
-            m = re.search('bytes=(\d+)-', headers.dict['Range'])
-            start = int(m.group(1) if m else 0)
-            headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-            logging.info('autorange range=%r match url=%r', headers['Range'], self.path)
-        elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
-            try:
-                pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
-                logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
-                start = int(m.group(1) if m else 0)
-                headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-            except StopIteration:
-                pass
+        for skip_header in self.skip_headers:
+            if skip_header in self.headers:
+                del self.headers[skip_header]
 
-        skip_headers = self.skip_headers
-        strheaders = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
+        params  = {'method':self.command, 'url':self.path, 'headers':str(self.headers)}
+        params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+        headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip(), 'Content-Length':'0'}
 
-        retval, data = self.fetch(self.path, payload, self.command, strheaders)
+        content_length = int(self.headers.get('Content-Length',0))
+        payload = self.rfile.read(content_length) if content_length else None
+
         try:
-            if retval == -1:
-                return self.end_error(502, str(data))
-            code = data['code']
-            headers = data['headers']
-            self.log_request(code)
-            if code == 206 and self.command=='GET':
-                content_range = headers.get('Content-Range') or headers.get('content-range') or ''
-                m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', content_range)
-                if m and self.rangefetch(m, data):
-                    return
-            content = '%s %d %s\r\n%s\r\n' % (self.protocol_version, code, self.responses.get(code, ('GoAgent Notify', ''))[0], headers)
-            self.connection.sendall(content)
+            request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=headers)
+            request.get_method = lambda: 'POST'
+
             try:
-                self.connection.sendall(data['content'])
-            except KeyError:
-                #logging.info('OOPS, KeyError! Content-Type=%r', headers.get('Content-Type'))
-                response = data['response']
-                while 1:
-                    content = response.read(common.AUTORANGE_BUFSIZE)
-                    if not content:
-                        response.close()
-                        break
-                    self.connection.sendall(content)
-            if 'close' == headers.get('Connection',''):
-                self.close_connection = 1
+                response = urllib2.urlopen(request)
+            except urllib2.HTTPError as http_error:
+                response = http_error
+            except urllib2.URLError as url_error:
+                raise
+
+            set_cookie = response.headers['Set-Cookie']
+            response_object = dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in zlib.decompress(base64.b64decode(set_cookie)).split('&')))
+            response_status = int(response_object['status'])
+            response_headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in response_object['headers'].splitlines()))
+
+            self.send_response(response_status, httplib.responses.get(response_status, 'UNKOWN'))
+
+            headers = httplib_normalize_headers(response_headers.iteritems(), skip_headers=['Transfer-Encoding'])
+            for keyword, value in headers:
+                self.send_header(keyword, value)
+            self.end_headers()
+
+            length = 0
+            while 1:
+                data = response.read(8192)
+                if not data or content_length and length >= content_length:
+                    response.close()
+                    break
+                length += len(data)
+                self.wfile.write(data)
+            if content_length and length < content_length:
+                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.path)
+                self.rangefetch(self.command, self.path, self.headers, payload, length, content_length)
+                logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.path)
+        except httplib.HTTPException as e:
+            raise
         except socket.error as e:
             # Connection closed before proxy return
             if e[0] in (10053, errno.EPIPE):

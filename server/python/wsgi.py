@@ -6,7 +6,7 @@
 __version__ = '1.10.0'
 __password__ = ''
 
-import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse
+import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64
 try:
     from google.appengine.api import urlfetch
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
@@ -21,7 +21,7 @@ try:
 except:
     socket = None
 
-FetchMax = 3
+FetchMax = 2
 FetchMaxSize = 1024*1024*4
 Deadline = 30
 
@@ -317,6 +317,66 @@ def gae_post(environ, start_response):
     headers['connection'] = 'close'
     return send_response(start_response, response.status_code, headers, response.content)
 
+def gae_post_ex(environ, start_response):
+    cookie  = environ['HTTP_COOKIE']
+    request = decode_data(zlib.decompress(cookie.decode('base64')))
+
+    url     = request['url']
+    method  = request['method']
+    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
+
+    if __password__ and __password__ != request.get('password', ''):
+        start_response('403 Forbidden', [('Content-type', 'text/plain')])
+        yield 'GoAgent Python FetchServer Error: ' 'Wrong password.'
+        raise StopIteration
+
+    fetchmethod = getattr(urlfetch, method, '')
+    if not fetchmethod:
+        start_response('403 Forbidden', [('Content-type', 'text/plain')])
+        yield 'GoAgent Python FetchServer Error: ' 'Invalid Method: %s' % method
+        raise StopIteration
+
+    deadline = Deadline
+
+    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    headers['Connection'] = 'close'
+
+    content_length = int(headers.get('Content-Length',0))
+    payload = environ['wsgi.input'].read(content_length) if content_length else None
+
+    errors = []
+    for i in xrange(FetchMax if 'fetchmax' not in request else int(request['fetchmax'])):
+        try:
+            response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=True, follow_redirects=False, deadline=deadline, validate_certificate=False)
+            break
+        except apiproxy_errors.OverQuotaError, e:
+            time.sleep(4)
+        except DeadlineExceededError, e:
+            errors.append(str(e))
+            logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
+            time.sleep(1)
+            deadline = Deadline * 2
+        except urlfetch.DownloadError, e:
+            errors.append(str(e))
+            logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
+            time.sleep(1)
+            deadline = Deadline * 2
+        except Exception, e:
+            errors.append(str(e))
+            if i==0 and method=='GET':
+                deadline = Deadline * 2
+    else:
+        start_response('500 Internal Server Error', [('Content-type', 'text/plain')])
+        yield 'GoAgent Python FetchServer Error: ' 'Python Server: Urlfetch error: %s' % errors
+        raise StopIteration
+
+    params  = {'status':str(response.status_code), 'headers':''.join('%s: %s\r\n' % (k, v) for k, v in response.headers.items())}
+    params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
+    response_headers = [('Set-Cookie', base64.b64encode(zlib.compress(params)).strip())]
+
+    start_response('200 OK', response_headers)
+    yield response.content
+
 def gae_get(environ, start_response):
     timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)
     ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
@@ -326,7 +386,10 @@ def gae_get(environ, start_response):
 
 def app(environ, start_response):
     if urlfetch and environ['REQUEST_METHOD'] == 'POST':
-        return gae_post(environ, start_response)
+        if environ.get('HTTP_COOKIE'):
+            return gae_post_ex(environ, start_response)
+        else:
+            return gae_post(environ, start_response)
     elif not urlfetch:
         if environ['PATH_INFO'] == 'socks5':
             return paas_socks5(environ, start_response)
