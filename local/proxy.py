@@ -1076,6 +1076,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             response_object = dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in zlib.decompress(base64.b64decode(set_cookie)).split('&')))
             response_status = int(response_object['status'])
             response_headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in response_object['headers'].splitlines()))
+            response_headers['Connection'] = 'close'
 
             self.send_response(response_status, httplib.responses.get(response_status, 'UNKOWN'))
 
