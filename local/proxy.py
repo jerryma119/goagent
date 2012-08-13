@@ -404,12 +404,13 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
     """return (headers, content_encoding, transfer_encoding)"""
     headers = []
     for keyword, value in response_headers:
-        if keyword.title() in skip_headers:
+        keyword = keyword.title()
+        if keyword in skip_headers:
             continue
-        if keyword == 'connection':
+        if keyword == 'Connection':
             headers.append(('Connection', 'close'))
-        elif keyword != 'set-cookie':
-            headers.append((keyword.title(), value))
+        elif keyword != 'Set-Cookie':
+            headers.append((keyword, value))
         else:
             scs = value.split(', ')
             cookies = []
@@ -699,55 +700,23 @@ class SimpleMessageClass(object):
     def __str__(self):
         return ''.join(self.headers)
 
-def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=None, dns=None, on_error=None):
-    errors = []
-    params = {'url':url, 'method':method, 'headers':headers, 'payload':payload}
-    logging.debug('urlfetch params %s', params)
-    if password:
-        params['password'] = password
-    if common.FETCHMAX_SERVER:
-        params['fetchmax'] = common.FETCHMAX_SERVER
-    if dns:
-        params['dns'] = dns
-    params =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-    for i in xrange(common.FETCHMAX_LOCAL):
-        try:
-            logging.debug('urlfetch %r by %r', url, fetchserver)
-            request = urllib2.Request(fetchserver, zlib.compress(params, 9))
-            request.add_header('Content-Type', '')
-            if common.PROXY_ENABLE:
-                request.add_header('Host', fetchhost)
-            response = urllib2.urlopen(request)
-            compressed = response.read(1)
+def encode_request(headers, **kwargs):
+    if hasattr(headers, 'items'):
+        headers = headers.items()
+    data = ''.join('%s: %s\r\n' % (k, v) for k, v in headers) + ''.join('X-Goa-%s: %s\r\n' % (k.title(), v) for k, v in kwargs.iteritems())
+    return base64.b64encode(zlib.compress(data)).rstrip()
 
-            data = {}
-            if compressed == '0':
-                data['code'], hlen, clen = struct.unpack('>3I', response.read(12))
-                data['headers'] = SimpleMessageClass((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in response.read(hlen).split('&')))
-                data['response'] = response
-            elif compressed == '1':
-                rawdata = zlib.decompress(response.read())
-                data['code'], hlen, clen = struct.unpack('>3I', rawdata[:12])
-                data['headers'] = SimpleMessageClass((k, binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in rawdata[12:12+hlen].split('&')))
-                data['content'] = rawdata[12+hlen:12+hlen+clen]
-                response.close()
-            else:
-                raise ValueError('Data format not match(%s)' % url)
-
-            return (0, data)
-        except Exception as e:
-            if on_error:
-                logging.info('urlfetch error=%s on_error=%s', str(e), str(on_error))
-                data = on_error(e)
-                if data:
-                    newfetch = (data.get('fetchhost'), data.get('fetchserver'))
-                    if newfetch != (fetchhost, fetchserver):
-                        (fetchhost, fetchserver) = newfetch
-                        sys.stdout.write(common.info())
-            errors.append(str(e))
-            time.sleep(i+1)
-            continue
-    return (-1, errors)
+def decode_request(request):
+    data     = zlib.decompress(base64.b64decode(request))
+    headers  = []
+    kwargs   = {}
+    for line in data.splitlines():
+        keyword, _, value = line.partition(':')
+        if keyword.startswith('X-Goa-'):
+            kwargs[keyword[6:].lower()] = value.strip()
+        else:
+            headers.append((keyword.title(), value.strip()))
+    return headers, kwargs
 
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
@@ -782,15 +751,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         common.build_gae_fetchserver()
         return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
 
-    def fetch(self, url, payload, method, headers):
-        return urlfetch(url, payload, method, headers, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD, on_error=self.handle_fetch_error)
-
     def rangefetch(self, method, url, headers, payload, current_length, content_length):
         if current_length < content_length:
             headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+common.AUTORANGE_MAXSIZE-1, content_length-1))
-            params  = {'url':url, 'method':method, 'headers':str(headers)}
-            params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-            request_headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip()}
+            request_headers = {'Cookie':encode_request(headers, method=method, url=url), 'Content-Length':len(payload) if payload else 0}
             request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=request_headers)
             request.get_method = lambda: 'POST'
             try:
@@ -1054,9 +1018,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if skip_header in self.headers:
                 del self.headers[skip_header]
 
-        params  = {'method':self.command, 'url':self.path, 'headers':str(self.headers)}
-        params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-        headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip(), 'Content-Length':'0'}
+        headers = {'Cookie':encode_request(self.headers, method=self.command, url=self.path), 'Content-Length':self.headers.get('Content-Length', '0')}
 
         content_length = int(self.headers.get('Content-Length',0))
         payload = self.rfile.read(content_length) if content_length else None
@@ -1072,15 +1034,20 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except urllib2.URLError as url_error:
                 raise
 
-            set_cookie = response.headers['Set-Cookie']
-            response_object = dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in zlib.decompress(base64.b64decode(set_cookie)).split('&')))
-            response_status = int(response_object['status'])
-            response_headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in response_object['headers'].splitlines()))
-            response_headers['Connection'] = 'close'
+            if 'Set-Cookie' not in response.headers:
+                self.send_response(response.code)
+                for keyword, value in response.headers.items():
+                    self.send_header(keyword, value)
+                self.end_headers()
+                self.wfile.write(response.read())
+                return
+
+            response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
+            response_status = int(response_kwargs['status'])
 
             self.send_response(response_status, httplib.responses.get(response_status, 'UNKOWN'))
 
-            headers = httplib_normalize_headers(response_headers.iteritems(), skip_headers=['Transfer-Encoding'])
+            headers = httplib_normalize_headers(response_headers, skip_headers=['Transfer-Encoding'])
             for keyword, value in headers:
                 self.send_header(keyword, value)
             self.end_headers()

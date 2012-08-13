@@ -84,12 +84,13 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
     """return (headers, content_encoding, transfer_encoding)"""
     headers = []
     for keyword, value in response_headers:
-        if keyword.title() in skip_headers:
+        keyword = keyword.title()
+        if keyword in skip_headers:
             continue
-        if keyword == 'connection':
+        if keyword == 'Connection':
             headers.append(('Connection', 'close'))
-        elif keyword != 'set-cookie':
-            headers.append((keyword.title(), value))
+        elif keyword != 'Set-Cookie':
+            headers.append((keyword, value))
         else:
             scs = value.split(', ')
             cookies = []
@@ -105,6 +106,7 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
                     i += 1
             headers += [('Set-Cookie', x) for x in cookies]
     return headers
+
 
 def paas_application(environ, start_response):
     cookie  = environ['HTTP_COOKIE']
@@ -317,15 +319,33 @@ def gae_post(environ, start_response):
     headers['connection'] = 'close'
     return send_response(start_response, response.status_code, headers, response.content)
 
-def gae_post_ex(environ, start_response):
-    cookie  = environ['HTTP_COOKIE']
-    request = decode_data(zlib.decompress(cookie.decode('base64')))
+def encode_request(headers, **kwargs):
+    if hasattr(headers, 'items'):
+        headers = headers.items()
+    data = ''.join('%s: %s\r\n' % (k, v) for k, v in headers) + ''.join('X-Goa-%s: %s\r\n' % (k.title(), v) for k, v in kwargs.iteritems())
+    return base64.b64encode(zlib.compress(data)).rstrip()
 
-    url     = request['url']
-    method  = request['method']
+def decode_request(request):
+    data     = zlib.decompress(base64.b64decode(request))
+    headers  = []
+    kwargs   = {}
+    for line in data.splitlines():
+        keyword, _, value = line.partition(':')
+        if keyword.startswith('X-Goa-'):
+            kwargs[keyword[6:].lower()] = value.strip()
+        else:
+            headers.append((keyword.title(), value.strip()))
+    return headers, kwargs
+
+def gae_post_ex(environ, start_response):
+    headers, kwargs = decode_request(environ['HTTP_COOKIE'])
+
+    method = kwargs['method']
+    url    = kwargs['url']
+
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
-    if __password__ and __password__ != request.get('password', ''):
+    if __password__ and __password__ != kwargs.get('password', ''):
         start_response('403 Forbidden', [('Content-type', 'text/plain')])
         yield 'GoAgent Python FetchServer Error: ' 'Wrong password.'
         raise StopIteration
@@ -337,15 +357,12 @@ def gae_post_ex(environ, start_response):
         raise StopIteration
 
     deadline = Deadline
-
-    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+    headers = dict(headers)
     headers['Connection'] = 'close'
-
-    content_length = int(headers.get('Content-Length',0))
-    payload = environ['wsgi.input'].read(content_length) if content_length else None
+    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
 
     errors = []
-    for i in xrange(FetchMax if 'fetchmax' not in request else int(request['fetchmax'])):
+    for i in xrange(int(kwargs.get('fetchmax', FetchMax))):
         try:
             response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=True, follow_redirects=False, deadline=deadline, validate_certificate=False)
             break
@@ -370,9 +387,7 @@ def gae_post_ex(environ, start_response):
         yield 'GoAgent Python FetchServer Error: ' 'Python Server: Urlfetch error: %s' % errors
         raise StopIteration
 
-    params  = {'status':str(response.status_code), 'headers':''.join('%s: %s\r\n' % (k, v) for k, v in response.headers.items())}
-    params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-    response_headers = [('Set-Cookie', base64.b64encode(zlib.compress(params)).strip())]
+    response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))]
 
     start_response('200 OK', response_headers)
     yield response.content
