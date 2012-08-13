@@ -62,12 +62,6 @@ function post()
     }
     $headers['connection'] = 'close';
 
-    $header_string = '';
-    foreach ($headers as $key => $value) {
-        if ($key) {
-            $header_string .= join('-', array_map('ucfirst', explode('-', $key))).': '.$value."\r\n";
-        }
-    }
 
     $curl_opt = array();
 
@@ -99,6 +93,7 @@ function post()
             $curl_opt[CURLOPT_POSTFIELDS] = $body;
             break;
         case 'PUT':
+            break;
         case 'DELETE':
             $curl_opt[CURLOPT_CUSTOMREQUEST] = $method;
             $curl_opt[CURLOPT_POSTFIELDS] = $body;
