@@ -764,7 +764,17 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except urllib2.URLError as url_error:
                 raise
 
-            content_range = response.headers.get('Content-Range')
+            if 'Set-Cookie' not in response.headers:
+                self.send_response(response.code)
+                for keyword, value in response.headers.items():
+                    self.send_header(keyword, value)
+                self.end_headers()
+                self.wfile.write(response.read())
+                return
+
+            response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
+            content_range = response_headers.get('Content-Range')
+
             if not content_range:
                 logging.error('rangefetch "%s %s" failed', method, url)
                 return
@@ -1068,6 +1078,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.end_headers()
 
             length = 0
+            content_length = int(content_length)
             while 1:
                 data = response.read(8192)
                 if not data or content_length and length >= content_length:
