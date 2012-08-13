@@ -25,6 +25,36 @@ FetchMax = 3
 FetchMaxSize = 1024*1024*4
 Deadline = 30
 
+GAE_ERROR_TEMPLATE = '''
+<html><head>
+<meta http-equiv="content-type" content="text/html;charset=utf-8">
+<title>%(errno)s %(error)s</title>
+<style><!--
+body {font-family: arial,sans-serif}
+div.nav {margin-top: 1ex}
+div.nav A {font-size: 10pt; font-family: arial,sans-serif}
+span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
+div.nav A,span.big {font-size: 12pt; color: #0000cc}
+div.nav A {font-size: 10pt; color: black}
+A.l:link {color: #6f6f6f}
+A.u:link {color: green}
+//--></style>
+
+</head>
+<body text=#000000 bgcolor=#ffffff>
+<table border=0 cellpadding=2 cellspacing=0 width=100%>
+<tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
+<tr><td>&nbsp;</td></tr></table>
+<blockquote>
+<H1>%(error)</H1>
+%(description)s
+
+<p>
+</blockquote>
+<table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
+</body></html>
+'''
+
 def io_copy(source, dest):
     try:
         io_read  = getattr(source, 'read', None) or getattr(source, 'recv')
@@ -347,13 +377,13 @@ def gae_post_ex(environ, start_response):
 
     if __password__ and __password__ != kwargs.get('password', ''):
         start_response('403 Forbidden', [('Content-type', 'text/plain')])
-        yield 'GoAgent Python FetchServer Error: ' 'Wrong password.'
+        yield GAE_ERROR_TEMPLATE % dict(errno=403, error='Wrong password.', description='GoAgent proxy.ini password is wroing!')
         raise StopIteration
 
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
-        start_response('403 Forbidden', [('Content-type', 'text/plain')])
-        yield 'GoAgent Python FetchServer Error: ' 'Invalid Method: %s' % method
+        start_response('501 Unsupported', [('Content-type', 'text/plain')])
+        yield GAE_ERROR_TEMPLATE % dict(errno=501, error='Invalid Method: %r' % method, description='Unsupported Method')
         raise StopIteration
 
     deadline = Deadline
@@ -396,7 +426,7 @@ def gae_post_ex(environ, start_response):
                 deadline = Deadline * 2
     else:
         start_response('500 Internal Server Error', [('Content-type', 'text/plain')])
-        yield 'GoAgent Python Urlfetch Error: %s' % errors
+        yield GAE_ERROR_TEMPLATE % dict(errno=502, error='Python Urlfetch Error' % method, description=str(errors))
         raise StopIteration
 
     response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))]

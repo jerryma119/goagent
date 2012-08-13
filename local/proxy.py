@@ -773,7 +773,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
 
             response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
-            content_range = response_headers.get('Content-Range')
+            content_range = dict(response_headers)['Content-Range']
 
             if not content_range:
                 logging.error('rangefetch "%s %s" failed', method, url)
