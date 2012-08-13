@@ -21,7 +21,7 @@ try:
 except:
     socket = None
 
-FetchMax = 2
+FetchMax = 3
 FetchMaxSize = 1024*1024*4
 Deadline = 30
 
@@ -364,27 +364,39 @@ def gae_post_ex(environ, start_response):
     errors = []
     for i in xrange(int(kwargs.get('fetchmax', FetchMax))):
         try:
-            response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=True, follow_redirects=False, deadline=deadline, validate_certificate=False)
+            response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=False, follow_redirects=False, deadline=deadline, validate_certificate=False)
             break
-        except apiproxy_errors.OverQuotaError, e:
+        except apiproxy_errors.OverQuotaError as e:
             time.sleep(4)
-        except DeadlineExceededError, e:
+        except DeadlineExceededError as e:
             errors.append(str(e))
             logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline * 2
-        except urlfetch.DownloadError, e:
+        except urlfetch.DownloadError as e:
             errors.append(str(e))
             logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline * 2
-        except Exception, e:
+        except urlfetch.ResponseTooLargeError as e:
+            response = e.response
+            logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%s)', deadline, url, response and response.headers)
+            if response and response.headers.get('content-length'):
+                response.status_code = 206
+                response.headers['accept-ranges']  = 'bytes'
+                response.headers['content-range']  = 'bytes 0-%d/%s' % (len(response.content)-1, response.headers['content-length'])
+                response.headers['content-length'] = len(response.content)
+                break
+            else:
+                headers['Range'] = 'bytes=0-%d' % FetchMaxSize
+            deadline = Deadline * 2
+        except Exception as e:
             errors.append(str(e))
             if i==0 and method=='GET':
                 deadline = Deadline * 2
     else:
         start_response('500 Internal Server Error', [('Content-type', 'text/plain')])
-        yield 'GoAgent Python FetchServer Error: ' 'Python Server: Urlfetch error: %s' % errors
+        yield 'GoAgent Python Urlfetch Error: %s' % errors
         raise StopIteration
 
     response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))]

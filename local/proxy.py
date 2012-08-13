@@ -1044,10 +1044,25 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
             response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
             response_status = int(response_kwargs['status'])
+            headers = httplib_normalize_headers(response_headers, skip_headers=['Transfer-Encoding'])
+
+            if response_status == 206:
+                newheaders = []
+                content_range = ''
+                for keyword, value in headers:
+                    if keyword == 'Content-Range':
+                        content_range = value
+                    elif keyword == 'Content-Length':
+                        pass
+                    else:
+                        newheaders.append((keyword, value))
+                start_length, content_length = re.search(r'bytes (\d+)-\d+/(\d+)', content_range).group(1, 2)
+                if start_length == '0':
+                    newheaders.append(('Content-Length', content_length))
+                    headers = newheaders
+                    response_status = 200
 
             self.send_response(response_status, httplib.responses.get(response_status, 'UNKOWN'))
-
-            headers = httplib_normalize_headers(response_headers, skip_headers=['Transfer-Encoding'])
             for keyword, value in headers:
                 self.send_header(keyword, value)
             self.end_headers()
