@@ -2,6 +2,7 @@
 
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
+//      Parkman Zhou   <cseparkman@gmail.com>
 
 $__version__  = '1.10.0';
 $__password__ = '';
