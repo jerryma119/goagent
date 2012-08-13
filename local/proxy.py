@@ -779,7 +779,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.error('rangefetch "%s %s" failed', method, url)
                 return
 
-            logging.error('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
+            logging.info('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
             while 1:
                 data = response.read(8192)
                 if not data or current_length >= content_length:
