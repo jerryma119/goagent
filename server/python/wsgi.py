@@ -229,12 +229,12 @@ def decode_data(qs):
 def send_response(start_response, status, headers, content, content_type='image/gif'):
     strheaders = encode_data(headers)
     #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
-    if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
-        data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
+    if 'content-encoding' not in headers and headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+        data = ['1', zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))]
     else:
-        data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
-    start_response('200 OK', [('Content-type', content_type)])
-    return [data]
+        data = ['0', struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content]
+    start_response('200 OK', [('Content-type', content_type), ('Connection', 'close')])
+    return data
 
 def send_notify(start_response, method, url, status, content):
     logging.warning('%r Failed: url=%r, status=%r', method, url, status)
