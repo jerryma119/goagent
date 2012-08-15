@@ -12,7 +12,7 @@
 
 from __future__ import with_statement
 
-__version__ = '1.10.0'
+__version__ = '2.0.1'
 __config__  = 'proxy.ini'
 
 try:
