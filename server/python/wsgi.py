@@ -377,7 +377,7 @@ def gae_post_ex(environ, start_response):
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
         start_response('501 Unsupported', [('Content-type', 'text/plain')])
-        return [GAE_ERROR_TEMPLATE % dict(errno=501, error='Invalid Method: %r' % method, description='Unsupported Method')]
+        return [GAE_ERROR_TEMPLATE % dict(errno=501, error=('Invalid Method: '+str(method)), derscription='Unsupported Method')]
 
     deadline = Deadline
     headers = dict(headers)
