@@ -396,7 +396,7 @@ def dns_resolve(host, dnsserver='8.8.8.8', dnscache=common.HOSTS, dnslock=thread
 
 _httplib_HTTPConnection_putrequest = httplib.HTTPConnection.putrequest
 def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accept_encoding=1):
-    self._output('\r\n\r\n')
+    #self._output('\r\n\r\n')
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
@@ -1057,39 +1057,44 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers = httplib_normalize_headers(response_headers, skip_headers=['Transfer-Encoding'])
 
             if response_status == 206:
-                newheaders = []
-                content_range = ''
+                self.send_response('200', 'OK')
+                content_length = ''
+                content_range  = ''
                 for keyword, value in headers:
                     if keyword == 'Content-Range':
                         content_range = value
                     elif keyword == 'Content-Length':
-                        pass
+                        content_length = value
                     else:
-                        newheaders.append((keyword, value))
-                start_length, content_length = re.search(r'bytes (\d+)-\d+/(\d+)', content_range).group(1, 2)
-                if start_length == '0':
-                    newheaders.append(('Content-Length', content_length))
-                    headers = newheaders
-                    response_status = 200
+                        self.send_header(keyword, value)
+                start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
+                if start_length == 0:
+                    self.send_header('Content-Length', str(length))
+                self.end_headers()
+
+                while 1:
+                    data = response.read(8192)
+                    if not data:
+                        response.close()
+                        break
+                    self.wfile.write(data)
+
+                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.path)
+                self.rangefetch(self.command, self.path, self.headers, payload, end, length)
+                logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.path)
+                return
 
             self.send_response(response_status, httplib.responses.get(response_status, 'UNKOWN'))
             for keyword, value in headers:
                 self.send_header(keyword, value)
             self.end_headers()
 
-            length = 0
-            content_length = int(content_length)
             while 1:
                 data = response.read(8192)
-                if not data or content_length and length >= content_length:
+                if not data:
                     response.close()
                     break
-                length += len(data)
                 self.wfile.write(data)
-            if content_length and length < content_length:
-                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.path)
-                self.rangefetch(self.command, self.path, self.headers, payload, length, content_length)
-                logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.path)
         except httplib.HTTPException as e:
             raise
         except socket.error as e:
@@ -1161,7 +1166,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         params  = {'method':self.command, 'url':self.path, 'headers':str(self.headers)}
         params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-        headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip()}
+        headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip(), 'Content-Length':self.headers.get('Content-Length', '0')}
 
         payload = None
         content_length = int(self.headers.get('Content-Length',0))
@@ -1282,6 +1287,9 @@ class Sock5ProxyHandler(SocketServer.StreamRequestHandler):
         SocketServer.StreamRequestHandler.setup(self)
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+
+    def send_file(self, filename, headers):
+        pass
 
     def do_GET(self):
         filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
