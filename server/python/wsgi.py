@@ -28,7 +28,7 @@ Deadline = 30
 GAE_ERROR_TEMPLATE = '''
 <html><head>
 <meta http-equiv="content-type" content="text/html;charset=utf-8">
-<title>%(errno)s %(error)s</title>
+<title>{errno} {error}</title>
 <style><!--
 body {font-family: arial,sans-serif}
 div.nav {margin-top: 1ex}
@@ -46,8 +46,8 @@ A.u:link {color: green}
 <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
 <tr><td>&nbsp;</td></tr></table>
 <blockquote>
-<H1>%(error)</H1>
-%(description)s
+<H1>{error}</H1>
+{description}
 
 <p>
 </blockquote>
@@ -372,12 +372,12 @@ def gae_post_ex(environ, start_response):
 
     if __password__ and __password__ != kwargs.get('password', ''):
         start_response('403 Forbidden', [('Content-type', 'text/plain')])
-        return [GAE_ERROR_TEMPLATE % dict(errno=403, error='Wrong password.', description='GoAgent proxy.ini password is wroing!')]
+        return [GAE_ERROR_TEMPLATE.format(errno='403', error='Wrong password.', description='GoAgent proxy.ini password is wroing!')]
 
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
         start_response('501 Unsupported', [('Content-type', 'text/plain')])
-        return [GAE_ERROR_TEMPLATE % dict(errno=501, error=('Invalid Method: '+str(method)), derscription='Unsupported Method')]
+        return [GAE_ERROR_TEMPLATE.format(errno='501', error=('Invalid Method: '+str(method)), derscription='Unsupported Method')]
 
     deadline = Deadline
     headers = dict(headers)
@@ -419,7 +419,7 @@ def gae_post_ex(environ, start_response):
                 deadline = Deadline * 2
     else:
         start_response('500 Internal Server Error', [('Content-type', 'text/plain')])
-        return [GAE_ERROR_TEMPLATE % dict(errno=502, error=('Python Urlfetch Error: ' + str(method)), description=str(errors))]
+        return [GAE_ERROR_TEMPLATE.format(error='502', error=('Python Urlfetch Error: ' + str(method)), description=str(errors))]
 
     if 'content-encoding' not in response.headers and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code), encoding='gzip'))]
