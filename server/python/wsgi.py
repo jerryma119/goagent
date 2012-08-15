@@ -419,7 +419,7 @@ def gae_post_ex(environ, start_response):
                 deadline = Deadline * 2
     else:
         start_response('500 Internal Server Error', [('Content-type', 'text/plain')])
-        return [GAE_ERROR_TEMPLATE % dict(errno=502, error='Python Urlfetch Error' % method, description=str(errors))]
+        return [GAE_ERROR_TEMPLATE % dict(errno=502, error=('Python Urlfetch Error: ' + str(method)), description=str(errors))]
 
     if 'content-encoding' not in response.headers and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code), encoding='gzip'))]
