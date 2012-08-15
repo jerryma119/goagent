@@ -376,12 +376,12 @@ def gae_post_ex(environ, start_response):
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
     if __password__ and __password__ != kwargs.get('password', ''):
-        start_response('403 Forbidden', [('Content-type', 'text/plain')])
+        start_response('403 Forbidden', [('Content-type', 'text/html')])
         return [gae_error_html(errno='403', error='Wrong password.', description='GoAgent proxy.ini password is wroing!')]
 
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
-        start_response('501 Unsupported', [('Content-type', 'text/plain')])
+        start_response('501 Unsupported', [('Content-type', 'text/html')])
         return [gae_error_html(errno='501', error=('Invalid Method: '+str(method)), description='Unsupported Method')]
 
     deadline = Deadline
@@ -423,7 +423,7 @@ def gae_post_ex(environ, start_response):
             if i==0 and method=='GET':
                 deadline = Deadline * 2
     else:
-        start_response('500 Internal Server Error', [('Content-type', 'text/plain')])
+        start_response('500 Internal Server Error', [('Content-type', 'text/html')])
         return [gae_error_html(errno='502', error=('Python Urlfetch Error: ' + str(method)), description=str(errors))]
 
     if 'content-encoding' not in response.headers and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
