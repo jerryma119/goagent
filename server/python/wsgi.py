@@ -252,14 +252,8 @@ def paas_socks5(environ, start_response):
         if mode == 1:    # 1. Tcp connect
             socket_forward(sock, remote)
 
-def encode_data(dic):
-    return '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in dic.iteritems() if v)
-
-def decode_data(qs):
-    return dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
-
 def send_response(start_response, status, headers, content, content_type='image/gif'):
-    strheaders = encode_data(headers)
+    strheaders = '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in headers.iteritems() if v)
     #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
     if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
@@ -274,7 +268,8 @@ def send_notify(start_response, method, url, status, content):
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
 def gae_post(environ, start_response):
-    request = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
+    data = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
+    request = dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in data.split('&')))
     #logging.debug('post() get fetch request %s', request)
 
     method = request['method']
@@ -377,14 +372,12 @@ def gae_post_ex(environ, start_response):
 
     if __password__ and __password__ != kwargs.get('password', ''):
         start_response('403 Forbidden', [('Content-type', 'text/plain')])
-        yield GAE_ERROR_TEMPLATE % dict(errno=403, error='Wrong password.', description='GoAgent proxy.ini password is wroing!')
-        raise StopIteration
+        return [GAE_ERROR_TEMPLATE % dict(errno=403, error='Wrong password.', description='GoAgent proxy.ini password is wroing!')]
 
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
         start_response('501 Unsupported', [('Content-type', 'text/plain')])
-        yield GAE_ERROR_TEMPLATE % dict(errno=501, error='Invalid Method: %r' % method, description='Unsupported Method')
-        raise StopIteration
+        return [GAE_ERROR_TEMPLATE % dict(errno=501, error='Invalid Method: %r' % method, description='Unsupported Method')]
 
     deadline = Deadline
     headers = dict(headers)
@@ -426,13 +419,20 @@ def gae_post_ex(environ, start_response):
                 deadline = Deadline * 2
     else:
         start_response('500 Internal Server Error', [('Content-type', 'text/plain')])
-        yield GAE_ERROR_TEMPLATE % dict(errno=502, error='Python Urlfetch Error' % method, description=str(errors))
-        raise StopIteration
+        return [GAE_ERROR_TEMPLATE % dict(errno=502, error='Python Urlfetch Error' % method, description=str(errors))]
 
-    response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))]
-
-    start_response('200 OK', response_headers)
-    yield response.content
+    if 'content-encoding' not in response.headers and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+        response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code), encoding='gzip'))]
+        start_response('200 OK', response_headers)
+        compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
+        size = len(response.content)
+        crc = zlib.crc32(response.content)
+        zdata = compressobj.compress(response.content)
+        return ['\037\213\010\000' '\0\0\0\0' '\002\377', zdata, compressobj.flush(), struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)]
+    else:
+        response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))]
+        start_response('200 OK', response_headers)
+        return [response.content]
 
 def gae_get(environ, start_response):
     timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)
