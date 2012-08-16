@@ -6,7 +6,7 @@
 __version__ = '2.0.1'
 __password__ = ''
 
-import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64
+import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64, wsgiref.headers
 try:
     from google.appengine.api import urlfetch
     from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
@@ -38,35 +38,6 @@ def io_copy(source, dest):
         logging.exception('io_copy(source=%r, dest=%r) error: %s', source, dest, e)
     finally:
         pass
-
-def fileobj_to_generator(fileobj, bufsize=8192, gzipped=False):
-    assert hasattr(fileobj, 'read')
-    if not gzipped:
-        while 1:
-            data = fileobj.read(bufsize)
-            if not data:
-                fileobj.close()
-                break
-            else:
-                yield data
-    else:
-        compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
-        crc         = zlib.crc32('')
-        size        = 0
-        yield '\037\213\010\000' '\0\0\0\0' '\002\377'
-        while 1:
-            data = fileobj.read(bufsize)
-            if not data:
-                break
-            crc = zlib.crc32(data, crc)
-            size += len(data)
-            zdata = compressobj.compress(data)
-            if zdata:
-                yield zdata
-        zdata = compressobj.flush()
-        if zdata:
-            yield zdata
-        yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
 
 def httplib_request(method, url, body=None, headers={}, timeout=None):
     scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
@@ -107,35 +78,71 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
             headers += [('Set-Cookie', x) for x in cookies]
     return headers
 
+def encode_request(headers, **kwargs):
+    if hasattr(headers, 'items'):
+        headers = headers.items()
+    data = ''.join('%s: %s\r\n' % (k, v) for k, v in headers) + ''.join('X-Goa-%s: %s\r\n' % (k.title(), v) for k, v in kwargs.iteritems())
+    return base64.b64encode(zlib.compress(data)).rstrip()
+
+def decode_request(request):
+    data     = zlib.decompress(base64.b64decode(request))
+    headers  = []
+    kwargs   = {}
+    for line in data.splitlines():
+        keyword, _, value = line.partition(':')
+        if keyword.startswith('X-Goa-'):
+            kwargs[keyword[6:].lower()] = value.strip()
+        else:
+            headers.append((keyword.title(), value.strip()))
+    return headers, kwargs
 
 def paas_application(environ, start_response):
-    cookie  = environ['HTTP_COOKIE']
-    request = decode_data(zlib.decompress(cookie.decode('base64')))
+    headers, kwargs = decode_request(environ['HTTP_COOKIE'])
 
-    url     = request['url']
-    method  = request['method']
+    method = kwargs['method']
+    url    = kwargs['url']
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
-
-    headers = dict((k.title(),v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
 
     data = environ['wsgi.input'] if int(headers.get('Content-Length',0)) else None
 
     if method != 'CONNECT':
         try:
-            response = httplib_request(method, url, body=data, headers=headers, timeout=16)
+            response = httplib_request(method, url, body=data, headers=dict(headers), timeout=16)
 
             status_line = '%d %s' % (response.status, httplib.responses.get(response.status, 'OK'))
-            headers = httplib_normalize_headers(response.getheaders(), skip_headers=['Transfer-Encoding'])
+            headers = wsgiref.headers.Headers(httplib_normalize_headers(response.getheaders(), skip_headers=['Transfer-Encoding']))
 
-            gzipped = False
-##            if response.getheader('content-encoding') != 'gzip' and response.getheader('content-length'):
-##                if response.getheader('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
-##                    headers += [('Content-Encoding', 'gzip')]
-##                    gzipped = True
+            if 'content-encoding' not in headers and headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+                response_headers = [('Set-Cookie', encode_request(headers.items(), status=str(response.status), encoding='gzip'))]
+                start_response('200 OK', response_headers)
 
-            start_response(status_line, headers)
-            return fileobj_to_generator(response, gzipped=gzipped)
+                compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
+                crc         = zlib.crc32('')
+                size        = 0
+                bufsize     = 8192
+                yield '\037\213\010\000' '\0\0\0\0' '\002\377'
+                while 1:
+                    data = response.read(bufsize)
+                    if not data:
+                        break
+                    crc = zlib.crc32(data, crc)
+                    size += len(data)
+                    zdata = compressobj.compress(data)
+                    if zdata:
+                        yield zdata
+                zdata = compressobj.flush()
+                if zdata:
+                    yield zdata
+                yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
+            else:
+                response_headers = [('Set-Cookie', encode_request(headers.items(), status=str(response.status)))]
+                start_response('200 OK', response_headers)
+                while 1:
+                    data = response.read(bufsize)
+                    if not data:
+                        break
+                    yield zdata
         except httplib.HTTPException as e:
             raise
 
@@ -313,24 +320,6 @@ def gae_post(environ, start_response):
         headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
     headers['connection'] = 'close'
     return send_response(start_response, response.status_code, headers, response.content)
-
-def encode_request(headers, **kwargs):
-    if hasattr(headers, 'items'):
-        headers = headers.items()
-    data = ''.join('%s: %s\r\n' % (k, v) for k, v in headers) + ''.join('X-Goa-%s: %s\r\n' % (k.title(), v) for k, v in kwargs.iteritems())
-    return base64.b64encode(zlib.compress(data)).rstrip()
-
-def decode_request(request):
-    data     = zlib.decompress(base64.b64decode(request))
-    headers  = []
-    kwargs   = {}
-    for line in data.splitlines():
-        keyword, _, value = line.partition(':')
-        if keyword.startswith('X-Goa-'):
-            kwargs[keyword[6:].lower()] = value.strip()
-        else:
-            headers.append((keyword.title(), value.strip()))
-    return headers, kwargs
 
 def gae_error_html(**kwargs):
     GAE_ERROR_TEMPLATE = '''

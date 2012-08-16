@@ -876,7 +876,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self._realrfile = self.rfile
             self._realwfile = self.wfile
             self._realconnection = self.connection
-            self.connection = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=keyfile, server_side=True)
+            try:
+                self.connection = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=keyfile, server_side=True)
+            except Exception as e:
+                logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
+                self.connection = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
             self.raw_requestline = self.rfile.readline(8192)
@@ -1130,15 +1134,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e[0] in (10053, errno.EPIPE):
                 return
 
-class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-
-    protocol_version = 'HTTP/1.1'
-    setup_lock = threading.Lock()
-
-    def log_message(self, fmt, *args):
-        host, port = self.client_address[:2]
-        sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
-
+class PAASProxyHandler(GAEProxyHandler)
     def handle_fetch_error(self, error):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
 
@@ -1159,47 +1155,23 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         PAASProxyHandler.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
         BaseHTTPServer.BaseHTTPRequestHandler.setup(self)
 
-    def rangefetch(self, method, url, headers, payload, current_length, content_length):
-        if current_length < content_length:
-            headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+common.AUTORANGE_MAXSIZE-1, content_length-1))
-            params  = {'url':url, 'method':method, 'headers':str(headers)}
-            params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-            request_headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip()}
-            request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=request_headers)
-            request.get_method = lambda: 'POST'
-            try:
-                response = urllib2.urlopen(request)
-            except urllib2.HTTPError as http_error:
-                response = http_error
-            except urllib2.URLError as url_error:
-                raise
-
-            content_range = response.headers.get('Content-Range')
-            logging.info('>>>>>>>>>>>>>>> %s %d' % (content_range or 'UNKOWN', content_length))
-
-            while 1:
-                data = response.read(8192)
-                if not data or current_length >= content_length:
-                    response.close()
-                    break
-                current_length += len(data)
-                self.wfile.write(data)
-
-            if current_length < content_length:
-                return self.rangefetch(method, url, headers, payload, current_length, content_length)
-
     def do_METHOD(self):
+        host = self.headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
 
-        params  = {'method':self.command, 'url':self.path, 'headers':str(self.headers)}
-        params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
-        headers = {'Cookie':base64.b64encode(zlib.compress(params)).strip(), 'Content-Length':self.headers.get('Content-Length', '0')}
+        self_headers = self.headers
 
-        payload = None
+        if common.USERAGENT_ENABLE:
+            self_headers['User-Agent'] = common.USERAGENT_STRING
+
+        request_kwargs = dict(method=self.command, url=self.path)
+        if common.PAAS_PASSWORD:
+            request_kwargs['password'] = common.PAAS_PASSWORD
+        headers = {'Cookie':encode_request(self.headers, **request_kwargs), 'Content-Length':self.headers.get('Content-Length', '0')}
+
         content_length = int(self.headers.get('Content-Length',0))
-        if content_length:
-            payload = self.rfile.read(content_length)
+        payload = self.rfile.read(content_length) if content_length else None
 
         try:
             request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=headers)
@@ -1212,28 +1184,69 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             except urllib2.URLError as url_error:
                 raise
 
-            headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
-            content_length = int(response.headers.getheader('Content-Length', 0))
+            if 'Set-Cookie' not in response.headers:
+                self.send_response(response.code)
+                for keyword, value in response.headers.items():
+                    self.send_header(keyword, value)
+                self.end_headers()
+                self.wfile.write(response.read())
+                return
 
-            self.send_response(response.code, response.msg)
+            response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
+            response_status = int(response_kwargs['status'])
+            headers = httplib_normalize_headers(response_headers, skip_headers=['Transfer-Encoding'])
+
+            if response_status == 206:
+                self.send_response(200, 'OK')
+                content_length = ''
+                content_range  = ''
+                for keyword, value in headers:
+                    if keyword == 'Content-Range':
+                        content_range = value
+                    elif keyword == 'Content-Length':
+                        content_length = value
+                    else:
+                        self.send_header(keyword, value)
+                content_encoding = response_kwargs.get('encoding')
+                if content_encoding:
+                    self.send_header('Content-Encoding', content_encoding)
+                start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
+                if start == 0:
+                    self.send_header('Content-Length', str(length))
+                self.end_headers()
+
+                while 1:
+                    data = response.read(8192)
+                    if not data:
+                        response.close()
+                        break
+                    self.wfile.write(data)
+
+                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', host)
+                self.rangefetch(self.command, self.path, self.headers, payload, end+1, length)
+                logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
+                return
+
+            self.send_response(response_status, httplib.responses.get(response_status, 'UNKOWN'))
             for keyword, value in headers:
                 self.send_header(keyword, value)
+            content_encoding = response_kwargs.get('encoding')
+            if content_encoding:
+                self.send_header('Content-Encoding', content_encoding)
             self.end_headers()
 
-            length = 0
             while 1:
                 data = response.read(8192)
-                if not data or content_length and length >= content_length:
+                if not data:
                     response.close()
                     break
-                length += len(data)
                 self.wfile.write(data)
-            if content_length and length < content_length:
-                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', self.path)
-                self.rangefetch(self.command, self.path, self.headers, payload, length, content_length)
-                logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.path)
         except httplib.HTTPException as e:
             raise
+        except socket.error as e:
+            # Connection closed before proxy return
+            if e[0] in (10053, errno.EPIPE):
+                return
 
 
     def do_CONNECT(self):
@@ -1246,7 +1259,11 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self._realrfile = self.rfile
             self._realwfile = self.wfile
             self._realconnection = self.connection
-            self.connection = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=keyfile, server_side=True)
+            try:
+                self.connection = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=keyfile, server_side=True)
+            except Exception as e:
+                logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
+                self.connection = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
             self.rfile = self.connection.makefile('rb', self.rbufsize)
             self.wfile = self.connection.makefile('wb', self.wbufsize)
             self.raw_requestline = self.rfile.readline(8192)
