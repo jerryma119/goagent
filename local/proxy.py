@@ -1047,7 +1047,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 ##            except StopIteration:
 ##                pass
 
-        headers = {'Cookie':encode_request(self.headers, method=self.command, url=self.path), 'Content-Length':self.headers.get('Content-Length', '0')}
+        request_kwargs = dict(method=self.command, url=self.path)
+        if common.GAE_PASSWORD:
+            request_kwargs['password'] = common.GAE_PASSWORD
+        headers = {'Cookie':encode_request(self.headers, **request_kwargs), 'Content-Length':self.headers.get('Content-Length', '0')}
 
         content_length = int(self.headers.get('Content-Length',0))
         payload = self.rfile.read(content_length) if content_length else None
