@@ -550,7 +550,6 @@ class CertUtil(object):
                     return keyfile, certfile
                 return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile, sans)
 
-
     @staticmethod
     def check_ca():
         #Check CA exists
@@ -722,33 +721,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
     DefaultHosts = 'eJxdztsNgDAMQ9GNIvIoSXZjeApSqc3nUVT3ZojakFTR47wSNEhB8qXhorXg+kMjckGtQM9efDKf\n91Km4W+N4M1CldNIYMu+qSVoTm7MsG5E4KPd8apInNUUMo4betRQjg=='
-
-    def handle_fetch_error(self, error):
-        logging.info('handle_fetch_error self.path=%r', self.path)
-        if isinstance(error, urllib2.HTTPError):
-            # http error 400/502/504, swith to https
-            if error.code in (400, 504) or (error.code==502 and common.GAE_PROFILE=='google_cn'):
-                common.GOOGLE_MODE = 'https'
-                logging.error('GAE Error(%s) switch to https', error)
-            # seems that current appid is overqouta, swith to next appid
-            if error.code == 503:
-                common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                logging.error('GAE Error(%s) switch to appid(%r)', error, common.GAE_APPIDS[0])
-            # 405 method not allowed, disable CRLF
-            if error.code == 405:
-                httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
-        elif isinstance(error, urllib2.URLError):
-            if error.reason[0] in (11004, 10051, 10060, 'timed out', 10054):
-                # it seems that google.cn is reseted, switch to https
-                common.GOOGLE_MODE = 'https'
-        elif isinstance(error, httplib.HTTPException):
-            common.GOOGLE_MODE = 'https'
-            httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
-        else:
-            logging.warning('GAEProxyHandler.handle_fetch_error Exception %s', error)
-            return {}
-        common.build_gae_fetchserver()
-        return {'fetchhost':common.GAE_FETCHHOST, 'fetchserver':common.GAE_FETCHSERVER}
 
     def log_message(self, fmt, *args):
         host, port = self.client_address[:2]
@@ -1067,7 +1039,22 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = urllib2.urlopen(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
+                # gateway error, switch to https mode
+                if response.code in (400, 504) or (response.code==502 and common.GAE_PROFILE=='google_cn'):
+                    common.GOOGLE_MODE = 'https'
+                    common.build_gae_fetchserver()
+                # appid over qouta, switch to next appid
+                if response.code == 503:
+                    common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
+                    common.build_gae_fetchserver()
+                # bad request, disable CRLF injection
+                if response.code in (400, 405):
+                    httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
             except urllib2.URLError as url_error:
+                if url_error.reason[0] in (11004, 10051, 10060, 'timed out', 10054):
+                    # connection reset or timeout, switch to https
+                    common.GOOGLE_MODE = 'https'
+                    common.build_gae_fetchserver()
                 raise
 
             if 'Set-Cookie' not in response.headers:
@@ -1135,8 +1122,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return
 
 class PAASProxyHandler(GAEProxyHandler)
-    def handle_fetch_error(self, error):
-        logging.error('PAASProxyHandler handle_fetch_error %s', error)
 
     def setup(self):
         host = common.PAAS_FETCHHOST
