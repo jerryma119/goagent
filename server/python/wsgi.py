@@ -238,7 +238,7 @@ def send_notify(start_response, method, url, status, content):
     send_response(start_response, status, {'content-type':'text/html'}, content)
 
 def gae_post(environ, start_response):
-    data = decode_data(zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH']))))
+    data = zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH'])))
     request = dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in data.split('&')))
     #logging.debug('post() get fetch request %s', request)
 
