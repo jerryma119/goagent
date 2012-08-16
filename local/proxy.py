@@ -1121,7 +1121,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e[0] in (10053, errno.EPIPE):
                 return
 
-class PAASProxyHandler(GAEProxyHandler)
+class PAASProxyHandler(GAEProxyHandler):
 
     def setup(self):
         host = common.PAAS_FETCHHOST
