@@ -362,7 +362,7 @@ def gae_post_ex(environ, start_response):
     method = kwargs['method']
     url    = kwargs['url']
 
-    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
+    #logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
     if __password__ and __password__ != kwargs.get('password', ''):
         start_response('403 Forbidden', [('Content-type', 'text/html')])
@@ -421,8 +421,7 @@ def gae_post_ex(environ, start_response):
         compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
         size = len(response.content)
         crc = zlib.crc32(response.content)
-        zdata = compressobj.compress(response.content)
-        return ['\037\213\010\000' '\0\0\0\0' '\002\377', zdata, compressobj.flush(), struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)]
+        return ['\037\213\010\000' '\0\0\0\0' '\002\377', compressobj.compress(response.content), compressobj.flush(), struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)]
     else:
         response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))]
         start_response('200 OK', response_headers)
