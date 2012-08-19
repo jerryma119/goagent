@@ -63,14 +63,14 @@ function post()
     $method  = $kwargs['method'];
     $url     = $kwargs['url'];
 
-    $body = @file_get_contents('php://input');
 
-    $timeout = $GLOBALS['__timeout__'];
-
-    if ($body) {
-        $headers['Content-Length'] = strval(strlen($body));
+    $body = '';
+    if (isset($headers['Content-Length'])) {
+        $body = file_get_contents("php://input");
     }
     $headers['Connection'] = 'close';
+
+    $timeout = $GLOBALS['__timeout__'];
 
     $curl_opt = array();
 
@@ -133,7 +133,7 @@ function get() {
 }
 
 function main() {
-    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if ($_SERVER['REQUEST_METHOD'] == 'POST' && $_SERVER['HTTP_COOKIE']) {
         post();
     } else {
         get();
