@@ -121,6 +121,7 @@ class Common(object):
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
 
+        self.AUTORANGE_ENABLE     = self.CONFIG.getint('autorange', 'enable') if self.CONFIG.get('autorange', 'enable') else 0
         self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
@@ -718,9 +719,9 @@ def decode_request(request):
     return headers, kwargs
 
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
-    DefaultHosts = 'eJxdztsNgDAMQ9GNIvIoSXZjeApSqc3nUVT3ZojakFTR47wSNEhB8qXhorXg+kMjckGtQM9efDKf\n91Km4W+N4M1CldNIYMu+qSVoTm7MsG5E4KPd8apInNUUMo4betRQjg=='
+    setup_lock = threading.Lock()
+    default_hosts = 'eJxdztsNgDAMQ9GNIvIoSXZjeApSqc3nUVT3ZojakFTR47wSNEhB8qXhorXg+kMjckGtQM9efDKf\n91Km4W+N4M1CldNIYMu+qSVoTm7MsG5E4KPd8apInNUUMo4betRQjg=='
 
     def log_message(self, fmt, *args):
         host, port = self.client_address[:2]
@@ -742,7 +743,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
-                with GAEProxyHandler.SetupLock:
+                with self.__class__.setup_lock:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                         google_iplist = [host for host in common.GOOGLE_HOSTS if re.match(r'\d+\.\d+\.\d+\.\d+', host)]
                         google_hosts = [host for host in common.GOOGLE_HOSTS if not re.match(r'\d+\.\d+\.\d+\.\d+', host)]
@@ -757,7 +758,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         common.GOOGLE_HOSTS = tuple(set(sum(google_hosts_iplist, google_iplist)))
                         if len(common.GOOGLE_HOSTS) == 0:
                             logging.error('resolve common.GOOGLE_HOSTS domian to iplist return empty! use default iplist')
-                            common.GOOGLE_HOSTS = zlib.decompress(base64.b64decode(self.DefaultHosts)).split('|')
+                            common.GOOGLE_HOSTS = zlib.decompress(base64.b64decode(self.default_hosts)).split('|')
                         common.GOOGLE_HOSTS = tuple(x for x in common.GOOGLE_HOSTS if ':' not in x)
                         logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
@@ -1008,27 +1009,29 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if common.USERAGENT_ENABLE:
             self_headers['User-Agent'] = common.USERAGENT_STRING
 
-##        if 'Range' in self_headers:
-##            m = re.search('bytes=(\d+)-', self_headers.dict['Range'])
-##            start = int(m.group(1) if m else 0)
-##            self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-##            logging.info('autorange range=%r match url=%r', self_headers['Range'], self.path)
-##        elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
-##            try:
-##                pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
-##                logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-##                m = re.search('bytes=(\d+)-', self_headers.get('Range', ''))
-##                start = int(m.group(1) if m else 0)
-##                self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-##            except StopIteration:
-##                pass
+        if common.AUTORANGE_ENABLE:
+            if 'Range' in self_headers:
+                m = re.search('bytes=(\d+)-', self_headers.dict['Range'])
+                start = int(m.group(1) if m else 0)
+                self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+                logging.info('autorange range=%r match url=%r', self_headers['Range'], self.path)
+            elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
+                try:
+                    pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
+                    logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
+                    m = re.search('bytes=(\d+)-', self_headers.get('Range', ''))
+                    start = int(m.group(1) if m else 0)
+                    self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+                except StopIteration:
+                    pass
+
+        content_length = int(self.headers.get('Content-Length',0))
 
         request_kwargs = dict(method=self.command, url=self.path)
         if common.GAE_PASSWORD:
             request_kwargs['password'] = common.GAE_PASSWORD
-        headers = {'Cookie':encode_request(self.headers, **request_kwargs), 'Content-Length':self.headers.get('Content-Length', '0')}
+        headers = {'Cookie':encode_request(self.headers, **request_kwargs), 'Content-Length':str(content_length)}
 
-        content_length = int(self.headers.get('Content-Length',0))
         payload = self.rfile.read(content_length) if content_length else None
 
         try:
@@ -1100,7 +1103,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
                 return
 
-            self.send_response(response_status, httplib.responses.get(response_status, 'UNKOWN'))
+            self.send_response(response_status)
             for keyword, value in headers:
                 self.send_header(keyword, value)
             content_encoding = response_kwargs.get('encoding')
@@ -1127,7 +1130,7 @@ class PAASProxyHandler(GAEProxyHandler):
         host = common.PAAS_FETCHHOST
         if host not in common.HOSTS:
             logging.info('resolve host domian=%r to iplist', host)
-            with PAASProxyHandler.setup_lock:
+            with self.__class__.setup_lock:
                 if host not in common.HOSTS:
                     common.HOSTS[host] = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
                     logging.info('resolve host domian to iplist=%r', common.HOSTS[host])
@@ -1150,12 +1153,29 @@ class PAASProxyHandler(GAEProxyHandler):
         if common.USERAGENT_ENABLE:
             self_headers['User-Agent'] = common.USERAGENT_STRING
 
+        if common.AUTORANGE_ENABLE:
+            if 'Range' in self_headers:
+                m = re.search('bytes=(\d+)-', self_headers.dict['Range'])
+                start = int(m.group(1) if m else 0)
+                self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+                logging.info('autorange range=%r match url=%r', self_headers['Range'], self.path)
+            elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
+                try:
+                    pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
+                    logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
+                    m = re.search('bytes=(\d+)-', self_headers.get('Range', ''))
+                    start = int(m.group(1) if m else 0)
+                    self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+                except StopIteration:
+                    pass
+
+        content_length = int(self.headers.get('Content-Length',0))
+
         request_kwargs = dict(method=self.command, url=self.path)
         if common.PAAS_PASSWORD:
             request_kwargs['password'] = common.PAAS_PASSWORD
-        headers = {'Cookie':encode_request(self.headers, **request_kwargs), 'Content-Length':self.headers.get('Content-Length', '0')}
+        headers = {'Cookie':encode_request(self.headers, **request_kwargs), 'Content-Length':str(content_length)}
 
-        content_length = int(self.headers.get('Content-Length',0))
         payload = self.rfile.read(content_length) if content_length else None
 
         try:
@@ -1166,20 +1186,23 @@ class PAASProxyHandler(GAEProxyHandler):
                 response = urllib2.urlopen(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
+                if response.code in (400, 405):
+                    httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
             except urllib2.URLError as url_error:
                 raise
 
-            if 'Set-Cookie' not in response.headers:
+            try:
+                response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
+            except Exception as e:
                 self.send_response(response.code)
                 for keyword, value in response.headers.items():
                     self.send_header(keyword, value)
                 self.end_headers()
                 self.wfile.write(response.read())
                 return
-
-            response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
             response_status = int(response_kwargs['status'])
             headers = httplib_normalize_headers(response_headers, skip_headers=['Transfer-Encoding'])
+
 
             if response_status == 206:
                 self.send_response(200, 'OK')
@@ -1212,7 +1235,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
                 return
 
-            self.send_response(response_status, httplib.responses.get(response_status, 'UNKOWN'))
+            self.send_response(response_status)
             for keyword, value in headers:
                 self.send_header(keyword, value)
             content_encoding = response_kwargs.get('encoding')
@@ -1232,7 +1255,6 @@ class PAASProxyHandler(GAEProxyHandler):
             # Connection closed before proxy return
             if e[0] in (10053, errno.EPIPE):
                 return
-
 
     def do_CONNECT(self):
         host, _, port = self.path.rpartition(':')

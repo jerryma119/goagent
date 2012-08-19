@@ -3,71 +3,74 @@
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '1.10.0';
+$__version__  = '2.0.1';
 $__password__ = '';
 $__timeout__  = 20;
 
-function encode_data($dic) {
-    $a = array();
-    foreach ($dic as $key => $value) {
-        if ($value) {
-            $a[] = $key. '=' . bin2hex($value);
-        }
+function encode_request($headers, $kwargs) {
+    $data = '';
+    foreach ($headers as $key => $value) {
+        $data .= "$key: $value\r\n";
     }
-    return join('&', $a);
+    foreach ($kwargs as $key => $value) {
+        $data .= "X-Goa-$key: $value\r\n";
+    }
+    return base64_encode(gzcompress($data));
 }
 
-function decode_data($qs) {
-    $dic = array();
-    foreach (explode('&', $qs) as $kv) {
-        $pair = explode('=', $kv, 2);
-        $dic[$pair[0]] = $pair[1] ? pack('H*', $pair[1]) : '';
+function decode_request($request) {
+    $data    = gzuncompress(base64_decode($request));
+    $headers = array();
+    $kwargs  = array();
+    foreach (explode("\r\n", $data) as $kv) {
+        $pair = explode(':', $kv, 2);
+        $key  = $pair[0];
+        $value = trim($pair[1]);
+        if (substr($key, 0, 6) == 'X-Goa-') {
+            $kwargs[strtolower(substr($key, 6))] = $value;
+        } else if ($key) {
+            $headers[$key] = $value;
+        }
     }
-    return $dic;
+    return array($headers, $kwargs);
 }
 
 function header_function($ch, $header){
-    header($header);
-    $GLOBALS['header_length'] += 1;
+    if (substr($header, 0, 5) == 'HTTP/') {
+        $response_line_items = explode(' ', $header);
+        $GLOBALS['response_headers'] .= 'X-Goa-Status: ' . $response_line_items[1] . "\r\n";
+    } else {
+        $GLOBALS['response_headers'] .= $header;
+    }
     return strlen($header);
 }
 
 function write_function($ch, $body){
+    if (isset($GLOBALS['response_headers'])) {
+        //echo $GLOBALS['response_headers']; exit(0);
+        header('Set-Cookie: ' . base64_encode(gzcompress($GLOBALS['response_headers'])) . "\r\n");
+        unset($GLOBALS['response_headers']);
+    }
     echo $body;
-    $GLOBALS['body_length'] += 1;
+    $GLOBALS['response_body'] += strlen($body);
     return strlen($body);
 }
 
 function post()
 {
-    $request = @decode_data(@gzuncompress(base64_decode($_SERVER['HTTP_COOKIE'])));
-    $method  = $request['method'];
-    $url     = $request['url'];
+    list($headers, $kwargs) = @decode_request($_SERVER['HTTP_COOKIE']);
 
-    $headers = array();
-    foreach (explode("\r\n", $request['headers']) as $line) {
-        $pair = explode(':', $line, 2);
-        if (count($pair) == 2) {
-            $headers[trim(strtolower($pair[0]))] = trim($pair[1]);
-        }
-    }
-    $headers['connection'] = 'close';
-    $body = @gzuncompress(@file_get_contents('php://input'));
+    $method  = $kwargs['method'];
+    $url     = $kwargs['url'];
+
+    $body = @file_get_contents('php://input');
+
     $timeout = $GLOBALS['__timeout__'];
 
-    $response_headers = array();
-
     if ($body) {
-        $headers['content-length'] = strval(strlen($body));
+        $headers['Content-Length'] = strval(strlen($body));
     }
-    $headers['connection'] = 'close';
-
-    $header_string = '';
-    foreach ($headers as $key => $value) {
-        if ($key) {
-            $header_string .= join('-', array_map('ucfirst', explode('-', $key))).': '.$value."\r\n";
-        }
-    }
+    $headers['Connection'] = 'close';
 
     $curl_opt = array();
 
@@ -110,9 +113,7 @@ function post()
 
     $header_array = array();
     foreach ($headers as $key => $value) {
-        if ($key) {
-            $header_array[] = join('-', array_map('ucfirst', explode('-', $key))).': '.$value;
-        }
+        $header_array[] = "$key: $value";
     }
     $curl_opt[CURLOPT_HTTPHEADER] = $header_array;
 
@@ -121,7 +122,7 @@ function post()
     $ret = curl_exec($ch);
     //$status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
-    if ($errno && !isset($GLOBALS['header_length'])) {
+    if ($errno && !isset($GLOBALS['response_body'])) {
         echo $errno . ': ' .curl_error($ch);
     }
     curl_close($ch);
