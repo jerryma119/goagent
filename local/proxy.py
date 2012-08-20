@@ -1191,7 +1191,7 @@ class PAASProxyHandler(GAEProxyHandler):
             except urllib2.URLError as url_error:
                 raise
 
-            headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
+            headers = httplib_normalize_headers(response.headers.items())
 
             if response.code == 206:
                 self.send_response(200, 'OK')

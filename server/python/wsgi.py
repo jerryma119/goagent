@@ -104,6 +104,7 @@ def paas_application(environ, start_response):
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
+    headers = wsgiref.headers.Headers(headers)
     data = environ['wsgi.input'] if int(headers.get('Content-Length',0)) else None
 
     if method != 'CONNECT':
@@ -111,11 +112,11 @@ def paas_application(environ, start_response):
             response = httplib_request(method, url, body=data, headers=dict(headers), timeout=16)
 
             status_line = '%d %s' % (response.status, httplib.responses.get(response.status, 'OK'))
-            headers = wsgiref.headers.Headers(httplib_normalize_headers(response.getheaders(), skip_headers=['Transfer-Encoding']))
+            content_encoding = response.getheader('content-encoding', '')
+            content_type = response.getheader('content-type', '')
 
-            if 'content-encoding' not in headers and headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
-                response_headers = [('Set-Cookie', encode_request(headers.items(), status=str(response.status), encoding='gzip'))]
-                start_response('200 OK', response_headers)
+            if not content_encoding and content_type.startswith(('text/', 'application/json', 'application/javascript')):
+                start_response('%s OK' % response.status, response.getheaders()+[('Content-Encoding', 'gzip')])
 
                 compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
                 crc         = zlib.crc32('')
@@ -136,13 +137,13 @@ def paas_application(environ, start_response):
                     yield zdata
                 yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
             else:
-                response_headers = [('Set-Cookie', encode_request(headers.items(), status=str(response.status)))]
-                start_response('200 OK', response_headers)
+                start_response('%s OK' % response.status, response.getheaders())
+                bufsize = 8192
                 while 1:
                     data = response.read(bufsize)
                     if not data:
                         break
-                    yield zdata
+                    yield data
         except httplib.HTTPException as e:
             raise
 
@@ -469,4 +470,5 @@ if __name__ == '__main__':
     server.environ.pop('SERVER_SOFTWARE')
     logging.info('serving %s://%s:%s/wsgi.py', 'https' if ssl_args else 'http', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()
+
 
