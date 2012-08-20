@@ -104,46 +104,18 @@ def paas_application(environ, start_response):
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
-    headers = wsgiref.headers.Headers(headers)
-    data = environ['wsgi.input'] if int(headers.get('Content-Length',0)) else None
-
     if method != 'CONNECT':
         try:
-            response = httplib_request(method, url, body=data, headers=dict(headers), timeout=16)
-
-            status_line = '%d %s' % (response.status, httplib.responses.get(response.status, 'OK'))
-            content_encoding = response.getheader('content-encoding', '')
-            content_type = response.getheader('content-type', '')
-
-            if not content_encoding and content_type.startswith(('text/', 'application/json', 'application/javascript')):
-                start_response('%s OK' % response.status, response.getheaders()+[('Content-Encoding', 'gzip')])
-
-                compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
-                crc         = zlib.crc32('')
-                size        = 0
-                bufsize     = 8192
-                yield '\037\213\010\000' '\0\0\0\0' '\002\377'
-                while 1:
-                    data = response.read(bufsize)
-                    if not data:
-                        break
-                    crc = zlib.crc32(data, crc)
-                    size += len(data)
-                    zdata = compressobj.compress(data)
-                    if zdata:
-                        yield zdata
-                zdata = compressobj.flush()
-                if zdata:
-                    yield zdata
-                yield struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)
-            else:
-                start_response('%s OK' % response.status, response.getheaders())
-                bufsize = 8192
-                while 1:
-                    data = response.read(bufsize)
-                    if not data:
-                        break
-                    yield data
+            headers = dict(headers)
+            data = environ['wsgi.input'] if int(headers.get('Content-Length',0)) else None
+            response = httplib_request(method, url, body=data, headers=headers, timeout=16)
+            start_response('%s OK' % response.status, response.getheaders())
+            bufsize = 8192
+            while 1:
+                data = response.read(bufsize)
+                if not data:
+                    break
+                yield data
         except httplib.HTTPException as e:
             raise
 
