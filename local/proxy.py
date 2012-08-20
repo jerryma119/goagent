@@ -751,10 +751,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def handle_fetch_error(self, error):
         logging.info('handle_fetch_error self.path=%r', self.path)
         if isinstance(error, urllib2.HTTPError):
-            # http error 400/502/504, swith to https
-            if error.code in (400, 504) or (error.code==502 and common.GAE_PROFILE=='google_cn'):
-                common.GOOGLE_MODE = 'https'
-                logging.error('GAE Error(%s) switch to https', error)
             # seems that current appid is overqouta, swith to next appid
             if error.code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
@@ -762,13 +758,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # 405 method not allowed, disable CRLF
             if error.code == 405:
                 httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
-        elif isinstance(error, urllib2.URLError):
-            if error.reason[0] in (11004, 10051, 10060, 'timed out', 10054):
-                # it seems that google.cn is reseted, switch to https
-                common.GOOGLE_MODE = 'https'
-        elif isinstance(error, httplib.HTTPException):
-            common.GOOGLE_MODE = 'https'
-            httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
         else:
             logging.warning('GAEProxyHandler.handle_fetch_error Exception %s', error)
             return {}
