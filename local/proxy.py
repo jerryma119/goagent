@@ -747,7 +747,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
-    DefaultHosts = 'eJxdztsNgDAMQ9GNIvIoSXZjeApSqc3nUVT3ZojakFTR47wSNEhB8qXhorXg+kMjckGtQM9efDKf\n91Km4W+N4M1CldNIYMu+qSVoTm7MsG5E4KPd8apInNUUMo4betRQjg=='
 
     def handle_fetch_error(self, error):
         logging.info('handle_fetch_error self.path=%r', self.path)
@@ -880,7 +879,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def setup(self):
         if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
-            logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with GAEProxyHandler.SetupLock:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
@@ -888,18 +886,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         google_hosts = [host for host in common.GOOGLE_HOSTS if not re.match(r'\d+\.\d+\.\d+\.\d+', host)]
                         try:
                             google_hosts_iplist = [[x[-1][0] for x in socket.getaddrinfo(host, 80)] for host in google_hosts]
-                            need_remote_dns = google_hosts and any(len(iplist)==1 for iplist in google_hosts_iplist)
                         except socket.gaierror:
-                            need_remote_dns = True
-                        if need_remote_dns:
-                            logging.warning('OOOPS, there are some mistake in socket.getaddrinfo, try remote dns_resolve')
-                            google_hosts_iplist = [list(dns_resolve(host)) for host in google_hosts]
-                        common.GOOGLE_HOSTS = tuple(set(sum(google_hosts_iplist, google_iplist)))
-                        if len(common.GOOGLE_HOSTS) == 0:
-                            logging.error('resolve common.GOOGLE_HOSTS domian to iplist return empty! use default iplist')
-                            common.GOOGLE_HOSTS = zlib.decompress(base64.b64decode(self.DefaultHosts)).split('|')
-                        common.GOOGLE_HOSTS = tuple(x for x in common.GOOGLE_HOSTS if ':' not in x)
-                        logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
+                            pass
+                        else:
+                            common.GOOGLE_HOSTS = tuple(set(sum(google_hosts_iplist, google_iplist)))
+                            logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
         if not common.GAE_ENABLE:
