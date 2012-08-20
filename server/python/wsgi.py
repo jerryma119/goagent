@@ -97,7 +97,18 @@ def decode_request(request):
     return headers, kwargs
 
 def paas_application(environ, start_response):
-    headers, kwargs = decode_request(environ['HTTP_COOKIE'])
+    try:
+        headers, kwargs = decode_request(environ['HTTP_COOKIE'])
+    except Exception as e:
+        logging.exception("decode_request(environ['HTTP_COOKIE']=%r) failed: %s", environ['HTTP_COOKIE'], e)
+
+    if __password__ and __password__ != kwargs.get('password'):
+        url = 'https://goa%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
+        response = httplib_request('GET', url, timeout=5)
+        status_line = '%s %s' % (response.status, httplib.responses.get(response.status, 'OK'))
+        start_response(status_line, response.getheaders())
+        yield response.read()
+        raise StopIteration
 
     method  = kwargs['method']
     url     = kwargs['url']
