@@ -121,7 +121,7 @@ class Common(object):
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
 
-        self.AUTORANGE_ENABLE     = self.CONFIG.getint('autorange', 'enable') if self.CONFIG.get('autorange', 'enable') else 0
+        self.AUTORANGE_ENABLE     = self.CONFIG.getint('autorange', 'enable') if self.CONFIG.has_option('autorange', 'enable') else 0
         self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
         self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
@@ -1191,20 +1191,9 @@ class PAASProxyHandler(GAEProxyHandler):
             except urllib2.URLError as url_error:
                 raise
 
-            try:
-                response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
-            except Exception as e:
-                self.send_response(response.code)
-                for keyword, value in response.headers.items():
-                    self.send_header(keyword, value)
-                self.end_headers()
-                self.wfile.write(response.read())
-                return
-            response_status = int(response_kwargs['status'])
-            headers = httplib_normalize_headers(response_headers, skip_headers=['Transfer-Encoding'])
+            headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
 
-
-            if response_status == 206:
+            if response.code == 206:
                 self.send_response(200, 'OK')
                 content_length = ''
                 content_range  = ''
@@ -1235,12 +1224,9 @@ class PAASProxyHandler(GAEProxyHandler):
                 logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
                 return
 
-            self.send_response(response_status)
+            self.send_response(response.code)
             for keyword, value in headers:
                 self.send_header(keyword, value)
-            content_encoding = response_kwargs.get('encoding')
-            if content_encoding:
-                self.send_header('Content-Encoding', content_encoding)
             self.end_headers()
 
             while 1:

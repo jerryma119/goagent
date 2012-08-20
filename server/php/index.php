@@ -49,26 +49,18 @@ function write_function($ch, $body){
 
 function post()
 {
-    list($headers, $kwargs) = @decode_request(@gzuncompress(base64_decode($_SERVER['HTTP_COOKIE'])));
+    list($headers, $kwargs) = @decode_request($_SERVER['HTTP_COOKIE']);
     $method  = $kwargs['method'];
     $url     = $kwargs['url'];
 
-    $headers = array();
-    foreach (explode("\r\n", $headers) as $line) {
-        $pair = explode(':', $line, 2);
-        if (count($pair) == 2) {
-            $headers[trim(strtolower($pair[0]))] = trim($pair[1]);
-        }
-    }
-    $headers['Connection'] = 'close';
+
     $body = @file_get_contents('php://input');
-    $timeout = $GLOBALS['__timeout__'];
-
-    $response_headers = array();
-
     if ($body) {
         $headers['Content-Length'] = strval(strlen($body));
     }
+    $headers['Connection'] = 'close';
+
+    $timeout = $GLOBALS['__timeout__'];
 
     $curl_opt = array();
 
