@@ -99,21 +99,27 @@ def decode_request(request):
 def paas_application(environ, start_response):
     headers, kwargs = decode_request(environ['HTTP_COOKIE'])
 
-    method = kwargs['method']
-    url    = kwargs['url']
+    method  = kwargs['method']
+    url     = kwargs['url']
+    timeout = Deadline
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
     if method != 'CONNECT':
         try:
             headers = dict(headers)
+            headers['Connection'] = 'close'
             data = environ['wsgi.input'] if int(headers.get('Content-Length',0)) else None
-            response = httplib_request(method, url, body=data, headers=headers, timeout=16)
-            start_response('%s OK' % response.status, response.getheaders())
+            response = httplib_request(method, url, body=data, headers=headers, timeout=timeout)
+            response_headers = dict(response.getheaders())
+            response_headers['connection'] = 'close'
+            response_headers.pop('transfer-encoding', '')
+            start_response('%s OK' % response.status, response_headers.items())
             bufsize = 8192
             while 1:
                 data = response.read(bufsize)
                 if not data:
+                    response.close()
                     break
                 yield data
         except httplib.HTTPException as e:
@@ -442,5 +448,6 @@ if __name__ == '__main__':
     server.environ.pop('SERVER_SOFTWARE')
     logging.info('serving %s://%s:%s/wsgi.py', 'https' if ssl_args else 'http', server.address[0] or '0.0.0.0', server.address[1])
     server.serve_forever()
+
 
 
