@@ -18,7 +18,7 @@ __config__  = 'proxy.ini'
 try:
     import gevent, gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
-except:
+except ImportError:
     pass
 
 import sys
@@ -229,8 +229,7 @@ class MultiplexConnection(object):
             for host in hosts:
                 sock = socket.socket(2 if ':' not in host else socket.AF_INET6)
                 sock.setblocking(0)
-                #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
-                err = sock.connect_ex((host, port))
+                sock.connect_ex((host, port))
                 self._sockets.add(sock)
                 socks.append(sock)
             # something happens :D
@@ -260,8 +259,8 @@ class MultiplexConnection(object):
             MultiplexConnection.window_ack = 0
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
-            logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hosts, port, MultiplexConnection.retry)
-            raise socket.error('MultiplexConnection connect hosts=%s failed' % repr(hosts))
+            logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hostlist, port, MultiplexConnection.retry)
+            raise socket.error('MultiplexConnection connect hosts=%s failed' % repr(hostlist))
     def connect_single(self, hostlist, port, timeout, window):
         for host in hostlist:
             logging.debug('MultiplexConnection try connect host=%s, port=%d', host, port)
@@ -281,7 +280,7 @@ class MultiplexConnection(object):
         for sock in self._sockets:
             try:
                 sock.close()
-            except:
+            except socket.error:
                 pass
         del self._sockets
 
@@ -404,8 +403,10 @@ def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accep
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
-def httplib_normalize_headers(response_headers, skip_headers=[]):
+def httplib_normalize_headers(response_headers, skip_headers=None):
     """return (headers, content_encoding, transfer_encoding)"""
+    if skip_headers is None:
+        skip_headers = []
     headers = []
     for keyword, value in response_headers:
         if keyword.title() in skip_headers:
@@ -728,7 +729,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=Non
             else:
                 raise ValueError('Data format not match(%s)' % url)
 
-            return (0, data)
+            return 0, data
         except Exception as e:
             if on_error:
                 logging.info('urlfetch error=%s on_error=%s', str(e), str(on_error))
@@ -741,7 +742,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=Non
             errors.append(str(e))
             time.sleep(i+1)
             continue
-    return (-1, errors)
+    return -1, errors
 
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
@@ -788,7 +789,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             content_range = 'bytes %d-%d/%d' % (req_range[0], req_range[1], m[2])
             data['headers']['Content-Range'] = content_range
             data['headers']['Content-Length'] = m[2]-m[0]
-        elif m[0] == 0:
+        elif not m[0]:
             data['code'] = 200
             data['headers']['Content-Length'] = m[2]
             del data['headers']['Content-Range']
@@ -915,6 +916,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_CONNECT_Tunnel()
 
     def do_CONNECT_Direct(self):
+        sock = None
         try:
             logging.debug('GAEProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
@@ -939,6 +941,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if not iplist:
                         common.HOSTS[host] = iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
                     conn = MultiplexConnection(iplist, port)
+                    sock = conn.socket
                 else:
                     iplist = (host,)
                 if 'Host' in self.headers:
@@ -951,11 +954,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except Exception:
             logging.exception('GAEProxyHandler.do_CONNECT_Direct Error')
         finally:
-            try:
-                sock.close()
-                del sock
-            except:
-                pass
+            if sock:
+                try:
+                    sock.close()
+                except socket.error:
+                    pass
 
     def do_CONNECT_Tunnel(self):
         # for ssl proxy
@@ -1020,6 +1023,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD_Direct(self):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(self.path, 'http')
+        sock = None
         try:
             host, _, port = netloc.rpartition(':')
             port = int(port)
@@ -1061,11 +1065,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except Exception:
             logging.exception('GAEProxyHandler.do_GET Error')
         finally:
-            try:
-                sock.close()
-                del sock
-            except:
-                pass
+            if sock:
+                try:
+                    sock.close()
+                except socket.error:
+                    pass
 
     def do_METHOD_Tunnel(self):
         headers = self.headers
@@ -1144,7 +1148,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
 
     def setup(self):
-        host = common.PAAS_FETCHHOST
+        self.host = host = common.PAAS_FETCHHOST
         if host not in common.HOSTS:
             logging.info('resolve host domian=%r to iplist', host)
             with PAASProxyHandler.setup_lock:
@@ -1172,7 +1176,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = urllib2.urlopen(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
-            except urllib2.URLError as url_error:
+            except urllib2.URLError:
                 raise
 
             content_range = response.headers.get('Content-Range')
@@ -1191,7 +1195,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         if self.path[0] == '/':
-            self.path = 'http://%s%s' % (host, self.path)
+            self.path = 'http://%s%s' % (self.host, self.path)
 
         params  = {'method':self.command, 'url':self.path, 'headers':str(self.headers)}
         params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
@@ -1210,7 +1214,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = urllib2.urlopen(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
-            except urllib2.URLError as url_error:
+            except urllib2.URLError:
                 raise
 
             headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
@@ -1341,7 +1345,7 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     allow_reuse_address = True
 
 def try_show_love():
-    '''If you hate this funtion, please go back to gappproxy/wallproxy'''
+    """If you hate this funtion, please go back to gappproxy/wallproxy"""
     if ctypes and os.name == 'nt' and common.LOVE_ENABLE:
         SetConsoleTitleW = ctypes.windll.kernel32.SetConsoleTitleW
         GetConsoleTitleW = ctypes.windll.kernel32.GetConsoleTitleW
