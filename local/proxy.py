@@ -75,6 +75,10 @@ class Common(object):
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
         self.LISTEN_VISIBLE       = self.CONFIG.getint('listen', 'visible')
 
+        self.CA_CRTFILE           = self.CONFIG.get('certs', 'ca_crtfile').strip().strip('"')
+        self.CA_KEYFILE           = self.CONFIG.get('certs', 'ca_keyfile').strip().strip('"')
+        self.CERTS_DIR            = self.CONFIG.get('certs', 'dir').strip().strip('"')
+
         self.GAE_ENABLE           = self.CONFIG.getint('gae', 'enable')
         self.GAE_APPIDS           = self.CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
@@ -427,7 +431,7 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
     return headers
 
 class CertUtil(object):
-    '''CertUtil module, based on mitmproxy'''
+    """CertUtil module, based on mitmproxy"""
 
     ca_lock = threading.Lock()
 
@@ -461,7 +465,7 @@ class CertUtil(object):
         return key, ca
 
     @staticmethod
-    def dump_ca(keyfile='CA.key', certfile='CA.crt'):
+    def dump_ca(keyfile, certfile):
         key, ca = CertUtil.create_ca()
         with open(keyfile, 'wb') as fp:
             fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
@@ -469,7 +473,7 @@ class CertUtil(object):
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca))
 
     @staticmethod
-    def _get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt'):
+    def _get_cert(commonname, certdir, ca_keyfile, ca_certfile):
         with open(ca_keyfile, 'rb') as fp:
             key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, fp.read())
         with open(ca_certfile, 'rb') as fp:
@@ -493,7 +497,7 @@ class CertUtil(object):
         cert.set_version(2)
         try:
             cert.set_serial_number(int(hashlib.md5(commonname).hexdigest(), 16))
-        except:
+        except OpenSSL.SSL.Error:
             cert.set_serial_number(int(time.time()*1000))
         cert.gmtime_adj_notBefore(0)
         cert.gmtime_adj_notAfter(60 * 60 * 24 * 3652)
@@ -512,42 +516,56 @@ class CertUtil(object):
         return keyfile, certfile
 
     @staticmethod
-    def get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt'):
+    def get_cert(commonname):
+        certdir = common.CERTS_DIR
         keyfile  = os.path.join(certdir, commonname + '.key')
         certfile = os.path.join(certdir, commonname + '.crt')
         if os.path.exists(certfile):
             return keyfile, certfile
-        elif OpenSSL is None:
-            return ca_keyfile, ca_certfile
-        else:
+        elif OpenSSL is not None:
             with CertUtil.ca_lock:
-                if os.path.exists(certfile):
-                    return keyfile, certfile
-                return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile)
-
+                return CertUtil._get_cert(commonname, certdir, common.CA_KEYFILE, common.CA_CRTFILE)
+        else:
+            raise Exception("Can not initiate certs.")
 
     @staticmethod
     def check_ca():
+        #Check Certs Dir
+        if not common.CERTS_DIR:
+            common.CERTS_DIR = "certs"
+        if not os.path.exists(common.CERTS_DIR):
+            os.makedirs(common.CERTS_DIR)
+        certdir = common.CERTS_DIR
         #Check CA exists
-        capath = os.path.join(os.path.dirname(__file__), 'CA.key')
-        if not os.path.exists(capath):
+        if not common.CA_KEYFILE:
+            common.CA_KEYFILE = os.path.join(os.path.dirname(__file__), 'CA.key')
+        if not os.path.exists(common.CA_KEYFILE):
             if not OpenSSL:
-                logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
+                logging.critical('CA key file is not exist and OpenSSL is disabled, ABORT!')
                 sys.exit(-1)
             if os.name == 'nt':
                 os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
-            [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
-            CertUtil.dump_ca('CA.key', 'CA.crt')
+
+            [os.remove(os.path.join(certdir, x)) for x in os.listdir(certdir)]
+            if not common.CA_KEYFILE:
+                common.CA_KEYFILE = "CA.key"
+            else:
+                ca_keydir = os.path.dirname(common.CA_KEYFILE)
+                if ca_keydir and not os.path.exists(ca_keydir):
+                    os.makedirs(ca_keydir)
+            if not common.CA_CRTFILE:
+                common.CA_CRTFILE = "CA.crt"
+            else:
+                ca_crtdir = os.path.dirname(common.CA_CRTFILE)
+                if ca_crtdir and not os.path.exists(ca_crtdir):
+                    os.makedirs(ca_crtdir)
+            CertUtil.dump_ca(common.CA_KEYFILE, common.CA_CRTFILE)
         #Check CA imported
         cmd = {
                 'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warning('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
-        #Check Certs Dir
-        certdir = os.path.join(os.path.dirname(__file__), 'certs')
-        if not os.path.exists(certdir):
-            os.makedirs(certdir)
 
 
 class SimpleLogging(object):
