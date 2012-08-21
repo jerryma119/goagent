@@ -431,26 +431,6 @@ class CertUtil(object):
 
     ca_lock = threading.Lock()
 
-    SubjectAltNames = ['twitter.com',
-                       'facebook.com',
-                       '*.twimg.com',
-                       '*.twitter.com',
-                       '*.akamaihd.net',
-                       '*.google.com',
-                       '*.facebook.com',
-                       '*.ytimg.com',
-                       '*.appspot.com',
-                       '*.google.com',
-                       '*.youtube.com',
-                       '*.googleusercontent.com',
-                       '*.gstatic.com',
-                       '*.live.com',
-                       '*.ak.fbcdn.net',
-                       '*.ak.facebook.com',
-                       '*.android.com',
-                       '*.fbcdn.net',
-                       ]
-
     @staticmethod
     def create_ca():
         key = OpenSSL.crypto.PKey()
@@ -489,7 +469,7 @@ class CertUtil(object):
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca))
 
     @staticmethod
-    def _get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans = []):
+    def _get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt'):
         with open(ca_keyfile, 'rb') as fp:
             key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, fp.read())
         with open(ca_certfile, 'rb') as fp:
@@ -506,8 +486,6 @@ class CertUtil(object):
         subj.organizationName = commonname
         subj.organizationalUnitName = 'GoAgent Branch'
         subj.commonName = commonname
-        sans = (sans or [commonname]) + CertUtil.SubjectAltNames
-        req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         req.set_pubkey(pkey)
         req.sign(pkey, 'sha1')
 
@@ -522,8 +500,6 @@ class CertUtil(object):
         cert.set_issuer(ca.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
-        sans = (sans or [commonname]) + CertUtil.SubjectAltNames
-        cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
         keyfile  = os.path.join(certdir, commonname + '.key')
@@ -536,7 +512,7 @@ class CertUtil(object):
         return keyfile, certfile
 
     @staticmethod
-    def get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans = []):
+    def get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt'):
         keyfile  = os.path.join(certdir, commonname + '.key')
         certfile = os.path.join(certdir, commonname + '.crt')
         if os.path.exists(certfile):
@@ -547,7 +523,7 @@ class CertUtil(object):
             with CertUtil.ca_lock:
                 if os.path.exists(certfile):
                     return keyfile, certfile
-                return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile, sans)
+                return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile)
 
 
     @staticmethod
