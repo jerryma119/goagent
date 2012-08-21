@@ -18,7 +18,7 @@ __config__  = 'proxy.ini'
 try:
     import gevent, gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
-except:
+except ImportError:
     pass
 
 import sys
@@ -74,6 +74,10 @@ class Common(object):
         self.LISTEN_IP            = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
         self.LISTEN_VISIBLE       = self.CONFIG.getint('listen', 'visible')
+
+        self.CA_CRTFILE           = self.CONFIG.get('certs', 'ca_crtfile').strip().strip('"')
+        self.CA_KEYFILE           = self.CONFIG.get('certs', 'ca_keyfile').strip().strip('"')
+        self.CERTS_DIR            = self.CONFIG.get('certs', 'dir').strip().strip('"')
 
         self.GAE_ENABLE           = self.CONFIG.getint('gae', 'enable')
         self.GAE_APPIDS           = self.CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
@@ -225,8 +229,7 @@ class MultiplexConnection(object):
             for host in hosts:
                 sock = socket.socket(2 if ':' not in host else socket.AF_INET6)
                 sock.setblocking(0)
-                #logging.debug('MultiplexConnection connect_ex (%r, %r)', host, port)
-                err = sock.connect_ex((host, port))
+                sock.connect_ex((host, port))
                 self._sockets.add(sock)
                 socks.append(sock)
             # something happens :D
@@ -256,8 +259,8 @@ class MultiplexConnection(object):
             MultiplexConnection.window_ack = 0
             MultiplexConnection.timeout = min(int(round(timeout*1.5)), self.timeout_max)
             MultiplexConnection.timeout_ack = 0
-            logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hosts, port, MultiplexConnection.retry)
-            raise socket.error('MultiplexConnection connect hosts=%s failed' % repr(hosts))
+            logging.warning(r'MultiplexConnection Connect hosts %s:%s fail %d times!', hostlist, port, MultiplexConnection.retry)
+            raise socket.error('MultiplexConnection connect hosts=%s failed' % repr(hostlist))
     def connect_single(self, hostlist, port, timeout, window):
         for host in hostlist:
             logging.debug('MultiplexConnection try connect host=%s, port=%d', host, port)
@@ -277,7 +280,7 @@ class MultiplexConnection(object):
         for sock in self._sockets:
             try:
                 sock.close()
-            except:
+            except socket.error:
                 pass
         del self._sockets
 
@@ -400,8 +403,10 @@ def httplib_HTTPConnection_putrequest(self, method, url, skip_host=0, skip_accep
     return _httplib_HTTPConnection_putrequest(self, method, url, skip_host, skip_accept_encoding)
 httplib.HTTPConnection.putrequest = httplib_HTTPConnection_putrequest
 
-def httplib_normalize_headers(response_headers, skip_headers=[]):
+def httplib_normalize_headers(response_headers, skip_headers=None):
     """return (headers, content_encoding, transfer_encoding)"""
+    if skip_headers is None:
+        skip_headers = []
     headers = []
     for keyword, value in response_headers:
         if keyword.title() in skip_headers:
@@ -427,29 +432,9 @@ def httplib_normalize_headers(response_headers, skip_headers=[]):
     return headers
 
 class CertUtil(object):
-    '''CertUtil module, based on mitmproxy'''
+    """CertUtil module, based on mitmproxy"""
 
     ca_lock = threading.Lock()
-
-    SubjectAltNames = ['twitter.com',
-                       'facebook.com',
-                       '*.twimg.com',
-                       '*.twitter.com',
-                       '*.akamaihd.net',
-                       '*.google.com',
-                       '*.facebook.com',
-                       '*.ytimg.com',
-                       '*.appspot.com',
-                       '*.google.com',
-                       '*.youtube.com',
-                       '*.googleusercontent.com',
-                       '*.gstatic.com',
-                       '*.live.com',
-                       '*.ak.fbcdn.net',
-                       '*.ak.facebook.com',
-                       '*.android.com',
-                       '*.fbcdn.net',
-                       ]
 
     @staticmethod
     def create_ca():
@@ -481,7 +466,7 @@ class CertUtil(object):
         return key, ca
 
     @staticmethod
-    def dump_ca(keyfile='CA.key', certfile='CA.crt'):
+    def dump_ca(keyfile, certfile):
         key, ca = CertUtil.create_ca()
         with open(keyfile, 'wb') as fp:
             fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
@@ -489,7 +474,7 @@ class CertUtil(object):
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca))
 
     @staticmethod
-    def _get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans = []):
+    def _get_cert(commonname, certdir, ca_keyfile, ca_certfile):
         with open(ca_keyfile, 'rb') as fp:
             key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, fp.read())
         with open(ca_certfile, 'rb') as fp:
@@ -506,8 +491,6 @@ class CertUtil(object):
         subj.organizationName = commonname
         subj.organizationalUnitName = 'GoAgent Branch'
         subj.commonName = commonname
-        sans = (sans or [commonname]) + CertUtil.SubjectAltNames
-        req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         req.set_pubkey(pkey)
         req.sign(pkey, 'sha1')
 
@@ -515,15 +498,13 @@ class CertUtil(object):
         cert.set_version(2)
         try:
             cert.set_serial_number(int(hashlib.md5(commonname).hexdigest(), 16))
-        except:
+        except OpenSSL.SSL.Error:
             cert.set_serial_number(int(time.time()*1000))
         cert.gmtime_adj_notBefore(0)
         cert.gmtime_adj_notAfter(60 * 60 * 24 * 3652)
         cert.set_issuer(ca.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
-        sans = (sans or [commonname]) + CertUtil.SubjectAltNames
-        cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
         keyfile  = os.path.join(certdir, commonname + '.key')
@@ -536,42 +517,56 @@ class CertUtil(object):
         return keyfile, certfile
 
     @staticmethod
-    def get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans = []):
+    def get_cert(commonname):
+        certdir = common.CERTS_DIR
         keyfile  = os.path.join(certdir, commonname + '.key')
         certfile = os.path.join(certdir, commonname + '.crt')
         if os.path.exists(certfile):
             return keyfile, certfile
-        elif OpenSSL is None:
-            return ca_keyfile, ca_certfile
-        else:
+        elif OpenSSL is not None:
             with CertUtil.ca_lock:
-                if os.path.exists(certfile):
-                    return keyfile, certfile
-                return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile, sans)
-
+                return CertUtil._get_cert(commonname, certdir, common.CA_KEYFILE, common.CA_CRTFILE)
+        else:
+            raise Exception("Can not initiate certs.")
 
     @staticmethod
     def check_ca():
+        #Check Certs Dir
+        if not common.CERTS_DIR:
+            common.CERTS_DIR = "certs"
+        if not os.path.exists(common.CERTS_DIR):
+            os.makedirs(common.CERTS_DIR)
+        certdir = common.CERTS_DIR
         #Check CA exists
-        capath = os.path.join(os.path.dirname(__file__), 'CA.key')
-        if not os.path.exists(capath):
+        if not common.CA_KEYFILE:
+            common.CA_KEYFILE = os.path.join(os.path.dirname(__file__), 'CA.key')
+        if not os.path.exists(common.CA_KEYFILE):
             if not OpenSSL:
-                logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
+                logging.critical('CA key file is not exist and OpenSSL is disabled, ABORT!')
                 sys.exit(-1)
             if os.name == 'nt':
                 os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
-            [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
-            CertUtil.dump_ca('CA.key', 'CA.crt')
+
+            [os.remove(os.path.join(certdir, x)) for x in os.listdir(certdir)]
+            if not common.CA_KEYFILE:
+                common.CA_KEYFILE = "CA.key"
+            else:
+                ca_keydir = os.path.dirname(common.CA_KEYFILE)
+                if ca_keydir and not os.path.exists(ca_keydir):
+                    os.makedirs(ca_keydir)
+            if not common.CA_CRTFILE:
+                common.CA_CRTFILE = "CA.crt"
+            else:
+                ca_crtdir = os.path.dirname(common.CA_CRTFILE)
+                if ca_crtdir and not os.path.exists(ca_crtdir):
+                    os.makedirs(ca_crtdir)
+            CertUtil.dump_ca(common.CA_KEYFILE, common.CA_CRTFILE)
         #Check CA imported
         cmd = {
                 'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
               }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warning('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
-        #Check Certs Dir
-        certdir = os.path.join(os.path.dirname(__file__), 'certs')
-        if not os.path.exists(certdir):
-            os.makedirs(certdir)
 
 
 class SimpleLogging(object):
@@ -734,7 +729,7 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=Non
             else:
                 raise ValueError('Data format not match(%s)' % url)
 
-            return (0, data)
+            return 0, data
         except Exception as e:
             if on_error:
                 logging.info('urlfetch error=%s on_error=%s', str(e), str(on_error))
@@ -747,21 +742,16 @@ def urlfetch(url, payload, method, headers, fetchhost, fetchserver, password=Non
             errors.append(str(e))
             time.sleep(i+1)
             continue
-    return (-1, errors)
+    return -1, errors
 
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     skip_headers = frozenset(['Host', 'Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     SetupLock = threading.Lock()
     MessageClass = SimpleMessageClass
-    DefaultHosts = 'eJxdztsNgDAMQ9GNIvIoSXZjeApSqc3nUVT3ZojakFTR47wSNEhB8qXhorXg+kMjckGtQM9efDKf\n91Km4W+N4M1CldNIYMu+qSVoTm7MsG5E4KPd8apInNUUMo4betRQjg=='
 
     def handle_fetch_error(self, error):
         logging.info('handle_fetch_error self.path=%r', self.path)
         if isinstance(error, urllib2.HTTPError):
-            # http error 400/502/504, swith to https
-            if error.code in (400, 504) or (error.code==502 and common.GAE_PROFILE=='google_cn'):
-                common.GOOGLE_MODE = 'https'
-                logging.error('GAE Error(%s) switch to https', error)
             # seems that current appid is overqouta, swith to next appid
             if error.code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
@@ -769,13 +759,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             # 405 method not allowed, disable CRLF
             if error.code == 405:
                 httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
-        elif isinstance(error, urllib2.URLError):
-            if error.reason[0] in (11004, 10051, 10060, 'timed out', 10054):
-                # it seems that google.cn is reseted, switch to https
-                common.GOOGLE_MODE = 'https'
-        elif isinstance(error, httplib.HTTPException):
-            common.GOOGLE_MODE = 'https'
-            httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
         else:
             logging.warning('GAEProxyHandler.handle_fetch_error Exception %s', error)
             return {}
@@ -806,7 +789,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                             content_range = 'bytes %d-%d/%d' % (req_range[0], req_range[1], m[2])
             data['headers']['Content-Range'] = content_range
             data['headers']['Content-Length'] = m[2]-m[0]
-        elif m[0] == 0:
+        elif not m[0]:
             data['code'] = 200
             data['headers']['Content-Length'] = m[2]
             del data['headers']['Content-Range']
@@ -886,7 +869,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def setup(self):
         if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
-            logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with GAEProxyHandler.SetupLock:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
@@ -894,18 +876,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         google_hosts = [host for host in common.GOOGLE_HOSTS if not re.match(r'\d+\.\d+\.\d+\.\d+', host)]
                         try:
                             google_hosts_iplist = [[x[-1][0] for x in socket.getaddrinfo(host, 80)] for host in google_hosts]
-                            need_remote_dns = google_hosts and any(len(iplist)==1 for iplist in google_hosts_iplist)
                         except socket.gaierror:
-                            need_remote_dns = True
-                        if need_remote_dns:
-                            logging.warning('OOOPS, there are some mistake in socket.getaddrinfo, try remote dns_resolve')
-                            google_hosts_iplist = [list(dns_resolve(host)) for host in google_hosts]
-                        common.GOOGLE_HOSTS = tuple(set(sum(google_hosts_iplist, google_iplist)))
-                        if len(common.GOOGLE_HOSTS) == 0:
-                            logging.error('resolve common.GOOGLE_HOSTS domian to iplist return empty! use default iplist')
-                            common.GOOGLE_HOSTS = zlib.decompress(base64.b64decode(self.DefaultHosts)).split('|')
-                        common.GOOGLE_HOSTS = tuple(x for x in common.GOOGLE_HOSTS if ':' not in x)
-                        logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
+                            pass
+                        else:
+                            common.GOOGLE_HOSTS = tuple(set(sum(google_hosts_iplist, google_iplist)))
+                            logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         if not common.GAE_MULCONN:
             MultiplexConnection.connect = MultiplexConnection.connect_single
         if not common.GAE_ENABLE:
@@ -941,6 +916,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_CONNECT_Tunnel()
 
     def do_CONNECT_Direct(self):
+        sock = None
         try:
             logging.debug('GAEProxyHandler.do_CONNECT_Directt %s' % self.path)
             host, _, port = self.path.rpartition(':')
@@ -965,6 +941,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if not iplist:
                         common.HOSTS[host] = iplist = tuple(x[-1][0] for x in socket.getaddrinfo(host, 80))
                     conn = MultiplexConnection(iplist, port)
+                    sock = conn.socket
                 else:
                     iplist = (host,)
                 if 'Host' in self.headers:
@@ -977,11 +954,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except Exception:
             logging.exception('GAEProxyHandler.do_CONNECT_Direct Error')
         finally:
-            try:
-                sock.close()
-                del sock
-            except:
-                pass
+            if sock:
+                try:
+                    sock.close()
+                except socket.error:
+                    pass
 
     def do_CONNECT_Tunnel(self):
         # for ssl proxy
@@ -1046,6 +1023,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD_Direct(self):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(self.path, 'http')
+        sock = None
         try:
             host, _, port = netloc.rpartition(':')
             port = int(port)
@@ -1087,11 +1065,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except Exception:
             logging.exception('GAEProxyHandler.do_GET Error')
         finally:
-            try:
-                sock.close()
-                del sock
-            except:
-                pass
+            if sock:
+                try:
+                    sock.close()
+                except socket.error:
+                    pass
 
     def do_METHOD_Tunnel(self):
         headers = self.headers
@@ -1170,7 +1148,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         logging.error('PAASProxyHandler handle_fetch_error %s', error)
 
     def setup(self):
-        host = common.PAAS_FETCHHOST
+        self.host = host = common.PAAS_FETCHHOST
         if host not in common.HOSTS:
             logging.info('resolve host domian=%r to iplist', host)
             with PAASProxyHandler.setup_lock:
@@ -1198,7 +1176,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = urllib2.urlopen(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
-            except urllib2.URLError as url_error:
+            except urllib2.URLError:
                 raise
 
             content_range = response.headers.get('Content-Range')
@@ -1217,7 +1195,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD(self):
         if self.path[0] == '/':
-            self.path = 'http://%s%s' % (host, self.path)
+            self.path = 'http://%s%s' % (self.host, self.path)
 
         params  = {'method':self.command, 'url':self.path, 'headers':str(self.headers)}
         params  =  '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in params.iteritems())
@@ -1236,7 +1214,7 @@ class PAASProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 response = urllib2.urlopen(request)
             except urllib2.HTTPError as http_error:
                 response = http_error
-            except urllib2.URLError as url_error:
+            except urllib2.URLError:
                 raise
 
             headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
@@ -1367,7 +1345,7 @@ class LocalProxyServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     allow_reuse_address = True
 
 def try_show_love():
-    '''If you hate this funtion, please go back to gappproxy/wallproxy'''
+    """If you hate this funtion, please go back to gappproxy/wallproxy"""
     if ctypes and os.name == 'nt' and common.LOVE_ENABLE:
         SetConsoleTitleW = ctypes.windll.kernel32.SetConsoleTitleW
         GetConsoleTitleW = ctypes.windll.kernel32.GetConsoleTitleW
