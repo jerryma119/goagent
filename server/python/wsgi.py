@@ -100,7 +100,8 @@ def paas_application(environ, start_response):
     try:
         headers, kwargs = decode_request(environ['HTTP_COOKIE'])
     except Exception as e:
-        logging.exception("decode_request(environ['HTTP_COOKIE']=%r) failed: %s", environ['HTTP_COOKIE'], e)
+        logging.exception("decode_request(environ['HTTP_COOKIE']=%r) failed: %s", environ.get('HTTP_COOKIE'), e)
+        raise
 
     if __password__ and __password__ != kwargs.get('password'):
         url = 'https://goa%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
@@ -408,7 +409,7 @@ def gae_post_ex(environ, start_response):
     if 'content-encoding' not in response.headers and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code), encoding='gzip'))]
         start_response('200 OK', response_headers)
-        compressobj = zlib.compressobj(zlib.Z_BEST_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
+        compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
         size = len(response.content)
         crc = zlib.crc32(response.content)
         return ['\037\213\010\000' '\0\0\0\0' '\002\377', compressobj.compress(response.content), compressobj.flush(), struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)]
