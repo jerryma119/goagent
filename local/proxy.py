@@ -433,26 +433,6 @@ class CertUtil(object):
 
     ca_lock = threading.Lock()
 
-    SubjectAltNames = ['twitter.com',
-                       'facebook.com',
-                       '*.twimg.com',
-                       '*.twitter.com',
-                       '*.akamaihd.net',
-                       '*.google.com',
-                       '*.facebook.com',
-                       '*.ytimg.com',
-                       '*.appspot.com',
-                       '*.google.com',
-                       '*.youtube.com',
-                       '*.googleusercontent.com',
-                       '*.gstatic.com',
-                       '*.live.com',
-                       '*.ak.fbcdn.net',
-                       '*.ak.facebook.com',
-                       '*.android.com',
-                       '*.fbcdn.net',
-                       ]
-
     @staticmethod
     def create_ca():
         key = OpenSSL.crypto.PKey()
@@ -508,7 +488,7 @@ class CertUtil(object):
         subj.organizationName = commonname
         subj.organizationalUnitName = 'GoAgent Branch'
         subj.commonName = commonname
-        sans = (sans or [commonname]) + CertUtil.SubjectAltNames
+        sans = [commonname] + [x for x in sans if x != commonname]
         req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         req.set_pubkey(pkey)
         req.sign(pkey, 'sha1')
@@ -524,7 +504,7 @@ class CertUtil(object):
         cert.set_issuer(ca.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
-        sans = (sans or [commonname]) + CertUtil.SubjectAltNames
+        sans = [commonname] + [x for x in sans if x != commonname]
         cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
@@ -717,6 +697,16 @@ def decode_request(request):
         else:
             headers.append((keyword.title(), value.strip()))
     return headers, kwargs
+
+def pack_request(method, url, headers, payload, password=''):
+    content_length = int(headers.get('Content-Length',0))
+    request_kwargs = {'method':method, 'url':url}
+    if password:
+        request_kwargs['password'] = password
+    request_headers = {'Cookie':encode_request(headers, **request_kwargs), 'Content-Length':str(content_length)}
+    if not isinstance(payload, str):
+        payload = payload.read(content_length)
+    return 'POST', request_headers, payload
 
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     MessageClass = SimpleMessageClass
@@ -955,9 +945,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def rangefetch(self, method, url, headers, payload, current_length, content_length):
         if current_length < content_length:
             headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+common.AUTORANGE_MAXSIZE-1, content_length-1))
-            request_headers = {'Cookie':encode_request(headers, method=method, url=url), 'Content-Length':len(payload) if payload else 0}
+            request_method, request_headers, payload = pack_request(method, url, headers, payload, common.GAE_PASSWORD)
             request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=request_headers)
-            request.get_method = lambda: 'POST'
+            request.get_method = lambda: request_method
             try:
                 response = urllib2.urlopen(request)
             except urllib2.HTTPError as http_error:
@@ -1004,39 +994,29 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
 
-        self_headers = self.headers
-
         if common.USERAGENT_ENABLE:
-            self_headers['User-Agent'] = common.USERAGENT_STRING
+            self.headers['User-Agent'] = common.USERAGENT_STRING
 
         if common.AUTORANGE_ENABLE:
-            if 'Range' in self_headers:
-                m = re.search('bytes=(\d+)-', self_headers.dict['Range'])
+            if 'Range' in self.headers:
+                m = re.search('bytes=(\d+)-', self.headers.dict['Range'])
                 start = int(m.group(1) if m else 0)
-                self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-                logging.info('autorange range=%r match url=%r', self_headers['Range'], self.path)
+                self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+                logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
             elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
                 try:
                     pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    m = re.search('bytes=(\d+)-', self_headers.get('Range', ''))
+                    m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
                     start = int(m.group(1) if m else 0)
-                    self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+                    self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
                 except StopIteration:
                     pass
 
-        content_length = int(self.headers.get('Content-Length',0))
-
-        request_kwargs = dict(method=self.command, url=self.path)
-        if common.GAE_PASSWORD:
-            request_kwargs['password'] = common.GAE_PASSWORD
-        headers = {'Cookie':encode_request(self.headers, **request_kwargs), 'Content-Length':str(content_length)}
-
-        payload = self.rfile.read(content_length) if content_length else None
-
         try:
+            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.GAE_PASSWORD)
             request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=headers)
-            request.get_method = lambda: 'POST'
+            request.get_method = lambda: method
 
             try:
                 response = urllib2.urlopen(request)
@@ -1148,39 +1128,29 @@ class PAASProxyHandler(GAEProxyHandler):
         if self.path[0] == '/':
             self.path = 'http://%s%s' % (host, self.path)
 
-        self_headers = self.headers
-
         if common.USERAGENT_ENABLE:
-            self_headers['User-Agent'] = common.USERAGENT_STRING
+            self.headers['User-Agent'] = common.USERAGENT_STRING
 
         if common.AUTORANGE_ENABLE:
-            if 'Range' in self_headers:
-                m = re.search('bytes=(\d+)-', self_headers.dict['Range'])
+            if 'Range' in self.headers:
+                m = re.search('bytes=(\d+)-', self.headers.dict['Range'])
                 start = int(m.group(1) if m else 0)
-                self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-                logging.info('autorange range=%r match url=%r', self_headers['Range'], self.path)
+                self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+                logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
             elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
                 try:
                     pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
                     logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    m = re.search('bytes=(\d+)-', self_headers.get('Range', ''))
+                    m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
                     start = int(m.group(1) if m else 0)
-                    self_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+                    self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
                 except StopIteration:
                     pass
 
-        content_length = int(self.headers.get('Content-Length',0))
-
-        request_kwargs = dict(method=self.command, url=self.path)
-        if common.PAAS_PASSWORD:
-            request_kwargs['password'] = common.PAAS_PASSWORD
-        headers = {'Cookie':encode_request(self.headers, **request_kwargs), 'Content-Length':str(content_length)}
-
-        payload = self.rfile.read(content_length) if content_length else None
-
         try:
+            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.PAAS_PASSWORD)
             request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=headers)
-            request.get_method = lambda: 'POST'
+            request.get_method = lambda: method
 
             try:
                 response = urllib2.urlopen(request)
@@ -1192,37 +1162,6 @@ class PAASProxyHandler(GAEProxyHandler):
                 raise
 
             headers = httplib_normalize_headers(response.headers.items())
-
-            if response.code == 206:
-                self.send_response(200, 'OK')
-                content_length = ''
-                content_range  = ''
-                for keyword, value in headers:
-                    if keyword == 'Content-Range':
-                        content_range = value
-                    elif keyword == 'Content-Length':
-                        content_length = value
-                    else:
-                        self.send_header(keyword, value)
-                content_encoding = response_kwargs.get('encoding')
-                if content_encoding:
-                    self.send_header('Content-Encoding', content_encoding)
-                start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
-                if start == 0:
-                    self.send_header('Content-Length', str(length))
-                self.end_headers()
-
-                while 1:
-                    data = response.read(8192)
-                    if not data:
-                        response.close()
-                        break
-                    self.wfile.write(data)
-
-                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', host)
-                self.rangefetch(self.command, self.path, self.headers, payload, end+1, length)
-                logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
-                return
 
             self.send_response(response.code)
             for keyword, value in headers:
