@@ -357,7 +357,7 @@ def gae_post_ex(environ, start_response):
 
     if __password__ and __password__ != kwargs.get('password', ''):
         start_response('403 Forbidden', [('Content-type', 'text/html')])
-        return [gae_error_html(errno='403', error='Wrong password.', description='GoAgent proxy.ini password is wroing!')]
+        return [gae_error_html(errno='403', error='Wrong password.', description='GoAgent proxy.ini password is wrong!')]
 
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
