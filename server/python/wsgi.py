@@ -22,7 +22,7 @@ except:
     socket = None
 
 FetchMax = 3
-FetchMaxSize = 1024*1024*16
+FetchMaxSize = 1024*1024
 Deadline = 30
 
 def io_copy(source, dest):
