@@ -519,6 +519,10 @@ class CertUtil(object):
 
     @staticmethod
     def get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans = []):
+        abspath = lambda x: os.path.join(os.path.dirname(os.path.abspath(__file__)), certdir) if not re.search(r'[\\/]', x) else x
+        certdir     = abspath(certdir)
+        ca_keyfile  = abspath(ca_keyfile)
+        ca_certfile = abspath(ca_certfile)
         keyfile  = os.path.join(certdir, commonname + '.key')
         certfile = os.path.join(certdir, commonname + '.crt')
         if os.path.exists(certfile):
