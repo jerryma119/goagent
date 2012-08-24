@@ -9,7 +9,7 @@ __password__ = ''
 import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64, wsgiref.headers
 try:
     from google.appengine.api import urlfetch
-    from google.appengine.runtime import apiproxy_errors, DeadlineExceededError
+    from google.appengine.runtime import apiproxy_errors
 except ImportError:
     urlfetch = None
 try:
@@ -261,21 +261,21 @@ def gae_post(environ, start_response):
         try:
             response = urlfetch.fetch(url, payload, fetchmethod, headers, False, False, deadline, False)
             break
-        except apiproxy_errors.OverQuotaError, e:
+        except apiproxy_errors.OverQuotaError as e:
             time.sleep(4)
-        except DeadlineExceededError, e:
-            errors.append(str(e))
+        except urlfetch.DeadlineExceededError as e:
+            errors.append('DeadlineExceededError %s(deadline=%s)' % (e, deadline))
             logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline * 2
-        except urlfetch.DownloadError, e:
-            errors.append(str(e))
+        except urlfetch.DownloadError as e:
+            errors.append('DownloadError %s(deadline=%s)' % (e, deadline))
             logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline * 2
-        except urlfetch.InvalidURLError, e:
+        except urlfetch.InvalidURLError as e:
             return send_notify(start_response, method, url, 501, 'Invalid URL: %s' % e)
-        except urlfetch.ResponseTooLargeError, e:
+        except urlfetch.ResponseTooLargeError as e:
             response = e.response
             logging.error('DownloadError(deadline=%s, url=%r) response(%s)', deadline, url, response and response.headers)
             if response and response.headers.get('content-length'):
@@ -287,8 +287,8 @@ def gae_post(environ, start_response):
             else:
                 headers['Range'] = 'bytes=0-%d' % FetchMaxSize
             deadline = Deadline * 2
-        except Exception, e:
-            errors.append(str(e))
+        except Exception as e:
+            errors.append('Exception %s(deadline=%s)' % (e, deadline))
             if i==0 and method=='GET':
                 deadline = Deadline * 2
     else:
@@ -376,7 +376,7 @@ def gae_post_ex(environ, start_response):
             break
         except apiproxy_errors.OverQuotaError as e:
             time.sleep(4)
-        except DeadlineExceededError as e:
+        except urlfetch.DeadlineExceededError as e:
             errors.append(str(e))
             logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
