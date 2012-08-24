@@ -188,7 +188,7 @@ class Common(object):
             info += 'PAAS FetchServer  : %s\n' % common.PAAS_FETCHSERVER
         if common.SOCKS5_ENABLE:
             info += 'SOCKS5 Listen      : %s\n' % common.PAAS_LISTEN
-            info += 'SOCKS5 FetchServer : %s\n' % common.PAAS_FETCHSERVER
+            info += 'SOCKS5 FetchServer : %s\n' % common.SOCKS5_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server        : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
@@ -1227,8 +1227,8 @@ class Sock5ProxyHandler(SocketServer.StreamRequestHandler):
         host, port = self.client_address[:2]
         sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
 
-    def connect_paas(self, paas_fetchserver):
-        scheme, netloc, path, params, query, fragment = urlparse.urlparse(paas_fetchserver)
+    def connect_paas(self, socks5_fetchserver):
+        scheme, netloc, path, params, query, fragment = urlparse.urlparse(socks5_fetchserver)
         if re.search(r':\d+$', netloc):
             host, _, port = netloc.rpartition(':')
             port = int(port)
@@ -1243,9 +1243,9 @@ class Sock5ProxyHandler(SocketServer.StreamRequestHandler):
 
     def handle(self):
         try:
-            paas_fetchserver = common.SOCKS5_FETCHSERVER
-            self.log_message('Connect to socks5_server=%r', paas_fetchserver)
-            sock = self.connect_paas(paas_fetchserver)
+            socks5_fetchserver = common.SOCKS5_FETCHSERVER
+            self.log_message('Connect to socks5_server=%r', socks5_fetchserver)
+            sock = self.connect_paas(socks5_fetchserver)
             socket_forward(self.connection, sock)
         except Exception, e:
             logging.exception('Sock5ProxyHandler.handle client_address=%r failed:%s', self.client_address[:2], e)
