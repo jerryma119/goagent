@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.0.1'
+__version__ = '2.0.2'
 __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64, wsgiref.headers
@@ -309,6 +309,8 @@ def gae_post(environ, start_response):
                 cookies.append(sc)
                 i += 1
         headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
+    if 'content-length' not in headers:
+        headers['content-length'] = str(len(response.content))
     headers['connection'] = 'close'
     return send_response(start_response, response.status_code, headers, response.content)
 

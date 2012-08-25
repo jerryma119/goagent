@@ -3,7 +3,7 @@
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '1.10.0';
+$__version__  = '2.0.2';
 $__password__ = '';
 $__timeout__  = 20;
 
