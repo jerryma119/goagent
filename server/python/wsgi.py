@@ -407,14 +407,15 @@ def gae_post_ex(environ, start_response):
         return [gae_error_html(errno='502', error=('Python Urlfetch Error: ' + str(method)), description=str(errors))]
 
     if 'content-encoding' not in response.headers and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+        compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
         response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code), encoding='gzip'))]
         start_response('200 OK', response_headers)
-        compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
-        size = len(response.content)
-        crc = zlib.crc32(response.content)
-        return ['\037\213\010\000' '\0\0\0\0' '\002\377', compressobj.compress(response.content), compressobj.flush(), struct.pack('<LL', crc&0xFFFFFFFFL, size&0xFFFFFFFFL)]
+        return ['\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff', compressobj.compress(response.content), compressobj.flush(), struct.pack('<LL', zlib.crc32(response.content)&0xFFFFFFFFL, len(response.content)&0xFFFFFFFFL)]
     else:
-        response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))]
+        if 'content-length' not in response.headers:
+            response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code), length=str(len(response.content))))]
+        else:
+            response_headers = [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))]
         start_response('200 OK', response_headers)
         return [response.content]
 
@@ -432,7 +433,7 @@ def app(environ, start_response):
         else:
             return gae_post(environ, start_response)
     elif not urlfetch:
-        if environ['PATH_INFO'] == 'socks5':
+        if environ['PATH_INFO'] == '/socks5':
             return paas_socks5(environ, start_response)
         else:
             return paas_application(environ, start_response)

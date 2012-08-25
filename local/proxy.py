@@ -1088,6 +1088,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content_encoding = response_kwargs.get('encoding')
             if content_encoding:
                 self.send_header('Content-Encoding', content_encoding)
+            content_length = response_kwargs.get('length')
+            if content_length:
+                self.send_header('Content-Length', content_length)
             self.end_headers()
 
             while 1:
