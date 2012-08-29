@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.0.2'
+__version__ = '2.0.3'
 __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64, cStringIO, wsgiref.headers
