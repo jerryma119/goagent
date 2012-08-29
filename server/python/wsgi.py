@@ -413,7 +413,6 @@ def gae_post_ex(environ, start_response):
         return [gae_error_html(errno='502', error=('Python Urlfetch Error: ' + str(method)), description=str(errors))]
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
-    logging.info('response.headers=%s, response.content[:512]=%r', dict(response.headers), response.content[:512])
 
     if 'content-encoding' not in response.headers and len(response.content) < DeflateMaxSize and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         zdata = zlib.compress(response.content)[2:-4]
