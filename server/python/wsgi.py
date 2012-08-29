@@ -227,6 +227,7 @@ def decode_data(qs):
     return dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in qs.split('&')))
 
 def send_response(start_response, status, headers, content, content_type='image/gif'):
+    headers['Content-Length'] = str(len(content))
     strheaders = encode_data(headers)
     #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
     if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
