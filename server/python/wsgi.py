@@ -424,11 +424,11 @@ def gae_post_ex(environ, start_response):
         zdata = zdataio.getvalue()
         response.headers['Content-Length'] = str(len(zdata))
         response.headers['Content-Encoding'] = 'gzip'
-        start_response('200 OK', [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
+        start_response('200 OK', [('Content-type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
         return [zdata]
     else:
         response.headers['Content-Length'] = str(len(response.content))
-        start_response('200 OK', [('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
+        start_response('200 OK', [('Content-type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
         return [response.content]
 
 def gae_get(environ, start_response):
