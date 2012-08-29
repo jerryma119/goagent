@@ -355,12 +355,12 @@ def gae_post_ex(environ, start_response):
     #logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
     if __password__ and __password__ != kwargs.get('password', ''):
-        start_response('403 Forbidden', [('Content-type', 'text/html')])
+        start_response('403 Forbidden', [('Content-Type', 'text/html')])
         return [gae_error_html(errno='403', error='Wrong password.', description='GoAgent proxy.ini password is wrong!')]
 
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
-        start_response('501 Unsupported', [('Content-type', 'text/html')])
+        start_response('501 Unsupported', [('Content-Type', 'text/html')])
         return [gae_error_html(errno='501', error=('Invalid Method: '+str(method)), description='Unsupported Method')]
 
     deadline = Deadline
@@ -409,7 +409,7 @@ def gae_post_ex(environ, start_response):
             if i==0 and method=='GET':
                 deadline = Deadline * 2
     else:
-        start_response('500 Internal Server Error', [('Content-type', 'text/html')])
+        start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
         return [gae_error_html(errno='502', error=('Python Urlfetch Error: ' + str(method)), description=str(errors))]
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
@@ -424,18 +424,18 @@ def gae_post_ex(environ, start_response):
         zdata = zdataio.getvalue()
         response.headers['Content-Length'] = str(len(zdata))
         response.headers['Content-Encoding'] = 'gzip'
-        start_response('200 OK', [('Content-type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
+        start_response('200 OK', [('Content-Type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
         return [zdata]
     else:
         response.headers['Content-Length'] = str(len(response.content))
-        start_response('200 OK', [('Content-type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
+        start_response('200 OK', [('Content-Type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
         return [response.content]
 
 def gae_get(environ, start_response):
     timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)
     ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
     html = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
-    start_response('200 OK', [('Content-type', 'text/plain; charset=utf-8')])
+    start_response('200 OK', [('Content-Type', 'text/plain; charset=utf-8')])
     return [html.encode('utf8')]
 
 def app(environ, start_response):
