@@ -222,6 +222,7 @@ def paas_socks5(environ, start_response):
             socket_forward(sock, remote)
 
 def send_response(start_response, status, headers, content, content_type='image/gif'):
+    headers['Content-Length'] = len(content)
     strheaders = '&'.join('%s=%s' % (k, binascii.b2a_hex(v)) for k, v in headers.iteritems() if v)
     #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
     if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
