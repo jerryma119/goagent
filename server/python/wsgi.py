@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.0.3'
+__version__ = '2.0.4'
 __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64, cStringIO, wsgiref.headers
@@ -368,6 +368,8 @@ def gae_post_ex(environ, start_response):
     headers['Connection'] = 'close'
     payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
 
+    accept_encoding = headers.get('Accept-Encoding', '')
+
     errors = []
     for i in xrange(int(kwargs.get('fetchmax', FetchMax))):
         try:
@@ -414,7 +416,7 @@ def gae_post_ex(environ, start_response):
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
 
-    if 'content-encoding' not in response.headers and len(response.content) < DeflateMaxSize and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+    if 'content-encoding' not in response.headers and len(response.content) < DeflateMaxSize and 'deflate' in accept_encoding and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         zdata = zlib.compress(response.content)[2:-4]
         response.headers['Content-Length'] = str(len(zdata))
         response.headers['Content-Encoding'] = 'deflate'
