@@ -695,12 +695,12 @@ def decode_request(request):
             headers.append((keyword.title(), value.strip()))
     return headers, kwargs
 
-def pack_request(method, url, headers, payload, password=''):
+def pack_request(method, url, headers, payload, fetchhost, password=''):
     content_length = int(headers.get('Content-Length',0))
     request_kwargs = {'method':method, 'url':url}
     if password:
         request_kwargs['password'] = password
-    request_headers = {'Cookie':encode_request(headers, **request_kwargs), 'Content-Length':str(content_length)}
+    request_headers = {'Host':fetchhost, 'Cookie':encode_request(headers, **request_kwargs), 'Content-Length':str(content_length)}
     if not isinstance(payload, str):
         payload = payload.read(content_length)
     return 'POST', request_headers, payload
@@ -913,7 +913,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def rangefetch(self, method, url, headers, payload, current_length, content_length):
         if current_length < content_length:
             headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+common.AUTORANGE_MAXSIZE-1, content_length-1))
-            request_method, request_headers, payload = pack_request(method, url, headers, payload, common.GAE_PASSWORD)
+            request_method, request_headers, payload = pack_request(method, url, headers, payload, common.GAE_FETCHHOST, common.GAE_PASSWORD)
             request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=request_headers)
             request.get_method = lambda: request_method
             try:
@@ -982,7 +982,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     pass
 
         try:
-            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.GAE_PASSWORD)
+            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.GAE_FETCHHOST, common.GAE_PASSWORD)
             request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=headers)
             request.get_method = lambda: method
 
@@ -1112,7 +1112,7 @@ class PAASProxyHandler(GAEProxyHandler):
                     pass
 
         try:
-            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.PAAS_PASSWORD)
+            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.PAAS_FETCHHOST, common.PAAS_PASSWORD)
             request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=headers)
             request.get_method = lambda: method
 
