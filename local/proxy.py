@@ -12,7 +12,7 @@
 
 from __future__ import with_statement
 
-__version__ = '2.0.4'
+__version__ = '2.0.5'
 __config__  = 'proxy.ini'
 
 try:
@@ -1021,20 +1021,27 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers = httplib_normalize_headers(response_headers, skip_headers=['Transfer-Encoding'])
 
             if response_status == 206:
-                request_range = self.headers.get('Range', '')
-                self.send_response(200)
-                content_length = ''
-                content_range  = ''
+                response_headers_towrite = []
                 for keyword, value in headers:
                     if keyword == 'Content-Range':
                         content_range = value
                     elif keyword == 'Content-Length':
                         content_length = value
                     else:
-                        self.send_header(keyword, value)
+                        response_headers_towrite.append((keyword, value))
                 start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
                 if start == 0:
+                    self.send_response(200)
                     self.send_header('Content-Length', str(length))
+                else:
+                    self.send_response(206)
+                    self.send_header('Content-Range', content_range)
+                    self.send_header('Content-Length', content_length)
+                    #self.send_header('Content-Range', 'bytes %s-%s/%s' % (start, length-1, length))
+                    #self.send_header('Content-Length', str(length-start))
+
+                for keyword, value in response_headers_towrite:
+                    self.send_header(keyword, value)
                 self.end_headers()
 
                 while 1:

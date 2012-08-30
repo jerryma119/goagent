@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.0.4'
+__version__ = '2.0.5'
 __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64, cStringIO, wsgiref.headers
@@ -416,16 +416,23 @@ def gae_post_ex(environ, start_response):
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
 
-    if 'content-encoding' not in response.headers and len(response.content) < DeflateMaxSize and 'deflate' in accept_encoding and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
-        zdata = zlib.compress(response.content)[2:-4]
-        response.headers['Content-Length'] = str(len(zdata))
-        response.headers['Content-Encoding'] = 'deflate'
-        start_response('200 OK', [('Content-Type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
-        return [zdata]
-    else:
-        response.headers['Content-Length'] = str(len(response.content))
-        start_response('200 OK', [('Content-Type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
-        return [response.content]
+    data = response.content
+    if 'content-encoding' not in response.headers and len(response.content) < DeflateMaxSize and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+        if 'deflate' in accept_encoding:
+            response.headers['Content-Encoding'] = 'deflate'
+            data = zlib.compress(data)[2:-4]
+        elif 'gzip' in accept_encoding:
+            response.headers['Content-Encoding'] = 'gzip'
+            compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
+            dataio = cStringIO.StringIO()
+            dataio.write('\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff')
+            dataio.write(compressobj.compress(data))
+            dataio.write(compressobj.flush())
+            dataio.write(struct.pack('<LL', zlib.crc32(data)&0xFFFFFFFFL, len(data)&0xFFFFFFFFL))
+            data = dataio.getvalue()
+    response.headers['Content-Length'] = str(len(data))
+    start_response('200 OK', [('Content-Type', 'image/gif'), ('Set-Cookie', encode_request(response.headers, status=str(response.status_code)))])
+    return [data]
 
 def gae_get(environ, start_response):
     timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)

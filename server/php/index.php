@@ -3,7 +3,7 @@
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '2.0.2';
+$__version__  = '2.0.5';
 $__password__ = '';
 $__timeout__  = 20;
 
@@ -52,6 +52,15 @@ function post()
     list($headers, $kwargs) = @decode_request($_SERVER['HTTP_COOKIE']);
     $method  = $kwargs['method'];
     $url     = $kwargs['url'];
+
+    $password = $GLOBALS['__password__'];
+    if ($password) {
+        if (!isset($kwargs['password']) || $password != $kwargs['password']) {
+            header("HTTP/1.0 403 Forbidden");
+            echo '403 Forbidden';
+            exit(-1);
+        }
+    }
 
 
     $body = @file_get_contents('php://input');
