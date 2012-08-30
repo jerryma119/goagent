@@ -482,10 +482,15 @@ class CertUtil(object):
         subj.countryName = 'CN'
         subj.stateOrProvinceName = 'Internet'
         subj.localityName = 'Cernet'
-        #subj.organizationName = commonname
         subj.organizationalUnitName = 'GoAgent Branch'
-        subj.commonName = commonname
-        sans = [commonname] + [x for x in sans if x != commonname]
+        if commonname[0] == '.':
+            subj.commonName = '*' + commonname
+            subj.organizationName = '*' + commonname
+            sans = ['*'+commonname] + [x for x in sans if x != '*'+commonname]
+        else:
+            subj.commonName = commonname
+            subj.organizationName = commonname
+            sans = [commonname] + [x for x in sans if x != commonname]
         req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         req.set_pubkey(pkey)
         req.sign(pkey, 'sha1')
@@ -516,6 +521,8 @@ class CertUtil(object):
 
     @staticmethod
     def get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans = []):
+        if len(commonname) >= 32:
+            commonname = re.sub(r'^[^\.]+', '', commonname)
         keyfile  = os.path.join(certdir, commonname + '.key')
         certfile = os.path.join(certdir, commonname + '.crt')
         if os.path.exists(certfile):
