@@ -482,7 +482,7 @@ class CertUtil(object):
         subj.countryName = 'CN'
         subj.stateOrProvinceName = 'Internet'
         subj.localityName = 'Cernet'
-        subj.organizationName = commonname
+        #subj.organizationName = commonname
         subj.organizationalUnitName = 'GoAgent Branch'
         subj.commonName = commonname
         sans = [commonname] + [x for x in sans if x != commonname]
