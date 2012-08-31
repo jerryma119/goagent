@@ -506,7 +506,10 @@ class CertUtil(object):
         cert.set_issuer(ca.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
-        sans = [commonname] + [x for x in sans if x != commonname]
+        if commonname[0] == '.':
+            sans = ['*'+commonname] + [x for x in sans if x != '*'+commonname]
+        else:
+            sans = [commonname] + [x for x in sans if x != commonname]
         cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
