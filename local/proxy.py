@@ -735,7 +735,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content = ''
             for keyword, value in headers:
                 content += '%s: %s\r\n' % (keyword, value)
-        self.send_response(code, content)
+        self.send_response(code, message=None, headers=content)
 
     def end_error(self, code, message=None, data=None):
         if not data:
