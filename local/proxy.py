@@ -1039,12 +1039,12 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         response_headers_towrite.append((keyword, value))
                 start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
                 if start == 0:
-                    self.send_headers(200, 
-                        [('Content-Length', str(length))].append(response_headers_towrite))
+                    response_headers_towrite.append(('Content-Length', str(length)))
+                    self.send_headers(200, response_headers_towrite)
                 else:
-                    self.send_headers(206, 
-                        [('Content-Range', content_range),
-                        ('Content-Length', content_length)].append(response_headers_towrite))
+                    response_headers_towrite.append(('Content-Length', content_length))
+                    response_headers_towrite.append(('Content-Range', content_range))
+                    self.send_headers(206, response_headers_towrite)
 
                 while 1:
                     data = response.read(8192)
