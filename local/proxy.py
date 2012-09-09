@@ -720,10 +720,22 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host, port = self.client_address[:2]
         sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
 
-    def send_response(self, code, message=None):
+    def send_response(self, code, message=None, headers=None):
         self.log_request(code)
         message = message or self.responses.get(code, ('OK',))[0]
-        self.connection.sendall('%s %d %s\r\n' % (self.protocol_version, code, message))
+        if headers is None:
+            self.connection.sendall('%s %d %s\r\n' % (self.protocol_version, code, message))
+        else:
+            self.connection.sendall('%s %d %s\r\n%s\r\n' % 
+                    (self.protocol_version, code, message, headers))
+
+    def send_headers(self, code, headers=None):
+        content = None
+        if headers is not None:
+            content = ''
+            for keyword, value in headers:
+                content += '%s: %s\r\n' % (keyword, value)
+        self.send_response(code, message=None, headers=content)
 
     def end_error(self, code, message=None, data=None):
         if not data:
@@ -870,9 +882,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.headers['Host']
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if host in common.GOOGLE_FORCEHTTPS:
-                self.send_response(301)
-                self.send_header('Location', self.path.replace('http://', 'https://'))
-                self.end_headers()
+                self.send_headers(301, [('Location', self.path.replace('http://', 'https://'))])
                 return
             common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_METHOD_Direct()
@@ -903,10 +913,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
             headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
 
-            self.send_response(response.code)
-            for keyword, value in headers:
-                self.send_header(keyword, value)
-            self.end_headers()
+            self.send_headers(response.code, headers)
 
             while 1:
                 data = response.read(8192)
@@ -931,10 +938,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
 
             if 'Set-Cookie' not in response.headers:
-                self.send_response(response.code)
-                for keyword, value in response.headers.items():
-                    self.send_header(keyword, value)
-                self.end_headers()
+                self.send_headers(response.code, response.headers.items());
                 self.wfile.write(response.read())
                 return
 
@@ -1016,10 +1020,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
 
             if 'Set-Cookie' not in response.headers:
-                self.send_response(response.code)
-                for keyword, value in response.headers.items():
-                    self.send_header(keyword, value)
-                self.end_headers()
+                self.send_headers(response.code, response.headers.items())
                 self.wfile.write(response.read())
                 return
 
@@ -1038,18 +1039,12 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         response_headers_towrite.append((keyword, value))
                 start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
                 if start == 0:
-                    self.send_response(200)
-                    self.send_header('Content-Length', str(length))
+                    response_headers_towrite.append(('Content-Length', str(length)))
+                    self.send_headers(200, response_headers_towrite)
                 else:
-                    self.send_response(206)
-                    self.send_header('Content-Range', content_range)
-                    self.send_header('Content-Length', content_length)
-                    #self.send_header('Content-Range', 'bytes %s-%s/%s' % (start, length-1, length))
-                    #self.send_header('Content-Length', str(length-start))
-
-                for keyword, value in response_headers_towrite:
-                    self.send_header(keyword, value)
-                self.end_headers()
+                    response_headers_towrite.append(('Content-Length', content_length))
+                    response_headers_towrite.append(('Content-Range', content_range))
+                    self.send_headers(206, response_headers_towrite)
 
                 while 1:
                     data = response.read(8192)
@@ -1063,10 +1058,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
                 return
 
-            self.send_response(response_status)
-            for keyword, value in headers:
-                self.send_header(keyword, value)
-            self.end_headers()
+            self.send_headers(response_status, headers)
 
             while 1:
                 data = response.read(8192)
@@ -1141,10 +1133,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
             headers = httplib_normalize_headers(response.headers.items())
 
-            self.send_response(response.code)
-            for keyword, value in headers:
-                self.send_header(keyword, value)
-            self.end_headers()
+            self.send_headers(response.code, headers)
 
             while 1:
                 data = response.read(8192)
@@ -1252,9 +1241,7 @@ class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.send_error(404, 'Not Found')
         with open(filename, 'rb') as fp:
             data = fp.read()
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
-            self.end_headers()
+            self.send_headers(200, [('Content-Type', 'application/x-ns-proxy-autoconfig')])
             self.wfile.write(data)
             self.wfile.close()
 
