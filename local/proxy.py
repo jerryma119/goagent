@@ -228,7 +228,7 @@ class MultiplexConnection(object):
                 err = sock.connect_ex((host, port))
                 self._sockets.add(sock)
                 socks.append(sock)
-            # something happens :D
+                # something happens :D
             (_, outs, _) = select.select([], socks, [], timeout)
             if outs:
                 self.socket = outs[0]
@@ -449,13 +449,13 @@ class CertUtil(object):
         ca.set_issuer(ca.get_subject())
         ca.set_pubkey(key)
         ca.add_extensions([
-          OpenSSL.crypto.X509Extension(b'basicConstraints', True, b'CA:TRUE'),
-          OpenSSL.crypto.X509Extension(b'nsCertType', True, b'sslCA'),
-          OpenSSL.crypto.X509Extension(b'extendedKeyUsage', True,
-            b'serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC'),
-          OpenSSL.crypto.X509Extension(b'keyUsage', False, b'keyCertSign, cRLSign'),
-          OpenSSL.crypto.X509Extension(b'subjectKeyIdentifier', False, b'hash', subject=ca),
-          ])
+            OpenSSL.crypto.X509Extension(b'basicConstraints', True, b'CA:TRUE'),
+            OpenSSL.crypto.X509Extension(b'nsCertType', True, b'sslCA'),
+            OpenSSL.crypto.X509Extension(b'extendedKeyUsage', True,
+                b'serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC'),
+            OpenSSL.crypto.X509Extension(b'keyUsage', False, b'keyCertSign, cRLSign'),
+            OpenSSL.crypto.X509Extension(b'subjectKeyIdentifier', False, b'hash', subject=ca),
+            ])
         ca.sign(key, 'sha1')
         return key, ca
 
@@ -506,7 +506,10 @@ class CertUtil(object):
         cert.set_issuer(ca.get_subject())
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
-        sans = [commonname] + [x for x in sans if x != commonname]
+        if commonname[0] == '.':
+            sans = ['*'+commonname] + [x for x in sans if x != '*'+commonname]
+        else:
+            sans = [commonname] + [x for x in sans if x != commonname]
         cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
@@ -547,13 +550,13 @@ class CertUtil(object):
                 os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
             [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
             CertUtil.dump_ca('CA.key', 'CA.crt')
-        #Check CA imported
+            #Check CA imported
         cmd = {
-                'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
-              }.get(sys.platform)
+            'win32'  : r'cd /d "%s" && certmgr.exe -add CA.crt -c -s -r localMachine Root >NUL' % os.path.dirname(__file__),
+            }.get(sys.platform)
         if cmd and os.system(cmd) != 0:
             logging.warning('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
-        #Check Certs Dir
+            #Check Certs Dir
         certdir = os.path.join(os.path.dirname(__file__), 'certs')
         if not os.path.exists(certdir):
             os.makedirs(certdir)
@@ -720,29 +723,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host, port = self.client_address[:2]
         sys.stdout.write("%s:%d - - [%s] %s\n" % (host, port, time.ctime()[4:-5], fmt%args))
 
-    def send_response(self, code, message=None, headers=None):
-        self.log_request(code)
-        message = message or self.responses.get(code, ('OK',))[0]
-        if headers is None:
-            self.connection.sendall('%s %d %s\r\n' % (self.protocol_version, code, message))
-        else:
-            self.connection.sendall('%s %d %s\r\n%s\r\n' % 
-                    (self.protocol_version, code, message, headers))
-
-    def send_headers(self, code, headers=None):
-        content = None
-        if headers is not None:
-            content = ''
-            for keyword, value in headers:
-                content += '%s: %s\r\n' % (keyword, value)
-        self.send_response(code, message=None, headers=content)
-
-    def end_error(self, code, message=None, data=None):
-        if not data:
-            self.send_error(code, message)
-        else:
-            self.send_response(code, message)
-            self.connection.sendall(data)
+    def start_response(self, status, headers):
+        self.log_request(status)
+        self.wfile.write('%s %s\r\n%s\r\n' % (self.protocol_version, status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers)))
+        return self.wfile.write
 
     def setup(self):
         if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
@@ -882,8 +866,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.headers['Host']
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if host in common.GOOGLE_FORCEHTTPS:
-                self.send_headers(301, [('Location', self.path.replace('http://', 'https://'))])
-                return
+                return self.start_response('301', [('Location', self.path.replace('http://', 'https://'))])
             common.HOSTS[host] = common.GOOGLE_HOSTS
             return self.do_METHOD_Direct()
         elif host in common.HOSTS:
@@ -912,8 +895,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
 
             headers = httplib_normalize_headers(response.headers.items(), skip_headers=['Transfer-Encoding'])
-
-            self.send_headers(response.code, headers)
+            self.start_response(response.code, headers)
 
             while 1:
                 data = response.read(8192)
@@ -938,9 +920,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
 
             if 'Set-Cookie' not in response.headers:
-                self.send_headers(response.code, response.headers.items());
-                self.wfile.write(response.read())
-                return
+                return self.start_response(response.code, response.headers.items())(response.read())
 
             response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
             response_status = int(response_kwargs['status'])
@@ -1005,11 +985,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.code in (400, 504) or (response.code==502 and common.GAE_PROFILE=='google_cn'):
                     common.GOOGLE_MODE = 'https'
                     common.build_gae_fetchserver()
-                # appid over qouta, switch to next appid
+                    # appid over qouta, switch to next appid
                 if response.code == 503:
                     common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                     common.build_gae_fetchserver()
-                # bad request, disable CRLF injection
+                    # bad request, disable CRLF injection
                 if response.code in (400, 405):
                     httplib.HTTPConnection.putrequest = _httplib_HTTPConnection_putrequest
             except urllib2.URLError as url_error:
@@ -1020,9 +1000,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 raise
 
             if 'Set-Cookie' not in response.headers:
-                self.send_headers(response.code, response.headers.items())
-                self.wfile.write(response.read())
-                return
+                return self.start_response(response.code, response.headers.items())(response.read())
 
             response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
             response_status = int(response_kwargs['status'])
@@ -1039,12 +1017,15 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         response_headers_towrite.append((keyword, value))
                 start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
                 if start == 0:
-                    response_headers_towrite.append(('Content-Length', str(length)))
-                    self.send_headers(200, response_headers_towrite)
+                    response_status = 200
+                    response_headers_towrite += [('Content-Length', str(length))]
                 else:
-                    response_headers_towrite.append(('Content-Length', content_length))
-                    response_headers_towrite.append(('Content-Range', content_range))
-                    self.send_headers(206, response_headers_towrite)
+                    response_status = 206
+                    response_headers_towrite += [('Content-Range', content_range), ('Content-Length', content_length)]
+                    #self.send_header('Content-Range', 'bytes %s-%s/%s' % (start, length-1, length))
+                    #self.send_header('Content-Length', str(length-start))
+
+                self.start_response(response_status, response_headers_towrite)
 
                 while 1:
                     data = response.read(8192)
@@ -1058,14 +1039,14 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
                 return
 
-            self.send_headers(response_status, headers)
+            self.start_response(response_status, headers)
 
             while 1:
                 data = response.read(8192)
                 if not data:
                     response.close()
                     break
-                #logging.debug('response.read(8192) return %r', data)
+                    #logging.debug('response.read(8192) return %r', data)
                 self.wfile.write(data)
         except httplib.HTTPException as e:
             raise
@@ -1132,8 +1113,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 raise
 
             headers = httplib_normalize_headers(response.headers.items())
-
-            self.send_headers(response.code, headers)
+            self.start_response(response.code, headers)
 
             while 1:
                 data = response.read(8192)
@@ -1232,16 +1212,15 @@ class Sock5ProxyHandler(SocketServer.StreamRequestHandler):
 
 class PacServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
-    def send_file(self, filename, headers):
-        pass
-
     def do_GET(self):
         filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
         if self.path != '/'+common.PAC_FILE or not os.path.isfile(filename):
             return self.send_error(404, 'Not Found')
         with open(filename, 'rb') as fp:
             data = fp.read()
-            self.send_headers(200, [('Content-Type', 'application/x-ns-proxy-autoconfig')])
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/x-ns-proxy-autoconfig')
+            self.end_headers()
             self.wfile.write(data)
             self.wfile.close()
 
@@ -1319,7 +1298,7 @@ def main():
     httpd.serve_forever()
 
 if __name__ == '__main__':
-   try:
-       main()
-   except KeyboardInterrupt:
-       pass
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
