@@ -53,6 +53,7 @@ class GoAgentAppIndicator:
 
     def show(self, widget, data=None):
         self.window.show_all()
+        self.window.present()
 
     def hide(self, widget, data=None):
         self.window.hide_all()
@@ -69,7 +70,6 @@ def main():
     window = gtk.Window()
     window.add(v)
     window.connect('delete-event', lambda window, event: gtk.main_quit())
-    window.activate_focus()
     window.show_all()
     indicator = GoAgentAppIndicator(window)
     gtk.main()
