@@ -64,6 +64,7 @@ class GoAgentAppIndicator:
 
 def main():
     os.chdir(os.path.abspath(os.path.dirname(__file__)))
+    os.system('chmod +x proxy.py')
     v = vte.Terminal ()
     v.connect ("child-exited", lambda term: gtk.main_quit())
     v.fork_command('./proxy.py')
