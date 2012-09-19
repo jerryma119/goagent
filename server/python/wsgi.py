@@ -277,15 +277,16 @@ def gae_post(environ, start_response):
             return send_notify(start_response, method, url, 501, 'Invalid URL: %s' % e)
         except urlfetch.ResponseTooLargeError as e:
             response = e.response
-            logging.error('DownloadError(deadline=%s, url=%r) response(%s)', deadline, url, response and response.headers)
-            if response and response.headers.get('content-length'):
-                response.status_code = 206
-                response.headers['accept-ranges']  = 'bytes'
-                response.headers['content-range']  = 'bytes 0-%d/%s' % (len(response.content)-1, response.headers['content-length'])
-                response.headers['content-length'] = len(response.content)
-                break
-            else:
+            logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
+            m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
+            if m is None:
                 headers['Range'] = 'bytes=0-%d' % FetchMaxSize
+            else:
+                headers.pop('Range', '')
+                headers.pop('range', '')
+                start = int(m.group(1))
+                headers['Range'] = 'bytes=%s-%d' % (start, start+FetchMaxSize)
+            deadline = Deadline * 2
         except Exception as e:
             errors.append('Exception %s(deadline=%s)' % (e, deadline))
     else:
