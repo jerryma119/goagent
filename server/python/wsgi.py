@@ -22,7 +22,7 @@ except:
     socket = None
 
 FetchMax = 2
-FetchMaxSize = 1024*1024
+FetchMaxSize = 1024*1024*4
 DeflateMaxSize = 1024*1024*4
 Deadline = 60
 
@@ -389,22 +389,15 @@ def gae_post_ex(environ, start_response):
             deadline = Deadline * 2
         except urlfetch.ResponseTooLargeError as e:
             response = e.response
-            logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%s)', deadline, url, response and response.headers)
-            if response and response.headers.get('content-length'):
-                response.status_code = 206
-                response.headers['accept-ranges']  = 'bytes'
-                response.headers['content-range']  = 'bytes 0-%d/%s' % (len(response.content)-1, response.headers['content-length'])
-                response.headers['content-length'] = len(response.content)
-                break
+            logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
+            m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
+            if m is None:
+                headers['Range'] = 'bytes=0-%d' % FetchMaxSize
             else:
-                m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
-                if m is None:
-                    headers['Range'] = 'bytes=0-%d' % FetchMaxSize
-                else:
-                    headers.pop('Range', '')
-                    headers.pop('range', '')
-                    start = int(m.group(1))
-                    headers['Range'] = 'bytes=%s-%d' % (start, start+FetchMaxSize)
+                headers.pop('Range', '')
+                headers.pop('range', '')
+                start = int(m.group(1))
+                headers['Range'] = 'bytes=%s-%d' % (start, start+FetchMaxSize)
             deadline = Deadline * 2
         except Exception as e:
             errors.append(str(e))

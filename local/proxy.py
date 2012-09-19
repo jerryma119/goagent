@@ -121,14 +121,6 @@ class Common(object):
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
 
-        self.AUTORANGE_ENABLE     = self.CONFIG.getint('autorange', 'enable') if self.CONFIG.has_option('autorange', 'enable') else 0
-        self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
-        self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
-        self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
-        self.AUTORANGE_WAITSIZE   = self.CONFIG.getint('autorange', 'waitsize')
-
-        assert self.AUTORANGE_WAITSIZE <= self.AUTORANGE_MAXSIZE
-
         if self.CONFIG.has_section('crlf'):
             # XXX, cowork with GoAgentX
             self.CRLF_ENABLE          = self.CONFIG.getint('crlf', 'enable')
@@ -906,34 +898,44 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except Exception:
             logging.exception('GAEProxyHandler.do_GET Error')
 
-    def rangefetch(self, method, url, headers, payload, current_length, content_length):
+    def rangefetch(self, method, url, headers, payload, range_maxsize, current_length, content_length):
+        assert range_maxsize > 0, 'range_maxsize > 0 failed!'
         if current_length < content_length:
-            headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+common.AUTORANGE_MAXSIZE-1, content_length-1))
+            headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+range_maxsize-1, content_length-1))
             request_method, request_headers, payload = pack_request(method, url, headers, payload, common.GAE_FETCHHOST, common.GAE_PASSWORD)
             request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=request_headers)
             request.get_method = lambda: request_method
-            try:
-                response = urllib2.urlopen(request)
-            except urllib2.HTTPError as http_error:
-                response = http_error
-            except urllib2.URLError as url_error:
-                raise
 
-            if 'Set-Cookie' not in response.headers:
-                return self.start_response(response.code, response.headers.items())(response.read())
+            for i in xrange(3):
+                try:
+                    response = urllib2.urlopen(request)
+                except urllib2.HTTPError as http_error:
+                    response = http_error
+                except urllib2.URLError as url_error:
+                    raise
 
-            response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
-            response_status = int(response_kwargs['status'])
+                if 'Set-Cookie' not in response.headers:
+                    logging.error('rangefetch %r return %s', url, response.code)
+                    time.sleep(2**(i+1))
+                    continue
+                response_headers, response_kwargs = decode_request(response.headers['Set-Cookie'])
+                response_status = int(response_kwargs['status'])
+                if 200 <= response_status < 400:
+                    break
+                else:
+                    logging.error('rangefetch %r return %s', url, response_status)
+                    time.sleep(2**(i+1))
+                    continue
 
             if response_status == 302:
                 response_location = dict(response_headers)['Location']
                 logging.info('Range Fetch Redirect(%r)', response_location)
-                return self.rangefetch(method, response_location, headers, payload, current_length, content_length)
+                return self.rangefetch(method, response_location, headers, payload, range_maxsize, current_length, content_length)
 
             content_range = dict(response_headers).get('Content-Range')
 
             if not content_range:
-                logging.wa('rangefetch "%s %s" failed: response_kwargs=%s response_headers=%s', method, url, response_kwargs, response_headers)
+                logging.error('rangefetch "%s %s" failed: response_kwargs=%s response_headers=%s', method, url, response_kwargs, response_headers)
                 return
 
             logging.info('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
@@ -946,7 +948,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.wfile.write(data)
 
             if current_length < content_length:
-                return self.rangefetch(method, url, headers, payload, current_length, content_length)
+                return self.rangefetch(method, url, headers, payload, range_maxsize, current_length, content_length)
 
     def do_METHOD_Tunnel(self):
         host = self.headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
@@ -955,22 +957,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         if common.USERAGENT_ENABLE:
             self.headers['User-Agent'] = common.USERAGENT_STRING
-
-        if common.AUTORANGE_ENABLE:
-            if 'Range' in self.headers:
-                m = re.search('bytes=(\d+)-', self.headers.dict['Range'])
-                start = int(m.group(1) if m else 0)
-                self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-                logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
-            elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
-                try:
-                    pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
-                    logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
-                    start = int(m.group(1) if m else 0)
-                    self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-                except StopIteration:
-                    pass
 
         try:
             method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.GAE_FETCHHOST, common.GAE_PASSWORD)
@@ -1021,21 +1007,24 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     response_headers_towrite += [('Content-Length', str(length))]
                 else:
                     response_status = 206
-                    response_headers_towrite += [('Content-Range', content_range), ('Content-Length', content_length)]
-                    #self.send_header('Content-Range', 'bytes %s-%s/%s' % (start, length-1, length))
-                    #self.send_header('Content-Length', str(length-start))
+                    if self.headers.get('Range'):
+                        response_headers_towrite += [('Content-Range', content_range), ('Content-Length', content_length)]
+                    else:
+                        response_headers_towrite += [('Content-Range', 'bytes %s-%s/%s' % (start, length-1, length)), ('Content-Length', str(length-start))]
 
                 self.start_response(response_status, response_headers_towrite)
 
+                range_maxsize = 0
                 while 1:
                     data = response.read(8192)
                     if not data:
                         response.close()
                         break
+                    range_maxsize += len(data)
                     self.wfile.write(data)
 
-                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r)', host)
-                self.rangefetch(self.command, self.path, self.headers, payload, end+1, length)
+                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', host, end+1, length)
+                self.rangefetch(self.command, self.path, self.headers, payload, range_maxsize, end+1, length)
                 logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
                 return
 
@@ -1081,22 +1070,6 @@ class PAASProxyHandler(GAEProxyHandler):
 
         if common.USERAGENT_ENABLE:
             self.headers['User-Agent'] = common.USERAGENT_STRING
-
-        if common.AUTORANGE_ENABLE:
-            if 'Range' in self.headers:
-                m = re.search('bytes=(\d+)-', self.headers.dict['Range'])
-                start = int(m.group(1) if m else 0)
-                self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-                logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
-            elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
-                try:
-                    pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
-                    logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
-                    m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
-                    start = int(m.group(1) if m else 0)
-                    self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-                except StopIteration:
-                    pass
 
         try:
             method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.PAAS_FETCHHOST, common.PAAS_PASSWORD)
