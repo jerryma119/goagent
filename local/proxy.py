@@ -927,10 +927,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     time.sleep(2**(i+1))
                     continue
 
-            if response_status == 302:
-                response_location = dict(response_headers)['Location']
+            if 300 < response_status < 400:
+                response_location = dict(response_headers).get('Location')
                 logging.info('Range Fetch Redirect(%r)', response_location)
-                return self.rangefetch(method, response_location, headers, payload, range_maxsize, current_length, content_length)
+                if response_location:
+                    return self.rangefetch(method, response_location, headers, payload, range_maxsize, current_length, content_length)
 
             content_range = dict(response_headers).get('Content-Range')
             if not content_range:
@@ -1019,9 +1020,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     range_maxsize += len(data)
                     self.wfile.write(data)
 
-                logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', host, end+1, length)
-                self.rangefetch(self.command, self.path, self.headers, payload, range_maxsize, end+1, length)
-                logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
+                if range_maxsize:
+                    logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', host, end+1, length)
+                    self.rangefetch(self.command, self.path, self.headers, payload, range_maxsize, end+1, length)
+                    logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', host)
                 return
 
             self.start_response(response_status, headers)
