@@ -12,7 +12,7 @@
 
 from __future__ import with_statement
 
-__version__ = '2.0.5'
+__version__ = '2.0.6'
 __config__  = 'proxy.ini'
 
 try:
@@ -81,6 +81,7 @@ class Common(object):
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
         self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
+        self.GAE_RANGESIZE        = self.CONFIG.get('gae', 'rangesize') if self.CONFIG.has_option('gae', 'rangesize') else 4194304
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
@@ -697,11 +698,10 @@ def decode_request(request):
             headers.append((keyword.title(), value.strip()))
     return headers, kwargs
 
-def pack_request(method, url, headers, payload, fetchhost, password=''):
+def pack_request(method, url, headers, payload, fetchhost, **kwargs):
     content_length = int(headers.get('Content-Length',0))
     request_kwargs = {'method':method, 'url':url}
-    if password:
-        request_kwargs['password'] = password
+    request_kwargs.update(kwargs)
     request_headers = {'Host':fetchhost, 'Cookie':encode_request(headers, **request_kwargs), 'Content-Length':str(content_length)}
     if not isinstance(payload, str):
         payload = payload.read(content_length)
@@ -900,9 +900,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def rangefetch(self, method, url, headers, payload, range_maxsize, current_length, content_length):
         assert range_maxsize > 0, 'range_maxsize > 0 failed!'
-        if current_length < content_length:
+        while current_length < content_length:
             headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+range_maxsize-1, content_length-1))
-            request_method, request_headers, payload = pack_request(method, url, headers, payload, common.GAE_FETCHHOST, common.GAE_PASSWORD)
+            request_method, request_headers, payload = pack_request(method, url, headers, payload, common.GAE_FETCHHOST, password=common.GAE_PASSWORD, fetchmaxsize=common.GAE_RANGESIZE)
             request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=request_headers)
             request.get_method = lambda: request_method
 
@@ -933,7 +933,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 return self.rangefetch(method, response_location, headers, payload, range_maxsize, current_length, content_length)
 
             content_range = dict(response_headers).get('Content-Range')
-
             if not content_range:
                 logging.error('rangefetch "%s %s" failed: response_kwargs=%s response_headers=%s', method, url, response_kwargs, response_headers)
                 return
@@ -947,9 +946,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 current_length += len(data)
                 self.wfile.write(data)
 
-            if current_length < content_length:
-                return self.rangefetch(method, url, headers, payload, range_maxsize, current_length, content_length)
-
     def do_METHOD_Tunnel(self):
         host = self.headers.get('Host') or urlparse.urlparse(self.path).netloc.partition(':')[0]
         if self.path[0] == '/':
@@ -959,7 +955,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.headers['User-Agent'] = common.USERAGENT_STRING
 
         try:
-            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.GAE_FETCHHOST, common.GAE_PASSWORD)
+            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.GAE_FETCHHOST, password=common.GAE_PASSWORD, fetchmaxsize=common.GAE_RANGESIZE)
             request  = urllib2.Request(common.GAE_FETCHSERVER, data=payload, headers=headers)
             request.get_method = lambda: method
 
@@ -1072,7 +1068,7 @@ class PAASProxyHandler(GAEProxyHandler):
             self.headers['User-Agent'] = common.USERAGENT_STRING
 
         try:
-            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.PAAS_FETCHHOST, common.PAAS_PASSWORD)
+            method, headers, payload = pack_request(self.command, self.path, self.headers, self.rfile, common.PAAS_FETCHHOST, password=common.PAAS_PASSWORD)
             request  = urllib2.Request(common.PAAS_FETCHSERVER, data=payload, headers=headers)
             request.get_method = lambda: method
 

@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.0.5'
+__version__ = '2.0.6'
 __password__ = ''
 
 import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64, cStringIO, wsgiref.headers
@@ -392,12 +392,12 @@ def gae_post_ex(environ, start_response):
             logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
             m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
             if m is None:
-                headers['Range'] = 'bytes=0-%d' % FetchMaxSize
+                headers['Range'] = 'bytes=0-%d' % int(kwargs.get('fetchmaxsize', FetchMaxSize))
             else:
                 headers.pop('Range', '')
                 headers.pop('range', '')
                 start = int(m.group(1))
-                headers['Range'] = 'bytes=%s-%d' % (start, start+FetchMaxSize)
+                headers['Range'] = 'bytes=%s-%d' % (start, start+int(kwargs.get('fetchmaxsize', FetchMaxSize)))
             deadline = Deadline * 2
         except Exception as e:
             errors.append(str(e))
