@@ -735,6 +735,11 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             wfile = sock.makefile('wb', 0)
             wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response_code, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.iteritems())))
             common.http.copy_rfile(response_rfile, response_headers, wfile.write)
+        except socket.error as e:
+            if e[0] in (10053, errno.EPIPE):
+                pass
+            else:
+                raise
         except Exception as e:
             logging.warn('gaeproxy_appliaction direct(%s) Error', host)
             raise
@@ -805,7 +810,8 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             # Connection closed before proxy return
             if e[0] in (10053, errno.EPIPE):
                 pass
-            raise
+            else:
+                raise
         except Exception as e:
             raise
 
@@ -854,14 +860,15 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
         request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.GAE_FETCHHOST, password=common.GAE_PASSWORD, fetchmaxsize=common.GAE_RANGESIZE)
         try:
             code, response_headers, response_rfile = common.http.request(request_method, common.GAE_FETCHSERVER, data=request_payload or None, headers=request_headers)
-        except Exception as e:
-            logging.exception('error: %s', e)
-            raise
         except socket.error as e:
             if e.reason[0] in (11004, 10051, 10060, 'timed out', 10054):
                 # connection reset or timeout, switch to https
                 common.GOOGLE_MODE = 'https'
                 common.build_gae_fetchserver()
+            else:
+                raise
+        except Exception as e:
+            logging.exception('error: %s', e)
             raise
 
         if code in (400, 405):
@@ -875,7 +882,8 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
         # Connection closed before proxy return
         if e[0] in (10053, errno.EPIPE):
             pass
-        raise
+        else:
+            raise
     except Exception as e:
         raise
 
