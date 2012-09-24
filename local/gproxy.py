@@ -694,7 +694,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             return
         else:
             keyfile, certfile = CertUtil.get_cert(host)
-            logging.info('%s:%s - "%s:%d HTTP/1.1" - -' % (address[0], address[1], host, port))
+            logging.info('%s:%s - "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
             sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
             __realsock = sock
             __realrfile = rfile
