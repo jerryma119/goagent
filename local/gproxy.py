@@ -258,33 +258,11 @@ class Http(object):
                 iplist.update([x[-1][0] for x in resolver.getaddrinfo(host, 80)])
         return iplist
 
-    def _safe_create_connection(self, (ip, port), timeout=None, source_address=None, sslwrap=False):
-        try:
-            sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
-            if isinstance(timeout, (int, long)):
-                sock.settimeout(timeout)
-            if source_address:
-                sock.bind(source_address)
-            sock.connect((ip, port))
-            if sslwrap:
-                sock = ssl.wrap_socket(sock)
-            return sock
-        except (socket.error, ssl.SSLError) as e:
-            sock.close()
-            if e[0] in (10053, 10054, 'timed out'):
-                logging.error('Http._safe_create_connection(ip=%r) failed:%s', ip, e)
-            else:
-                raise
-
-    def _safe_gc_connection(self, (host, port), queue, count, timeout):
-        for i in xrange(count):
-            try:
-                greenlet = queue.get(timeout=timeout)
-                sock = greenlet.get()
-                if sock:
-                    self.pool[(host, port)].add(sock)
-            except Exception as e:
-                continue
+    def _collect_slow_socks(self, (host, port), socks):
+        _, outs, _ = select.select([], socks, [], self.timeout)
+        for sock in outs:
+            sock.setblocking(1)
+            self.pool[host, port][sock] = time.time()
 
     def _safe_close_connection(self, socks):
         for sock in socks:
@@ -302,27 +280,24 @@ class Http(object):
                 window = self.window
                 if len(iplist) > window:
                     iplist = random.sample(iplist, window)
-                queue = gevent.queue.Queue()
+                sock  = None
+                socks = []
                 for ip in iplist:
-                    greenlet = self.spawn(self._safe_create_connection, (ip, port), timeout, source_address, sslwrap=sslwrap)
-                    greenlet.link(queue.put)
-                sock = None
-                for i, ip in enumerate(iplist):
-                    try:
-                        greenlet = queue.get(timeout=self.timeout)
-                        sock = greenlet.get()
-                        self.spawn(self._safe_gc_connection, (host, port), queue, len(iplist)-i-1, self.timeout)
-                        break
-                    except gevent.queue.Empty:
-                        continue
-                    except Exception:
-                        continue
-                if sock:
+                    sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
+                    sock.setblocking(0)
+                    sock.connect_ex((ip, port))
+                    socks.append(sock)
+                _, outs, _ = select.select([], socks, [], self.timeout)
+                if outs:
+                    sock = outs.pop(0)
+                    sock.setblocking(1)
+                    socks.remove(sock)
+                    gevent.spawn_later(1, self._collect_slow_socks, (host, port), socks)
                     return sock
             except Exception as e:
                 logging.error('%s', e)
 
-    def _get_socket_from_pool(self, host, port, sslwrap=False):
+    def _get_socket_from_pool(self, host, port):
         socks = self.pool[host, port]
         current_time = time.time()
         need_close = []
@@ -437,6 +412,41 @@ class Http(object):
             pass
         if need_return:
             return output.getvalue()
+
+class LocalProxyServer(gevent.server.StreamServer):
+
+    MessageClass = dict
+
+    def __init__(self, listener, application, backlog=None, spawn='default', **ssl_args):
+        gevent.server.StreamServer.__init__(self, listener, backlog=backlog, spawn=spawn, **ssl_args)
+        self.application = application
+
+    def parse_request(self, rfile, bufsize=8192):
+        line = rfile.readline(bufsize)
+        if not line:
+            raise socket.error('empty line')
+        method, path, version = line.split(' ', 2)
+        headers = self.MessageClass()
+        while 1:
+            line = rfile.readline(bufsize)
+            if not line or line == '\r\n':
+                break
+            keyword, _, value = line.partition(':')
+            keyword = keyword.title()
+            value = value.strip()
+            headers[keyword] = value
+        return method, path, version, headers
+
+    def handle(self, sock, address):
+        rfile = sock.makefile('rb', -1)
+        try:
+            method, path, version, headers = self.parse_request(rfile)
+            self.application(sock, address, rfile, method, path, version, headers, self)
+        except socket.error as e:
+            if e[0] in (10053, 'empty line'):
+                pass
+            else:
+                raise
 
 class Common(object):
     """global config object"""
@@ -558,41 +568,6 @@ class Common(object):
 
 common = Common()
 
-class LocalProxyServer(gevent.server.StreamServer):
-
-    MessageClass = dict
-
-    def __init__(self, listener, application, backlog=None, spawn='default', **ssl_args):
-        gevent.server.StreamServer.__init__(self, listener, backlog=backlog, spawn=spawn, **ssl_args)
-        self.application = application
-
-    def parse_request(self, rfile, bufsize=8192):
-        line = rfile.readline(bufsize)
-        if not line:
-            raise socket.error('empty line')
-        method, path, version = line.split(' ', 2)
-        headers = self.MessageClass()
-        while 1:
-            line = rfile.readline(bufsize)
-            if not line or line == '\r\n':
-                break
-            keyword, _, value = line.partition(':')
-            keyword = keyword.title()
-            value = value.strip()
-            headers[keyword] = value
-        return method, path, version, headers
-
-    def handle(self, sock, address):
-        rfile = sock.makefile('rb', -1)
-        try:
-            method, path, version, headers = self.parse_request(rfile)
-            self.application(sock, address, rfile, method, path, version, headers, self)
-        except socket.error as e:
-            if e[0] in (10053, 'empty line'):
-                pass
-            else:
-                raise
-
 def io_copy(source, dest):
     try:
         io_read  = getattr(source, 'read', None) or getattr(source, 'recv')
@@ -700,7 +675,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
         host, _, port = path.rpartition(':')
         port = int(port)
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            logging.info('%s:%s - "%s:%d HTTP/1.1" - -' % (remote_addr, remote_port, host, port))
+            logging.info('%s:%s - "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
             http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems())
             if not common.PROXY_ENABLE:
                 remote = common.http._get_socket_from_pool(host, port)
