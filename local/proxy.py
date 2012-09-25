@@ -234,43 +234,10 @@ class SimpleLogging(object):
     def critical(self, fmt, *args, **kwargs):
         self.log('CRITICAL', fmt, *args, **kwargs)
 
-class SimpleHTTPServer(gevent.server.StreamServer):
-    """A lightweight HTTP Server based gevent"""
-
-    MessageClass = dict
-
-    def __init__(self, listener, application, backlog=None, spawn='default', **ssl_args):
-        gevent.server.StreamServer.__init__(self, listener, backlog=backlog, spawn=spawn, **ssl_args)
-        self.application = application
-
-    def parse_request(self, rfile, bufsize=8192):
-        line = rfile.readline(bufsize)
-        if not line:
-            raise socket.error('empty line')
-        method, path, version = line.split(' ', 2)
-        headers = self.MessageClass()
-        while 1:
-            line = rfile.readline(bufsize)
-            if not line or line == '\r\n':
-                break
-            keyword, _, value = line.partition(':')
-            keyword = keyword.title()
-            value = value.strip()
-            headers[keyword] = value
-        return method, path, version, headers
-
-    def handle(self, sock, address):
-        rfile = sock.makefile('rb', -1)
-        try:
-            method, path, version, headers = self.parse_request(rfile)
-            self.application(sock, address, rfile, method, path, version, headers, self)
-        except socket.error as e:
-            if e[0] not in (10053, 'empty line'):
-                raise
-
 class Http(object):
     """Http Request Class"""
 
+    MessageClass = dict
     protocol_version = 'HTTP/1.1'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     spawn_later = gevent.spawn_later
@@ -395,6 +362,22 @@ class Http(object):
         finally:
             local.close()
             remote.close()
+
+    def parse_request(self, rfile, bufsize=8192):
+        line = rfile.readline(bufsize)
+        if not line:
+            raise socket.error('empty line')
+        method, path, version = line.split(' ', 2)
+        headers = self.MessageClass()
+        while 1:
+            line = rfile.readline(bufsize)
+            if not line or line == '\r\n':
+                break
+            keyword, _, value = line.partition(':')
+            keyword = keyword.title()
+            value = value.strip()
+            headers[keyword] = value
+        return method, path, version, headers
 
     def _request(self, sock, method, path, protocol_version, headers, data, crlf=None):
         skip_headers = self.skip_headers
@@ -725,7 +708,10 @@ def rangefetch(wfile, response_headers, response_rfile, method, url, headers, pa
             wfile.write(data)
     logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', url)
 
-def gaeproxy_application(sock, address, rfile, method, path, version, headers, server, ls={'setuplock':LockType()}):
+def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
+    rfile = sock.makefile('rb', 8192)
+    method, path, version, headers = http.parse_request(rfile)
+
     if 'setup' not in ls:
         if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
@@ -779,7 +765,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
                 logging.exception('ssl.wrap_socket(__realsock=%r) failed: %s', __realsock, e)
                 sock = ssl.wrap_socket(__realsock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
             rfile = sock.makefile('rb', 8192)
-            method, path, version, headers = server.parse_request(rfile)
+            method, path, version, headers = http.parse_request(rfile)
             if path[0] == '/' and host:
                 path = 'https://%s%s' % (headers['Host'], path)
 
@@ -817,7 +803,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             if e[0] not in (10053, errno.EPIPE):
                 raise
         except Exception as e:
-            logging.warn('gaeproxy_appliaction direct(%s) Error', host)
+            logging.warn('gaeproxy_handler direct(%s) Error', host)
             raise
         finally:
             rfile.close()
@@ -883,7 +869,10 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             if __realsock:
                 __realsock.close()
 
-def paasproxy_application(sock, address, rfile, method, path, version, headers, server, ls={'setuplock':LockType()}):
+def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
+    rfile = sock.makefile('rb', 8192)
+    method, path, version, headers = http.parse_request(rfile)
+
     if 'setup' not in ls:
         if not common.PROXY_ENABLE:
             logging.info('resolve common.PAAS_FETCHHOST domian=%r to iplist', common.PAAS_FETCHHOST)
@@ -917,7 +906,7 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
             logging.exception('ssl.wrap_socket(__realsock=%r) failed: %s', __realsock, e)
             sock = ssl.wrap_socket(__realsock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
         rfile = sock.makefile('rb', 8192)
-        method, path, version, headers = server.parse_request(rfile)
+        method, path, version, headers = http.parse_request(rfile)
         if path[0] == '/' and host:
             path = 'https://%s%s' % (headers['Host'], path)
 
@@ -957,7 +946,7 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
         if __realsock:
             __realsock.close()
 
-def socks5proxy_application(sock, address, ls={'setuplock':LockType()}):
+def socks5proxy_handler(sock, address, ls={'setuplock':LockType()}):
     if 'setup' not in ls:
         if not common.PROXY_ENABLE:
             socks5_fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
@@ -987,7 +976,10 @@ def socks5proxy_application(sock, address, ls={'setuplock':LockType()}):
     remote.sendall('%s /socks5 HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n' % (method, host))
     http.forward_socket(sock, remote)
 
-def pacserver_application(sock, address, rfile, method, path, version, headers, server):
+def pacserver_handler(sock, address):
+    rfile = sock.makefile('rb', 8192)
+    method, path, version, headers = http.parse_request(rfile)
+
     wfile = sock.makefile('wb', 0)
     filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
     if path != '/'+common.PAC_FILE or not os.path.isfile(filename):
@@ -999,11 +991,11 @@ def pacserver_application(sock, address, rfile, method, path, version, headers, 
         wfile.close()
     sock.close()
 
-def gaeproxy_withpac_application(sock, address, rfile, method, path, version, headers, server, ls={'setuplock':LockType()}):
+def gaeproxy_withpac_handler(sock, address, rfile, method, path, version, headers, server, ls={'setuplock':LockType()}):
     if path[0] == '/' and path[-4:] == '.pac':
-        return pacserver_application(sock, address, rfile, method, path, version, headers, server)
+        return pacserver_handler(sock, address, rfile, method, path, version, headers, server)
     else:
-        return gaeproxy_application(sock, address, rfile, method, path, version, headers, server, ls)
+        return gaeproxy_handler(sock, address, rfile, method, path, version, headers, server, ls)
 
 def try_show_love():
     """If you hate this funtion, please go back to gappproxy/wallproxy"""
@@ -1045,21 +1037,21 @@ def main():
     sys.stdout.write(common.info())
 
     if common.PAAS_ENABLE:
-        server = SimpleHTTPServer(common.PAAS_LISTEN, paasproxy_application)
+        server = gevent.server.StreamServer(common.PAAS_LISTEN, paasproxy_handler)
         server.start()
 
     if common.SOCKS5_ENABLE:
-        server = gevent.server.StreamServer(common.SOCKS5_LISTEN, socks5proxy_application)
+        server = gevent.server.StreamServer(common.SOCKS5_LISTEN, socks5proxy_handler)
         server.start()
 
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
-        server = SimpleHTTPServer((common.PAC_IP, common.PAC_PORT), pacserver_application)
+        server = gevent.server.StreamServer((common.PAC_IP, common.PAC_PORT), pacserver_handler)
         server.start()
 
     if common.PAC_ENABLE and common.PAC_PORT == common.LISTEN_PORT:
-        server = SimpleHTTPServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_withpac_application, spawn=1024)
+        server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_withpac_handler, spawn=1024)
     else:
-        server = SimpleHTTPServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_application, spawn=1024)
+        server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler, spawn=1024)
     server.serve_forever()
 
 if __name__ == '__main__':
