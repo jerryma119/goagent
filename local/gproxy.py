@@ -40,7 +40,6 @@ import collections
 import cStringIO
 import ConfigParser
 import traceback
-import wsgiref.headers
 import urllib2
 try:
     import logging
@@ -237,15 +236,31 @@ class Http(object):
 
     protocol_version = 'HTTP/1.1'
 
-    def __init__(self, max_window=64, max_retry=2, max_timeout=30):
+    @staticmethod
+    def spawn_later_by_threading(seconds, target, *args, **kwargs):
+        import time, threading
+        def wrap_target(*args, **kwargs):
+            time.sleep(seconds)
+            target(*args, **kwargs)
+        t = threading.Thread(target=wrap_target, args=args, kwargs=kwargs)
+        t.setDaemon(True)
+        t.start()
+
+    def __init__(self, max_window=64, max_retry=2, max_timeout=30, spawn_later=None):
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
         self.window = 4
         self.timeout = max_timeout // 2
         self.dns = collections.defaultdict(set)
-        self.spawn = gevent.spawn
         self.crlf = 0
+        if spawn_later is not None:
+            self.spawn_later = spawn_later
+        else:
+            if 'gevent.monkey' in sys.modules:
+                self.spawn_later = gevent.spawn_later
+            else:
+                self.spawn_later = self.__class__.spawn_later_by_threading
 
     def dns_resolve(self, host, dnsservers=[]):
         iplist = self.dns[host]
@@ -256,14 +271,6 @@ class Http(object):
                 resolver = gevent.resolver_ares.Resolver(servers=dnsservers)
                 iplist.update([x[-1][0] for x in resolver.getaddrinfo(host, 80)])
         return iplist
-
-    def __safe_close_connections(self, socks):
-        for sock in socks:
-            try:
-                if sock:
-                    sock.close()
-            except Exception as e:
-                continue
 
     def create_connection(self, (host, port), timeout=None, source_address=None):
         logging.debug('Http.create_connection connect (%r, %r)', host, port)
@@ -285,7 +292,7 @@ class Http(object):
                     sock = outs.pop(0)
                     sock.setblocking(1)
                     socks.remove(sock)
-                    gevent.spawn_later(1, self.__safe_close_connections, socks)
+                    self.spawn_later(1, lambda ss:any(x.close() for x in ss), socks)
                     return sock
             except Exception as e:
                 logging.error('%s', e)
