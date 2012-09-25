@@ -272,9 +272,10 @@ class Http(object):
     """Http Request Class"""
 
     protocol_version = 'HTTP/1.1'
+    skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
     spawn_later = gevent.spawn_later
 
-    def __init__(self, min_window=3, max_window=64, max_retry=2, max_timeout=30, spawn_later=None):
+    def __init__(self, min_window=3, max_window=64, max_retry=2, max_timeout=30, spawn_later=None, proxy_uri=''):
         self.min_window = min_window
         self.max_window = max_window
         self.max_retry = max_retry
@@ -286,6 +287,14 @@ class Http(object):
         self.crlf = 0
         if spawn_later is not None:
             self.spawn_later = spawn_later
+        if proxy_uri:
+            scheme, netloc = urlparse.urlparse(proxy_uri)[:2]
+            if '@' in netloc:
+                self.proxy = re.match('(\w+):(\w+)@(\w+):(\d+)').group(1,2,3,4)
+            else:
+                self.proxy = (None, None) + (re.match('(\w+):(\d+)').group(1,2))
+        else:
+            self.proxy = ''
 
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
         iplist = self.dns[host]
@@ -388,9 +397,14 @@ class Http(object):
             remote.close()
 
     def _request(self, sock, method, path, protocol_version, headers, data, crlf=None):
+        skip_headers = self.skip_headers
+
         request_data = '\r\n' * (crlf or self.crlf)
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
-        request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems())
+        request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
+        if self.proxy:
+            username, password, _, _ = self.proxy
+            request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
         request_data += '\r\n' if not data else '\r\n'+data
         wfile = sock.makefile('wb', 0)
         wfile.write(request_data)
@@ -432,7 +446,12 @@ class Http(object):
 
         for i in xrange(self.max_retry):
             try:
-                sock = self.create_connection((host, port), self.timeout)
+                if not self.proxy:
+                    sock = self.create_connection((host, port), self.timeout)
+                else:
+                    username, password, host, port = self.proxy
+                    sock = socket.create_connection((host, int(port)))
+                    path = url
                 if sock:
                     if scheme == 'https':
                         sock = ssl.wrap_socket(sock)
@@ -546,6 +565,14 @@ class Common(object):
         self.PROXY_USERNAME       = self.CONFIG.get('proxy', 'username')
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
 
+        if self.PROXY_ENABLE:
+            if self.PROXY_USERNAME:
+                self.proxy_uri = '%s:%s@%s:%d' % (common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
+            else:
+                self.proxy_uri = '%s:%s' % (common.PROXY_HOST, common.PROXY_PORT)
+        else:
+            self.proxy_uri = ''
+
         self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
         self.GOOGLE_HOSTS         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|'))
         self.GOOGLE_SITES         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|'))
@@ -609,8 +636,8 @@ class Common(object):
         info += '------------------------------------------------------\n'
         return info
 
-http   = Http()
 common = Common()
+http   = Http(proxy_uri=common.proxy_uri)
 
 def encode_request(headers, **kwargs):
     if hasattr(headers, 'items'):
@@ -860,7 +887,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
 
 def paasproxy_application(sock, address, rfile, method, path, version, headers, server, ls={'setuplock':LockType()}):
     if 'setup' not in ls:
-        if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
+        if not common.PROXY_ENABLE:
             logging.info('resolve common.PAAS_FETCHHOST domian=%r to iplist', common.PAAS_FETCHHOST)
             with ls['setuplock']:
                 paas_fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(common.PAAS_FETCHHOST, 80)]
