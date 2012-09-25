@@ -471,7 +471,7 @@ class Http(object):
             need_return = True
         if 'Set-Cookie' in headers:
             headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', headers['Set-Cookie'])
-        write('HTTP/1.1 %s\r\n%s\r\n' % (code, ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems())))
+        write('HTTP/1.1 %s\r\n%s\r\n' % (code, ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k != 'Transfer-Encoding')))
         if need_return:
             return output.getvalue()
 
@@ -501,7 +501,6 @@ class Http(object):
                 line = rfile.readline(8192)
                 if not line:
                     break
-                write(line)
                 if line == '\r\n':
                     continue
                 count = int(line , 16)
@@ -890,11 +889,11 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
             logging.info('resolve common.PAAS_FETCHHOST domian=%r to iplist', common.PAAS_FETCHHOST)
             with ls['setuplock']:
                 paas_fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(common.PAAS_FETCHHOST, 80)]
-                if len(common.paas_fethhost_iplist) == 0:
+                if len(paas_fethhost_iplist) == 0:
                     logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                     sys.exit(-1)
-                http.dns[common.PAAS_FETCHHOST] = paas_fethhost_iplist
-                logging.info('resolve common.PAAS_FETCHHOST domian to iplist=%r', common.PAAS_FETCHHOST)
+                http.dns[common.PAAS_FETCHHOST] = set(paas_fethhost_iplist)
+                logging.info('resolve common.PAAS_FETCHHOST domian to iplist=%r', paas_fethhost_iplist)
         ls['setup'] = True
 
     if common.USERAGENT_ENABLE:
@@ -902,6 +901,8 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
 
     remote_addr, remote_port = address
 
+    __realsock = None
+    __realrfile = None
     if method == 'CONNECT':
         host, _, port = path.rpartition(':')
         port = int(port)
@@ -924,17 +925,13 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
     if path[0] == '/' and host:
         path = 'http://%s%s' % (host, path)
 
-    logging.info('%s:%s - "%s %s HTTP/1.1" - -' % (remote_addr, remote_port, method, path))
     try:
-        request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.GAE_FETCHHOST, password=common.GAE_PASSWORD, fetchmaxsize=common.GAE_RANGESIZE)
+        request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.PAAS_FETCHHOST, password=common.PAAS_PASSWORD)
         try:
-            code, response_headers, response_rfile = http.request(request_method, common.GAE_FETCHSERVER, data=request_payload or None, headers=request_headers)
+            code, response_headers, response_rfile = http.request(request_method, common.PAAS_FETCHSERVER, data=request_payload or None, headers=request_headers)
+            logging.info('%s:%s - "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
         except socket.error as e:
-            if e.reason[0] in (11004, 10051, 10060, 'timed out', 10054):
-                # connection reset or timeout, switch to https
-                common.GOOGLE_MODE = 'https'
-                common.build_gae_fetchserver()
-            else:
+            if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
                 raise
         except Exception as e:
             logging.exception('error: %s', e)
@@ -952,6 +949,13 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
         # Connection closed before proxy return
         if e[0] not in (10053, errno.EPIPE):
             raise
+    finally:
+        rfile.close()
+        sock.close()
+        if __realrfile:
+            __realrfile.close()
+        if __realsock:
+            __realsock.close()
 
 def socks5proxy_application(sock, address, rfile, method, path, version, headers, server, ls={'setuplock':LockType()}):
     if 'setup' not in ls:
