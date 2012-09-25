@@ -231,32 +231,20 @@ class Http(object):
     """Http Request Class"""
 
     protocol_version = 'HTTP/1.1'
+    spawn_later = gevent.spawn_later
 
-    @staticmethod
-    def spawn_later_by_threading(seconds, target, *args, **kwargs):
-        import time, threading
-        def wrap_target(*args, **kwargs):
-            time.sleep(seconds)
-            target(*args, **kwargs)
-        t = threading.Thread(target=wrap_target, args=args, kwargs=kwargs)
-        t.setDaemon(True)
-        t.start()
-
-    def __init__(self, max_window=64, max_retry=2, max_timeout=30, spawn_later=None):
+    def __init__(self, min_window=3, max_window=64, max_retry=2, max_timeout=30, spawn_later=None):
+        self.min_window = min_window
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
-        self.window = 4
+        self.window = min_window
+        self.window_ack = 0
         self.timeout = max_timeout // 2
         self.dns = collections.defaultdict(set)
         self.crlf = 0
         if spawn_later is not None:
             self.spawn_later = spawn_later
-        else:
-            if 'gevent.monkey' in sys.modules:
-                self.spawn_later = gevent.spawn_later
-            else:
-                self.spawn_later = self.__class__.spawn_later_by_threading
 
     def dns_resolve(self, host, dnsservers=[]):
         iplist = self.dns[host]
@@ -274,11 +262,10 @@ class Http(object):
             try:
                 iplist = self.dns_resolve(host)
                 window = self.window
-                if len(iplist) > window:
-                    iplist = random.sample(iplist, window)
+                ips = iplist if len(iplist) <= window else random.sample(iplist, window)
                 sock  = None
                 socks = []
-                for ip in iplist:
+                for ip in ips:
                     sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
                     sock.setblocking(0)
                     sock.connect_ex((ip, port))
@@ -287,9 +274,23 @@ class Http(object):
                 if outs:
                     sock = outs.pop(0)
                     sock.setblocking(1)
+                    if window > self.min_window:
+                        self.window_ack += 1
+                        if self.window_ack > 10:
+                            self.window_ack = 0
+                            self.window = window - 1
+                            logging.info('Http.create_connection to (%s, %r) successed, switch window=%r', iplist, port, self.window)
                     socks.remove(sock)
                     self.spawn_later(0.5, lambda ss:any(x.close() for x in ss), socks)
                     return sock
+                else:
+                    self.window = int(1.5 * self.window)
+                    if self.window > self.max_window:
+                        self.window = self.max_window
+                    if self.window > len(iplist):
+                        self.window = len(iplist)
+                    self.window_ack = 0
+                    logging.error('Http.create_connection to (%s, %r) failed, switch window=%r', ips, port, self.window)
             except Exception as e:
                 logging.error('%s', e)
 
