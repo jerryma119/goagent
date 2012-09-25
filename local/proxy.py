@@ -492,7 +492,6 @@ class Http(object):
                     write(rfile.read(count))
         else:
             pass
-        rfile.close()
         if need_return:
             return output.getvalue()
 
@@ -656,6 +655,7 @@ def rangefetch(wfile, response_headers, response_rfile, method, url, headers, pa
     logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', url, start, end)
     http.copy_response(response_status, response_headers, wfile.write)
     http.copy_body(response_rfile, response_headers, wfile.write)
+    response_rfile.close()
 
     current_length = end+1
     content_length = length
@@ -677,9 +677,11 @@ def rangefetch(wfile, response_headers, response_rfile, method, url, headers, pa
             elif 300 <= code < 400:
                 url = response_headers['Location']
                 logging.info('Range Fetch Redirect(%r)', url)
+                response_rfile.close()
                 continue
             else:
                 logging.error('Range Fetch %r return %s', url, code)
+                response_rfile.close()
                 time.sleep(5)
                 continue
 
@@ -785,6 +787,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             wfile = sock.makefile('wb', 0)
             http.copy_response(response_code, response_headers, wfile.write)
             http.copy_body(response_rfile, response_headers, wfile.write)
+            response_rfile.close()
         except socket.error as e:
             if e[0] not in (10053, errno.EPIPE):
                 raise
@@ -830,6 +833,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
                 logging.info('%s:%s - "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
                 http.copy_response(code, response_headers, wfile.write)
                 http.copy_body(response_rfile, response_headers, wfile.write)
+                response_rfile.close()
                 return
 
             response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
@@ -841,6 +845,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
                 return
             http.copy_response(code, response_headers, wfile.write)
             http.copy_body(response_rfile, response_headers, wfile.write)
+            response_rfile.close()
         except socket.error as e:
             # Connection closed before proxy return
             if e[0] not in (10053, errno.EPIPE):
@@ -915,6 +920,7 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
         wfile = sock.makefile('wb', 0)
         http.copy_response(code, response_headers, wfile.write)
         http.copy_body(response_rfile, response_headers, wfile.write)
+        response_rfile.close()
 
     except socket.error as e:
         # Connection closed before proxy return
