@@ -660,53 +660,63 @@ def rangefetch(wfile, response_headers, response_rfile, method, url, headers, pa
             response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, length-1, length)
             response_headers['Content-Length'] = str(length-start)
 
+    def _download_greenlet(data_queue, method, url, headers, payload, rangesize, fetchhost, fetchserver, password, current_length, content_length):
+        logging.info('>>>>>>>>>>>>>>> Range Fetch next(%r) %d-%d', url, current_length, content_length)
+        while current_length < content_length:
+            headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+rangesize-1, content_length-1))
+            retry = 8
+            while retry > 0:
+                request_method, request_headers, request_payload = pack_request(method, url, headers, payload, fetchhost, password=password)
+                code, response_headers, response_rfile = http.request(request_method, fetchserver, request_payload, request_headers)
+                if 'Set-Cookie' not in response_headers:
+                    logging.error('Range Fetch %r return %s', url, code)
+                    time.sleep(5)
+                    continue
+                response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
+                code = int(response_kwargs['status'])
+                if 200 <= code < 300:
+                    break
+                elif 300 <= code < 400:
+                    url = response_headers['Location']
+                    logging.info('Range Fetch Redirect(%r)', url)
+                    response_rfile.close()
+                    continue
+                else:
+                    logging.error('Range Fetch %r return %s', url, code)
+                    response_rfile.close()
+                    time.sleep(5)
+                    continue
+
+            content_range = response_headers.get('Content-Range')
+            if not content_range:
+                logging.error('Range Fetch "%s %s" failed: response_kwargs=%s response_headers=%s', method, url, response_kwargs, response_headers)
+                return
+
+            logging.info('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
+            while 1:
+                data = response_rfile.read(8192)
+                if not data or current_length >= content_length:
+                    response_rfile.close()
+                    break
+                current_length += len(data)
+                data_queue.put(data)
+        data_queue.put(StopIteration)
+        logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', url)
+
+    download_dataqueue = gevent.queue.Queue()
+    downloader = gevent.spawn_later(1, _download_greenlet, download_dataqueue, method, url, headers, payload, rangesize, fetchhost, fetchserver, password, end+1, length)
+
     logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', url, start, end)
     http.copy_response(response_status, response_headers, wfile.write)
     http.copy_body(response_rfile, response_headers, wfile.write)
     response_rfile.close()
 
-    current_length = end+1
-    content_length = length
-    logging.info('>>>>>>>>>>>>>>> Range Fetch next(%r) %d-%d', url, current_length, content_length)
-    while current_length < content_length:
-        headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+rangesize-1, content_length-1))
-        retry = 8
-        while retry > 0:
-            request_method, request_headers, request_payload = pack_request(method, url, headers, payload, fetchhost, password=password)
-            code, response_headers, response_rfile = http.request(request_method, fetchserver, request_payload, request_headers)
-            if 'Set-Cookie' not in response_headers:
-                logging.error('Range Fetch %r return %s', url, code)
-                time.sleep(5)
-                continue
-            response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
-            code = int(response_kwargs['status'])
-            if 200 <= code < 300:
-                break
-            elif 300 <= code < 400:
-                url = response_headers['Location']
-                logging.info('Range Fetch Redirect(%r)', url)
-                response_rfile.close()
-                continue
-            else:
-                logging.error('Range Fetch %r return %s', url, code)
-                response_rfile.close()
-                time.sleep(5)
-                continue
-
-        content_range = response_headers.get('Content-Range')
-        if not content_range:
-            logging.error('Range Fetch "%s %s" failed: response_kwargs=%s response_headers=%s', method, url, response_kwargs, response_headers)
-            return
-
-        logging.info('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
-        while 1:
-            data = response_rfile.read(8192)
-            if not data or current_length >= content_length:
-                response_rfile.close()
-                break
-            current_length += len(data)
-            wfile.write(data)
-    logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', url)
+    while 1:
+        data = download_dataqueue.get()
+        if data is StopIteration:
+            break
+        wfile.write(data)
+    wfile.close()
 
 def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
     rfile = sock.makefile('rb', 8192)
