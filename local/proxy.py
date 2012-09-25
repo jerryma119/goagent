@@ -492,6 +492,7 @@ class Http(object):
                     write(rfile.read(count))
         else:
             pass
+        rfile.close()
         if need_return:
             return output.getvalue()
 
