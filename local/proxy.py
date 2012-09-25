@@ -385,25 +385,9 @@ class Http(object):
             output = cStringIO.StringIO()
             write = output.write
             need_return = True
-        write('HTTP/1.1 %s\r\n' % code)
-        for keyword, value in headers.iteritems():
-            if keyword != 'Set-Cookie':
-                write('%s: %s\r\n' % (keyword, value))
-            else:
-                scs = value.split(', ')
-                cookies = []
-                i = -1
-                for sc in scs:
-                    if re.match(r'[^ =]+ ', sc):
-                        try:
-                            cookies[i] = '%s, %s' % (cookies[i], sc)
-                        except IndexError:
-                            pass
-                    else:
-                        cookies.append(sc)
-                        i += 1
-                write(''.join('Set-Cookie: %s\r\n' % x for x in cookies))
-        write('\r\n')
+        if 'Set-Cookie' in headers:
+            headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', headers['Set-Cookie'])
+        write('HTTP/1.1 %s\r\n%s\r\n' % (code, ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems())))
         if need_return:
             return output.getvalue()
 
