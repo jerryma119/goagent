@@ -710,7 +710,12 @@ def rangefetch(wfile, response_headers, response_rfile, method, url, headers, pa
 
 def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
     rfile = sock.makefile('rb', 8192)
-    method, path, version, headers = http.parse_request(rfile)
+    try:
+        method, path, version, headers = http.parse_request(rfile)
+    except socket.error as e:
+        if e[0] in ('empty line', 10053, errno.EPIPE):
+            return rfile.close()
+        raise
 
     if 'setup' not in ls:
         if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
@@ -871,7 +876,12 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
 
 def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
     rfile = sock.makefile('rb', 8192)
-    method, path, version, headers = http.parse_request(rfile)
+    try:
+        method, path, version, headers = http.parse_request(rfile)
+    except socket.error as e:
+        if e[0] in ('empty line', 10053, errno.EPIPE):
+            return rfile.close()
+        raise
 
     if 'setup' not in ls:
         if not common.PROXY_ENABLE:
@@ -978,7 +988,12 @@ def socks5proxy_handler(sock, address, ls={'setuplock':LockType()}):
 
 def pacserver_handler(sock, address):
     rfile = sock.makefile('rb', 8192)
-    method, path, version, headers = http.parse_request(rfile)
+    try:
+        method, path, version, headers = http.parse_request(rfile)
+    except socket.error as e:
+        if e[0] in ('empty line', 10053, errno.EPIPE):
+            return rfile.close()
+        raise
 
     wfile = sock.makefile('wb', 0)
     filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
