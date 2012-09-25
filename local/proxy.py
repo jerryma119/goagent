@@ -37,6 +37,7 @@ import collections
 import cStringIO
 import ConfigParser
 import traceback
+import struct
 try:
     import logging
 except ImportError:
@@ -246,14 +247,37 @@ class Http(object):
         if spawn_later is not None:
             self.spawn_later = spawn_later
 
-    def dns_resolve(self, host, dnsservers=[]):
+    def dns_resolve(self, host, dnsserver='', ipv4_only=True):
         iplist = self.dns[host]
         if not iplist:
-            if not dnsservers:
-                iplist.update([x[-1][0] for x in socket.getaddrinfo(host, 80)])
+            if not dnsserver:
+                ips = [x[-1][0] for x in socket.getaddrinfo(host, 80)]
+                iplist.update()
             else:
-                resolver = gevent.resolver_ares.Resolver(servers=dnsservers)
-                iplist.update([x[-1][0] for x in resolver.getaddrinfo(host, 80)])
+                #resolver = gevent.resolver_ares.Resolver(servers=[dnsserver], tcp_port=53)
+                #ips = [x[-1][0] for x in resolver.getaddrinfo(host, 80)]
+                index = os.urandom(2)
+                hoststr = ''.join(chr(len(x))+x for x in host.split('.'))
+                data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, hoststr)
+                data = struct.pack('!H', len(data)) + data
+                address_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
+                sock = None
+                try:
+                    sock = socket.socket(family=address_family)
+                    sock.connect((dnsserver, 53))
+                    sock.sendall(data)
+                    rfile = sock.makefile('rb')
+                    size = struct.unpack('!H', rfile.read(2))[0]
+                    data = rfile.read(size)
+                    ips = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data)]
+                except Exception, e:
+                    raise
+                finally:
+                    if sock:
+                        sock.close()
+            if ipv4_only:
+                ips = [ip for ip in ips if re.match(r'\d+.\d+.\d+.\d+', ip)]
+            iplist.update(ips)
         return iplist
 
     def create_connection(self, (host, port), timeout=None, source_address=None):
@@ -528,7 +552,7 @@ class Common(object):
         if self.CONFIG.has_section('crlf'):
             # XXX, cowork with GoAgentX
             self.CRLF_ENABLE          = self.CONFIG.getint('crlf', 'enable')
-            self.CRLF_DNS             = self.CONFIG.get('crlf', 'dns')
+            self.CRLF_DNSSERVER       = self.CONFIG.get('crlf', 'dns')
             self.CRLF_SITES           = tuple(self.CONFIG.get('crlf', 'sites').split('|'))
         else:
             self.CRLF_ENABLE          = 0
@@ -720,8 +744,10 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             need_direct = True
     elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
         if host not in http.dns:
-            logging.info('crlf dns_resolve(host=%r, dnsserver=%r)', host, common.CRLF_DNS)
-            http.dns[host] = dns_resolve(host, common.CRLF_DNS)
+            logging.info('crlf dns_resolve(host=%r, dnsservers=%r)', host, common.CRLF_DNSSERVER)
+            http.dns[host] = set(http.dns_resolve(host, common.CRLF_DNSSERVER))
+            logging.info('crlf dns_resolve(host=%r) return %s', host, list(http.dns[host]))
+        http.crlf = 1
         need_direct = True
 
     if need_direct:
