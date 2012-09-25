@@ -770,7 +770,12 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
                 logging.exception('ssl.wrap_socket(__realsock=%r) failed: %s', __realsock, e)
                 sock = ssl.wrap_socket(__realsock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
             rfile = sock.makefile('rb', 8192)
-            method, path, version, headers = http.parse_request(rfile)
+            try:
+                method, path, version, headers = http.parse_request(rfile)
+            except socket.error as e:
+                if e[0] in ('empty line', 10053, errno.EPIPE):
+                    return rfile.close()
+                raise
             if path[0] == '/' and host:
                 path = 'https://%s%s' % (headers['Host'], path)
 
@@ -916,7 +921,12 @@ def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
             logging.exception('ssl.wrap_socket(__realsock=%r) failed: %s', __realsock, e)
             sock = ssl.wrap_socket(__realsock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
         rfile = sock.makefile('rb', 8192)
-        method, path, version, headers = http.parse_request(rfile)
+        try:
+            method, path, version, headers = http.parse_request(rfile)
+        except socket.error as e:
+            if e[0] in ('empty line', 10053, errno.EPIPE):
+                return rfile.close()
+            raise
         if path[0] == '/' and host:
             path = 'https://%s%s' % (headers['Host'], path)
 
