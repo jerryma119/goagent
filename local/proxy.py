@@ -613,24 +613,24 @@ class Common(object):
     def info(self):
         info = ''
         info += '------------------------------------------------------\n'
-        info += 'GoAgent Version   : %s (python/%s gevent/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], gevent.__version__, (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
-        info += 'Listen Address    : %s:%d\n' % (self.LISTEN_IP,self.LISTEN_PORT)
-        info += 'Local Proxy       : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
-        info += 'Debug Level       : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
-        info += 'GAE Mode          : %s\n' % self.GOOGLE_MODE
-        info += 'GAE Profile       : %s\n' % self.GAE_PROFILE
-        info += 'GAE APPID         : %s\n' % '|'.join(self.GAE_APPIDS)
+        info += 'GoAgent Version    : %s (python/%s gevent/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], gevent.__version__, (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
+        info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP,self.LISTEN_PORT)
+        info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
+        info += 'Debug Level        : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
+        info += 'GAE Mode           : %s\n' % self.GOOGLE_MODE
+        info += 'GAE Profile        : %s\n' % self.GAE_PROFILE
+        info += 'GAE APPID          : %s\n' % '|'.join(self.GAE_APPIDS)
         if common.PAAS_ENABLE:
-            info += 'PAAS Listen       : %s\n' % common.PAAS_LISTEN
-            info += 'PAAS FetchServer  : %s\n' % common.PAAS_FETCHSERVER
+            info += 'PAAS Listen        : %s\n' % common.PAAS_LISTEN
+            info += 'PAAS FetchServer   : %s\n' % common.PAAS_FETCHSERVER
         if common.SOCKS5_ENABLE:
-            info += 'SOCKS5 Listen      : %s\n' % common.PAAS_LISTEN
+            info += 'SOCKS5 Listen      : %s\n' % common.SOCKS5_LISTEN
             info += 'SOCKS5 FetchServer : %s\n' % common.SOCKS5_FETCHSERVER
         if common.PAC_ENABLE:
-            info += 'Pac Server        : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
+            info += 'Pac Server         : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
         if common.CRLF_ENABLE:
             #http://www.acunetix.com/websitesecurity/crlf-injection.htm
-            info += 'CRLF Injection    : %s\n' % '|'.join(self.CRLF_SITES)
+            info += 'CRLF Injection     : %s\n' % '|'.join(self.CRLF_SITES)
         info += '------------------------------------------------------\n'
         return info
 
@@ -754,7 +754,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
         host, _, port = path.rpartition(':')
         port = int(port)
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            logging.info('%s:%s - "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
+            logging.info('%s:%s "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
             http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems())
             if not common.PROXY_ENABLE:
                 remote = http.create_connection((host, port), 8)
@@ -769,7 +769,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             return
         else:
             keyfile, certfile = CertUtil.get_cert(host)
-            logging.info('%s:%s - "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
+            logging.info('%s:%s "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
             sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
             __realsock = sock
             __realrfile = rfile
@@ -805,7 +805,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
 
     if need_direct:
         try:
-            logging.info('%s:%s - "%s %s HTTP/1.1" - -' % (remote_addr, remote_port, method, path))
+            logging.info('%s:%s "%s %s HTTP/1.1" - -' % (remote_addr, remote_port, method, path))
             content_length = int(headers.get('Content-Length', 0))
             payload = rfile.read(content_length) if content_length else None
             response_code, response_headers, response_rfile = http.request(method, path, payload, headers)
@@ -855,7 +855,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
             wfile = sock.makefile('wb', 0)
 
             if 'Set-Cookie' not in response_headers:
-                logging.info('%s:%s - "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
+                logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
                 http.copy_response(code, response_headers, wfile.write)
                 http.copy_body(response_rfile, response_headers, wfile.write)
                 response_rfile.close()
@@ -863,7 +863,7 @@ def gaeproxy_application(sock, address, rfile, method, path, version, headers, s
 
             response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
             code = int(response_kwargs['status'])
-            logging.info('%s:%s - "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
+            logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
 
             if code == 206:
                 rangefetch(wfile, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_RANGESIZE, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD)
@@ -907,7 +907,7 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
         host, _, port = path.rpartition(':')
         port = int(port)
         keyfile, certfile = CertUtil.get_cert(host)
-        logging.info('%s:%s - "%s:%d HTTP/1.1" - -' % (address[0], address[1], host, port))
+        logging.info('%s:%s "%s:%d HTTP/1.1" - -' % (address[0], address[1], host, port))
         sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
         __realsock = sock
         __realrfile = rfile
@@ -929,7 +929,7 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
         request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.PAAS_FETCHHOST, password=common.PAAS_PASSWORD)
         try:
             code, response_headers, response_rfile = http.request(request_method, common.PAAS_FETCHSERVER, data=request_payload or None, headers=request_headers)
-            logging.info('%s:%s - "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
+            logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
         except socket.error as e:
             if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
                 raise
@@ -957,21 +957,35 @@ def paasproxy_application(sock, address, rfile, method, path, version, headers, 
         if __realsock:
             __realsock.close()
 
-def socks5proxy_application(sock, address, rfile, method, path, version, headers, server, ls={'setuplock':LockType()}):
+def socks5proxy_application(sock, address, ls={'setuplock':LockType()}):
     if 'setup' not in ls:
-        if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
-            socks5_fetchhost = urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc
+        if not common.PROXY_ENABLE:
+            socks5_fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
             logging.info('resolve common.SOCKS5_FETCHSERVER domian=%r to iplist', socks5_fetchhost)
             with ls['setuplock']:
                 socks5_fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(socks5_fetchhost, 80)]
                 if len(socks5_fethhost_iplist) == 0:
                     logging.error('resolve %s domian return empty! please use ip list to replace domain list!', socks5_fetchhost)
                     sys.exit(-1)
-                http.dns[socks5_fetchhost] = socks5_fethhost_iplist
-                logging.info('resolve common.PAAS_FETCHHOST domian to iplist=%r', common.PAAS_FETCHHOST)
+                http.dns[socks5_fetchhost] = set(socks5_fethhost_iplist)
+                logging.info('resolve common.PAAS_FETCHHOST domian to iplist=%r', socks5_fethhost_iplist)
         ls['setup'] = True
 
-    #TODO
+    remote_addr, remote_port = address
+    method = 'POST'
+    logging.info('%s:%s "%s %s SOCKS/5" - -' % (remote_addr, remote_port, method, common.SOCKS5_FETCHSERVER))
+    scheme, netloc, path, params, query, fragment = urlparse.urlparse(common.SOCKS5_FETCHSERVER)
+    if re.search(r':\d+$', netloc):
+        host, _, port = netloc.rpartition(':')
+        port = int(port)
+    else:
+        host = netloc
+        port = {'https':443,'http':80}.get(scheme, 80)
+    remote = socket.create_connection((host, port))
+    if scheme == 'https':
+        remote = ssl.wrap_socket(remote)
+    remote.sendall('%s /socks5 HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n' % (method, host))
+    http.forward_socket(sock, remote)
 
 def pacserver_application(sock, address, rfile, method, path, version, headers, server):
     wfile = sock.makefile('wb', 0)
@@ -1035,7 +1049,7 @@ def main():
         server.start()
 
     if common.SOCKS5_ENABLE:
-        server = SimpleHTTPServer(common.SOCKS5_LISTEN, socks5proxy_application)
+        server = gevent.server.StreamServer(common.SOCKS5_LISTEN, socks5proxy_application)
         server.start()
 
     if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
