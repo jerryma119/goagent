@@ -6,7 +6,20 @@
 __version__ = '2.0.6'
 __password__ = ''
 
-import sys, os, re, time, struct, zlib, binascii, logging, httplib, urlparse, base64, cStringIO, wsgiref.headers
+import sys
+import os
+import re
+import time
+import struct
+import zlib
+import binascii
+import logging
+import httplib
+import urlparse
+import base64
+import cStringIO
+import hashlib
+import errno
 try:
     from google.appengine.api import urlfetch
     from google.appengine.runtime import apiproxy_errors
@@ -177,59 +190,73 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
-def paas_socks5(environ, start_response):
-    transtable = ''.join(chr(x%256) for x in xrange(-128, 128))
-    wsgi_input = environ['wsgi.input']
-    sock = None
-    rfile = None
-    wfile = None
-    if hasattr(wsgi_input, 'rfile'):
-        sock = wsgi_input.rfile._sock
-        rfile = wsgi_input.rfile
-    elif hasattr(wsgi_input, '_sock'):
-        sock = wsgi_input._sock
-    elif hasattr(wsgi_input, 'fileno'):
-        sock = socket.fromfd(wsgi_input.fileno())
-    if not sock:
-        raise RuntimeError('cannot extract socket from wsgi_input=%r' % wsgi_input)
-    # 1. Version
-    if not rfile:
-        rfile = sock.makefile('rb', -1)
-    if not wfile:
-        wfile = sock.makefile('wb', 0)
-
-    rfile_read  = lambda x:rfile.read(x).translate(transtable)
-    wfile_write = lambda x:wfile.write(x.translate(transtable))
-
-    rfile_read(ord(rfile_read(2)[-1]))
-    wfile_write(b'\x05\x00');
-    # 2. Request
-    data = rfile_read(4)
-    mode = ord(data[1])
-    addrtype = ord(data[3])
-    if addrtype == 1:       # IPv4
-        addr = socket.inet_ntoa(rfile_read(4))
-    elif addrtype == 3:     # Domain name
-        addr = rfile_read(ord(rfile_read(1)[0]))
-    port = struct.unpack('>H',rfile_read(2))
-    reply = b'\x05\x00\x00\x01'
+def socks5_handler(sock, address):
+    bufsize = 8192
+    rfile = sock.makefile('rb', bufsize)
+    wfile = sock.makefile('wb', 0)
+    remote_addr, remote_port = address
+    MessageClass = dict
     try:
-        logging.info('paas_socks5 mode=%r', mode)
-        if mode == 1:  # 1. TCP Connect
-            remote = socket.create_connection((addr, port[0]))
-            logging.info('TCP Connect to %s:%s', addr, port[0])
-            local = remote.getsockname()
-            reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
-        else:
-            reply = b'\x05\x07\x00\x01' # Command not supported
-    except socket.error:
-        # Connection refused
-        reply = '\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
-    wfile_write(reply)
-    # 3. Transfering
-    if reply[1] == '\x00':  # Success
-        if mode == 1:    # 1. Tcp connect
-            socket_forward(sock, remote, trans=transtable)
+        line = rfile.readline(bufsize)
+        if not line:
+            raise socket.error('empty line')
+        method, path, version = line.rstrip().split(' ', 2)
+        headers = MessageClass()
+        while 1:
+            line = rfile.readline(bufsize)
+            if not line or line == '\r\n':
+                break
+            keyword, _, value = line.partition(':')
+            keyword = keyword.title()
+            value = value.strip()
+            headers[keyword] = value
+        logging.info('%s:%s "%s %s %s" - -', remote_addr, remote_port, method, path, version)
+        if headers.get('Connection', '').lower() != 'upgrade':
+            logging.error('%s:%s Connection(%s) != "upgrade"', remote_addr, remote_port, headers.get('Connection'))
+            return
+
+        #wfile.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n')
+
+        transtable = ''.join(chr(x%256) for x in xrange(-128, 128))
+        rfile_read  = lambda x:rfile.read(x).translate(transtable)
+        wfile_write = lambda x:wfile.write(x.translate(transtable))
+
+        rfile_read(ord(rfile_read(2)[-1]))
+        wfile_write(b'\x05\x00');
+        # 2. Request
+        data = rfile_read(4)
+        mode = ord(data[1])
+        addrtype = ord(data[3])
+        if addrtype == 1:       # IPv4
+            addr = socket.inet_ntoa(rfile_read(4))
+        elif addrtype == 3:     # Domain name
+            addr = rfile_read(ord(rfile_read(1)[0]))
+        port = struct.unpack('>H',rfile_read(2))
+        reply = b'\x05\x00\x00\x01'
+        try:
+            logging.info('%s:%s socks5 mode=%r', remote_addr, remote_port, mode)
+            if mode == 1:  # 1. TCP Connect
+                remote = socket.create_connection((addr, port[0]))
+                logging.info('%s:%s TCP Connect to %s:%s', remote_addr, remote_port, addr, port[0])
+                local = remote.getsockname()
+                reply += socket.inet_aton(local[0]) + struct.pack(">H", local[1])
+            else:
+                reply = b'\x05\x07\x00\x01' # Command not supported
+        except socket.error:
+            # Connection refused
+            reply = '\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
+        wfile_write(reply)
+        # 3. Transfering
+        if reply[1] == '\x00':  # Success
+            if mode == 1:    # 1. Tcp connect
+                socket_forward(sock, remote, trans=transtable)
+    except socket.error as e:
+        if e[0] not in (10053, errno.EPIPE, 'empty line'):
+            raise
+    finally:
+        rfile.close()
+        wfile.close()
+        sock.close()
 
 def send_response(start_response, status, headers, content, content_type='image/gif'):
     headers['Content-Length'] = str(len(content))
@@ -452,10 +479,7 @@ def app(environ, start_response):
         else:
             return gae_post(environ, start_response)
     elif not urlfetch:
-        if environ['PATH_INFO'] == '/socks5':
-            return paas_socks5(environ, start_response)
-        else:
-            return paas_application(environ, start_response)
+        return paas_application(environ, start_response)
     else:
         return gae_get(environ, start_response)
 
@@ -463,14 +487,9 @@ application = app if sae is None else sae.create_wsgi_app(app)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    import gevent, gevent.pywsgi, gevent.monkey
+    import gevent, gevent.server, gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
-    def read_requestline(self):
-        line = self.rfile.readline(8192)
-        while line == '\r\n':
-            line = self.rfile.readline(8192)
-        return line
-    gevent.pywsgi.WSGIHandler.read_requestline = read_requestline
+
     host = '0.0.0.0'
     try:
         port = int((x for x in sys.argv[1:] if re.match(r'\d+', x)).next())
@@ -484,10 +503,9 @@ if __name__ == '__main__':
         ssl_args = dict(certfile=certfile)
     else:
         ssl_args = dict()
-    server = gevent.pywsgi.WSGIServer((host, int(port)), application, log=None, **ssl_args)
-    server.environ.pop('SERVER_SOFTWARE')
-    logging.info('serving %s://%s:%s/wsgi.py', 'https' if ssl_args else 'http', server.address[0] or '0.0.0.0', server.address[1])
-    server.serve_forever()
 
+    server = gevent.server.StreamServer((host, int(port)), socks5_handler, **ssl_args)
+    logging.info('serving %s://%s:%s/', 'https' if ssl_args else 'http', server.address[0] or '0.0.0.0', server.address[1])
+    server.serve_forever()
 
 

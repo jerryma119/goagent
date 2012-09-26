@@ -334,7 +334,7 @@ class Http(object):
             except Exception as e:
                 logging.error('%s', e)
 
-    def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None):
+    def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, trans=''):
         try:
             timecount = timeout
             while 1:
@@ -347,6 +347,8 @@ class Http(object):
                 if ins:
                     for sock in ins:
                         data = sock.recv(bufsize)
+                        if trans:
+                            data = data.translate(trans)
                         if data:
                             if sock is local:
                                 remote.sendall(data)
@@ -678,8 +680,7 @@ def rangefetch(wfile, response_headers, response_rfile, method, url, headers, pa
     logging.info('>>>>>>>>>>>>>>> Range Fetch next(%r) %d-%d', url, current_length, content_length)
     while current_length < content_length:
         headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+rangesize-1, content_length-1))
-        retry = 8
-        while retry > 0:
+        for i in xrange(8):
             request_method, request_headers, request_payload = pack_request(method, url, headers, payload, fetchhost, password=password)
             code, response_headers, response_rfile = http.request(request_method, fetchserver, request_payload, request_headers)
             if 'Set-Cookie' not in response_headers:
@@ -1004,8 +1005,7 @@ def socks5proxy_handler(sock, address, ls={'setuplock':LockType()}):
         ls['setup'] = True
 
     remote_addr, remote_port = address
-    method = 'POST'
-    logging.info('%s:%s "%s %s SOCKS/5" - -' % (remote_addr, remote_port, method, common.SOCKS5_FETCHSERVER))
+    logging.info('%s:%s "GET %s SOCKS/5" - -' % (remote_addr, remote_port, common.SOCKS5_FETCHSERVER))
     scheme, netloc, path, params, query, fragment = urlparse.urlparse(common.SOCKS5_FETCHSERVER)
     if re.search(r':\d+$', netloc):
         host, _, port = netloc.rpartition(':')
@@ -1018,45 +1018,9 @@ def socks5proxy_handler(sock, address, ls={'setuplock':LockType()}):
     remote = socket.create_connection((host, port))
     if scheme == 'https':
         remote = ssl.wrap_socket(remote)
-    remote.sendall('%s /socks5 HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n' % (method, host))
-
-    local   = sock
-    remote  = remote
-    timeout = 60
-    tick    = 2
-    bufsize = 8192
-    maxping = None
-    maxpong = None
+    remote.sendall('GET /? HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\n\r\n' % host)
     transtable = ''.join(chr(x%256) for x in xrange(-128, 128))
-    try:
-        timecount = timeout
-        while 1:
-            timecount -= tick
-            if timecount <= 0:
-                break
-            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
-            if errors:
-                break
-            if ins:
-                for sock in ins:
-                    data = sock.recv(bufsize)
-                    if transtable:
-                        data = data.translate(transtable)
-                    if data:
-                        if sock is local:
-                            remote.sendall(data)
-                            timecount = maxping or timeout
-                        else:
-                            local.sendall(data)
-                            timecount = maxpong or timeout
-                    else:
-                        return
-    except socket.error as e:
-        if e[0] not in (10053, 10054, errno.EPIPE):
-            raise
-    finally:
-        local.close()
-        remote.close()
+    http.forward_socket(sock, remote, trans=transtable)
 
 def pacserver_handler(sock, address):
     rfile = sock.makefile('rb', 8192)
