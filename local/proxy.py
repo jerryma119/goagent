@@ -998,7 +998,8 @@ def socks5proxy_handler(sock, address, ls={'setuplock':LockType()}):
                 if len(socks5_fethhost_iplist) == 0:
                     logging.error('resolve %s domian return empty! please use ip list to replace domain list!', socks5_fetchhost)
                     sys.exit(-1)
-                http.dns[socks5_fetchhost] = set(socks5_fethhost_iplist)
+                ls['dns'] = collections.defaultdict(list)
+                ls['dns'][socks5_fetchhost] = list(set(socks5_fethhost_iplist))
                 logging.info('resolve common.PAAS_FETCHHOST domian to iplist=%r', socks5_fethhost_iplist)
         ls['setup'] = True
 
@@ -1012,11 +1013,50 @@ def socks5proxy_handler(sock, address, ls={'setuplock':LockType()}):
     else:
         host = netloc
         port = {'https':443,'http':80}.get(scheme, 80)
+    if host in ls['dns']:
+        host = random.choice(ls['dns'][host])
     remote = socket.create_connection((host, port))
     if scheme == 'https':
         remote = ssl.wrap_socket(remote)
     remote.sendall('%s /socks5 HTTP/1.1\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n' % (method, host))
-    http.forward_socket(sock, remote)
+
+    local   = sock
+    remote  = remote
+    timeout = 60
+    tick    = 2
+    bufsize = 8192
+    maxping = None
+    maxpong = None
+    transtable = ''.join(chr(x%256) for x in xrange(-128, 128))
+    try:
+        timecount = timeout
+        while 1:
+            timecount -= tick
+            if timecount <= 0:
+                break
+            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
+            if errors:
+                break
+            if ins:
+                for sock in ins:
+                    data = sock.recv(bufsize)
+                    if transtable:
+                        data = data.translate(transtable)
+                    if data:
+                        if sock is local:
+                            remote.sendall(data)
+                            timecount = maxping or timeout
+                        else:
+                            local.sendall(data)
+                            timecount = maxpong or timeout
+                    else:
+                        return
+    except socket.error as e:
+        if e[0] not in (10053, 10054, errno.EPIPE):
+            raise
+    finally:
+        local.close()
+        remote.close()
 
 def pacserver_handler(sock, address):
     rfile = sock.makefile('rb', 8192)

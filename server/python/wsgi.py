@@ -138,7 +138,7 @@ def paas_application(environ, start_response):
         except httplib.HTTPException as e:
             raise
 
-def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None):
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, trans=None):
     timecount = timeout
     try:
         while 1:
@@ -151,6 +151,8 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
             if ins:
                 for sock in ins:
                     data = sock.recv(bufsize)
+                    if trans:
+                        data = data.translate(trans)
                     if data:
                         if sock is local:
                             remote.sendall(data)
@@ -176,9 +178,11 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
             idlecall()
 
 def paas_socks5(environ, start_response):
+    transtable = ''.join(chr(x%256) for x in xrange(-128, 128))
     wsgi_input = environ['wsgi.input']
     sock = None
     rfile = None
+    wfile = None
     if hasattr(wsgi_input, 'rfile'):
         sock = wsgi_input.rfile._sock
         rfile = wsgi_input.rfile
@@ -191,17 +195,23 @@ def paas_socks5(environ, start_response):
     # 1. Version
     if not rfile:
         rfile = sock.makefile('rb', -1)
-    rfile.read(ord(rfile.read(2)[-1]))
-    sock.send(b'\x05\x00');
+    if not wfile:
+        wfile = sock.makefile('wb', 0)
+
+    rfile_read  = lambda x:rfile.read(x).translate(transtable)
+    wfile_write = lambda x:wfile.write(x.translate(transtable))
+
+    rfile_read(ord(rfile_read(2)[-1]))
+    wfile_write(b'\x05\x00');
     # 2. Request
-    data = rfile.read(4)
+    data = rfile_read(4)
     mode = ord(data[1])
     addrtype = ord(data[3])
     if addrtype == 1:       # IPv4
-        addr = socket.inet_ntoa(rfile.read(4))
+        addr = socket.inet_ntoa(rfile_read(4))
     elif addrtype == 3:     # Domain name
-        addr = rfile.read(ord(sock.recv(1)[0]))
-    port = struct.unpack('>H', rfile.read(2))
+        addr = rfile_read(ord(rfile_read(1)[0]))
+    port = struct.unpack('>H',rfile_read(2))
     reply = b'\x05\x00\x00\x01'
     try:
         logging.info('paas_socks5 mode=%r', mode)
@@ -215,11 +225,11 @@ def paas_socks5(environ, start_response):
     except socket.error:
         # Connection refused
         reply = '\x05\x05\x00\x01\x00\x00\x00\x00\x00\x00'
-    sock.send(reply)
+    wfile_write(reply)
     # 3. Transfering
     if reply[1] == '\x00':  # Success
         if mode == 1:    # 1. Tcp connect
-            socket_forward(sock, remote)
+            socket_forward(sock, remote, trans=transtable)
 
 def send_response(start_response, status, headers, content, content_type='image/gif'):
     headers['Content-Length'] = str(len(content))
@@ -461,7 +471,11 @@ if __name__ == '__main__':
             line = self.rfile.readline(8192)
         return line
     gevent.pywsgi.WSGIHandler.read_requestline = read_requestline
-    host, _, port = sys.argv[1].rpartition(':') if len(sys.argv) == 2 else ('', ':', 443)
+    host = '0.0.0.0'
+    try:
+        port = int((x for x in sys.argv[1:] if re.match(r'\d+', x)).next())
+    except:
+        port = 23
     if '-ssl' in sys.argv[1:]:
         ssl_args = dict(certfile=os.path.splitext(__file__)[0]+'.pem')
     else:
