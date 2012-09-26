@@ -514,7 +514,6 @@ class Common(object):
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
         self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
-        self.GAE_RANGESIZE        = self.CONFIG.getint('gae', 'rangesize') if self.CONFIG.has_option('gae', 'rangesize') else 4194304
         self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
@@ -559,6 +558,12 @@ class Common(object):
         self.GOOGLE_SITES         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|'))
         self.GOOGLE_FORCEHTTPS    = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|'))
         self.GOOGLE_WITHGAE       = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'withgae').split('|'))
+
+        self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
+        self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
+        self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
+        self.AUTORANGE_WAITSIZE   = self.CONFIG.getint('autorange', 'waitsize')
+        self.AUTORANGE_BUFSIZE    = self.CONFIG.getint('autorange', 'bufsize')
 
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
@@ -647,7 +652,10 @@ def pack_request(method, url, headers, payload, fetchhost, **kwargs):
         payload = payload.read(content_length)
     return 'POST', request_headers, payload
 
-def rangefetch(wfile, response_headers, response_rfile, method, url, headers, payload, rangesize, fetchhost, fetchserver, password):
+def rangefetch(wfile, response_headers, response_rfile, method, url, headers, payload, fetchhost, fetchserver, password):
+    rangesize = common.AUTORANGE_MAXSIZE
+    bufsize   = common.AUTORANGE_BUFSIZE
+    waitsize  = common.AUTORANGE_WAITSIZE
     content_range  = response_headers['Content-Range']
     content_length = response_headers['Content-Length']
     start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
@@ -660,63 +668,53 @@ def rangefetch(wfile, response_headers, response_rfile, method, url, headers, pa
             response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, length-1, length)
             response_headers['Content-Length'] = str(length-start)
 
-    def _download_greenlet(data_queue, method, url, headers, payload, rangesize, fetchhost, fetchserver, password, current_length, content_length):
-        logging.info('>>>>>>>>>>>>>>> Range Fetch next(%r) %d-%d', url, current_length, content_length)
-        while current_length < content_length:
-            headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+rangesize-1, content_length-1))
-            retry = 8
-            while retry > 0:
-                request_method, request_headers, request_payload = pack_request(method, url, headers, payload, fetchhost, password=password)
-                code, response_headers, response_rfile = http.request(request_method, fetchserver, request_payload, request_headers)
-                if 'Set-Cookie' not in response_headers:
-                    logging.error('Range Fetch %r return %s', url, code)
-                    time.sleep(5)
-                    continue
-                response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
-                code = int(response_kwargs['status'])
-                if 200 <= code < 300:
-                    break
-                elif 300 <= code < 400:
-                    url = response_headers['Location']
-                    logging.info('Range Fetch Redirect(%r)', url)
-                    response_rfile.close()
-                    continue
-                else:
-                    logging.error('Range Fetch %r return %s', url, code)
-                    response_rfile.close()
-                    time.sleep(5)
-                    continue
-
-            content_range = response_headers.get('Content-Range')
-            if not content_range:
-                logging.error('Range Fetch "%s %s" failed: response_kwargs=%s response_headers=%s', method, url, response_kwargs, response_headers)
-                return
-
-            logging.info('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
-            while 1:
-                data = response_rfile.read(8192)
-                if not data or current_length >= content_length:
-                    response_rfile.close()
-                    break
-                current_length += len(data)
-                data_queue.put(data)
-        data_queue.put(StopIteration)
-        logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', url)
-
-    download_dataqueue = gevent.queue.Queue()
-    downloader = gevent.spawn_later(1, _download_greenlet, download_dataqueue, method, url, headers, payload, rangesize, fetchhost, fetchserver, password, end+1, length)
-
     logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', url, start, end)
     http.copy_response(response_status, response_headers, wfile.write)
     http.copy_body(response_rfile, response_headers, wfile.write)
     response_rfile.close()
 
-    while 1:
-        data = download_dataqueue.get()
-        if data is StopIteration:
-            break
-        wfile.write(data)
-    wfile.close()
+    current_length = end+1
+    content_length = length
+    logging.info('>>>>>>>>>>>>>>> Range Fetch next(%r) %d-%d', url, current_length, content_length)
+    while current_length < content_length:
+        headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+rangesize-1, content_length-1))
+        retry = 8
+        while retry > 0:
+            request_method, request_headers, request_payload = pack_request(method, url, headers, payload, fetchhost, password=password)
+            code, response_headers, response_rfile = http.request(request_method, fetchserver, request_payload, request_headers)
+            if 'Set-Cookie' not in response_headers:
+                logging.error('Range Fetch %r return %s', url, code)
+                time.sleep(5)
+                continue
+            response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
+            code = int(response_kwargs['status'])
+            if 200 <= code < 300:
+                break
+            elif 300 <= code < 400:
+                url = response_headers['Location']
+                logging.info('Range Fetch Redirect(%r)', url)
+                response_rfile.close()
+                continue
+            else:
+                logging.error('Range Fetch %r return %s', url, code)
+                response_rfile.close()
+                time.sleep(5)
+                continue
+
+        content_range = response_headers.get('Content-Range')
+        if not content_range:
+            logging.error('Range Fetch "%s %s" failed: response_kwargs=%s response_headers=%s', method, url, response_kwargs, response_headers)
+            return
+
+        logging.info('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
+        while 1:
+            data = response_rfile.read(bufsize)
+            if not data or current_length >= content_length:
+                response_rfile.close()
+                break
+            current_length += len(data)
+            wfile.write(data)
+    logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', url)
 
 def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
     rfile = sock.makefile('rb', 8192)
@@ -833,8 +831,22 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             if __realsock:
                 __realsock.close()
     else:
+        if 'Range' in headers:
+            m = re.search('bytes=(\d+)-', headers['Range'])
+            start = int(m.group(1) if m else 0)
+            headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+            logging.info('autorange range=%r match url=%r', headers['Range'], path)
+        elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
+            try:
+                pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
+                logging.debug('autorange pattern=%r match url=%r', pattern, path)
+                m = re.search('bytes=(\d+)-', headers.get('Range', ''))
+                start = int(m.group(1) if m else 0)
+                headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+            except StopIteration:
+                pass
         try:
-            request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.GAE_FETCHHOST, password=common.GAE_PASSWORD, fetchmaxsize=common.GAE_RANGESIZE)
+            request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.GAE_FETCHHOST, password=common.GAE_PASSWORD, fetchmaxsize=common.AUTORANGE_MAXSIZE)
             try:
                 code, response_headers, response_rfile = http.request(request_method, common.GAE_FETCHSERVER, data=request_payload or None, headers=request_headers)
             except socket.error as e:
@@ -872,7 +884,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
 
             if code == 206:
-                rangefetch(wfile, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_RANGESIZE, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD)
+                rangefetch(wfile, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD)
                 return
             http.copy_response(code, response_headers, wfile.write)
             http.copy_body(response_rfile, response_headers, wfile.write)
