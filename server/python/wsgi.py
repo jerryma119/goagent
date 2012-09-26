@@ -487,25 +487,20 @@ application = app if sae is None else sae.create_wsgi_app(app)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    import gevent, gevent.server, gevent.monkey
+    import gevent, gevent.server, gevent.wsgi, gevent.monkey, getopt
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 
-    host = '0.0.0.0'
-    try:
-        port = int((x for x in sys.argv[1:] if re.match(r'\d+', x)).next())
-    except:
-        port = 23
-    if '-ssl' in sys.argv[1:]:
-        certfile = os.path.splitext(__file__)[0]+'.pem'
-        if not os.path.isfile(certfile):
-            sys.stderr.write('ERROR: %r not exists!' % certfile)
-            sys.exit(-1)
-        ssl_args = dict(certfile=certfile)
-    else:
-        ssl_args = dict()
+    options = dict(getopt.getopt(sys.argv[1:], 'l:p:a:')[0])
+    host = options.get('-l', '0.0.0.0')
+    port = options.get('-p', '23')
+    app  = options.get('-a', 'socks5')
 
-    server = gevent.server.StreamServer((host, int(port)), socks5_handler, **ssl_args)
-    logging.info('serving %s://%s:%s/', 'https' if ssl_args else 'http', server.address[0] or '0.0.0.0', server.address[1])
+    if app == 'socks5':
+        server = gevent.server.StreamServer((host, int(port)), socks5_handler)
+    else:
+        server = gevent.wsgi.WSGIServer((host, int(port)), paas_application)
+
+    logging.info('serving %s at http://%s:%s/', app.upper(), server.address[0], server.address[1])
     server.serve_forever()
 
 
