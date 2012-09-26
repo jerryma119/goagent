@@ -477,7 +477,11 @@ if __name__ == '__main__':
     except:
         port = 23
     if '-ssl' in sys.argv[1:]:
-        ssl_args = dict(certfile=os.path.splitext(__file__)[0]+'.pem')
+        certfile = os.path.splitext(__file__)[0]+'.pem'
+        if not os.path.isfile(certfile):
+            sys.stderr.write('ERROR: %r not exists!' % certfile)
+            sys.exit(-1)
+        ssl_args = dict(certfile=certfile)
     else:
         ssl_args = dict()
     server = gevent.pywsgi.WSGIServer((host, int(port)), application, log=None, **ssl_args)
