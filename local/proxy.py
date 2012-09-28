@@ -612,14 +612,13 @@ def pack_request(method, url, headers, payload, fetchhost, **kwargs):
 class RangeFetch(object):
     """Range Fetch Class"""
 
-    rangesize = common.AUTORANGE_MAXSIZE
-    bufsize   = common.AUTORANGE_BUFSIZE
-    waitsize  = common.AUTORANGE_WAITSIZE
-    threads   = common.AUTORANGE_THREADS
+    rangesize = 1024*1024*2
+    bufsize   = 8192
+    waitsize  = 1024*512
+    threads   = 1
     retry     = 8
 
-    def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchhost, fetchserver, password):
-        self.sock = sock
+    def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchhost, fetchserver, password, rangesize=0, bufsize=0, waitsize=0, threads=0):
         self.response_code = response_code
         self.response_headers = response_headers
         self.response_rfile = response_rfile
@@ -630,7 +629,18 @@ class RangeFetch(object):
         self.fetchhost = fetchhost
         self.fetchserver = fetchserver
         self.password = password
-        self.stopped = None
+
+        if rangesize:
+            self.rangesize = rangesize
+        if bufsize:
+            self.bufsize = bufsize
+        if waitsize:
+            self.waitsize = waitsize
+        if threads:
+            self.threads = threads
+
+        self._sock = sock
+        self._stopped = None
 
     def fetch(self):
         response_headers = self.response_headers
@@ -648,7 +658,7 @@ class RangeFetch(object):
                 response_headers['Content-Length'] = str(length-start)
 
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
-        self.sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
+        self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
 
         queues = [gevent.queue.Queue() for _ in xrange(end+1, length, self.rangesize)]
         gevent.spawn_later(1, self._poolfetch, self.threads, queues, end, length, self.rangesize)
@@ -661,18 +671,18 @@ class RangeFetch(object):
                     response_rfile.close()
                     break
                 else:
-                    self.sock.sendall(data)
+                    self._sock.sendall(data)
                     left -= len(data)
             for queue in queues:
                 while 1:
                     data = queue.get()
                     if data is StopIteration:
                         break
-                    self.sock.sendall(data)
-            logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.url)
+                    self._sock.sendall(data)
+            logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', urlparse.urlparse(self.url).netloc)
         except socket.error as e:
             logging.exception('Range Fetch error: %s', e)
-            self.stopped = True
+            self._stopped = True
             raise
 
     def _poolfetch(self, size, queues, end, length, rangesize):
@@ -682,7 +692,7 @@ class RangeFetch(object):
 
     def _fetch(self, queue, start, end):
         try:
-            if self.stopped:
+            if self._stopped:
                 queue.put(StopIteration)
                 return
             headers = self.headers.copy()
@@ -898,7 +908,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
 
             if code == 206:
-                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD)
+                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD, rangesize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
             http.copy_response(code, response_headers, wfile.write)
             http.copy_body(response_rfile, response_headers, wfile.write)
@@ -1048,7 +1058,7 @@ def pacserver_handler(sock, address):
     wfile = sock.makefile('wb', 0)
     filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
     if path != '/'+common.PAC_FILE or not os.path.isfile(filename):
-        wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n')
+        wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
         wfile.close()
         logging.info('%s:%s "%s %s HTTP/1.1" 404 -' % (remote_addr, remote_port, method, path))
         return
