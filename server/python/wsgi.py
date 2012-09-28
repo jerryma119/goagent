@@ -39,20 +39,6 @@ FetchMaxSize = 1024*1024*4
 DeflateMaxSize = 1024*1024*4
 Deadline = 60
 
-def io_copy(source, dest):
-    try:
-        io_read  = getattr(source, 'read', None) or getattr(source, 'recv')
-        io_write = getattr(dest, 'write', None) or getattr(dest, 'sendall')
-        while 1:
-            data = io_read(8192)
-            if not data:
-                break
-            io_write(data)
-    except Exception as e:
-        logging.exception('io_copy(source=%r, dest=%r) error: %s', source, dest, e)
-    finally:
-        pass
-
 def httplib_request(method, url, body=None, headers={}, timeout=None):
     scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
     HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
@@ -64,33 +50,6 @@ def httplib_request(method, url, body=None, headers={}, timeout=None):
     conn.request(method, path, body=body, headers=headers)
     response = conn.getresponse()
     return response
-
-def httplib_normalize_headers(response_headers, skip_headers=[]):
-    """return (headers, content_encoding, transfer_encoding)"""
-    headers = []
-    for keyword, value in response_headers:
-        keyword = keyword.title()
-        if keyword in skip_headers:
-            continue
-        if keyword == 'Connection':
-            headers.append(('Connection', 'close'))
-        elif keyword != 'Set-Cookie':
-            headers.append((keyword, value))
-        else:
-            scs = value.split(', ')
-            cookies = []
-            i = -1
-            for sc in scs:
-                if re.match(r'[^ =]+ ', sc):
-                    try:
-                        cookies[i] = '%s, %s' % (cookies[i], sc)
-                    except IndexError:
-                        pass
-                else:
-                    cookies.append(sc)
-                    i += 1
-            headers += [('Set-Cookie', x) for x in cookies]
-    return headers
 
 def encode_request(headers, **kwargs):
     if hasattr(headers, 'items'):
@@ -151,7 +110,7 @@ def paas_application(environ, start_response):
         except httplib.HTTPException as e:
             raise
 
-def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, trans=None):
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, trans=''):
     timecount = timeout
     try:
         while 1:
@@ -443,7 +402,7 @@ def gae_post_ex(environ, start_response):
                 deadline = Deadline * 2
     else:
         start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
-        return [gae_error_html(errno='502', error=('Python Urlfetch Error: ' + str(method)), description=str(errors))]
+        return [gae_error_html(errno='502', error=('Python Urlfetch Error: ' + str(method)), description='<br />\n'.join(errors))]
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
 
