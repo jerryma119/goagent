@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.0.6'
+__version__ = '2.0.8'
 __password__ = ''
 
 import sys
@@ -466,6 +466,9 @@ def gae_post_ex(environ, start_response):
     return [data]
 
 def gae_get(environ, start_response):
+    if '204' in environ['QUERY_STRING']:
+        start_response('204 No Content', [])
+        return ''
     timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2,28)
     ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
     html = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)

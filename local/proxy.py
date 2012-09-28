@@ -12,7 +12,7 @@
 
 from __future__ import with_statement
 
-__version__ = '2.0.6'
+__version__ = '2.0.8'
 __config__  = 'proxy.ini'
 
 import sys
@@ -42,10 +42,7 @@ import traceback
 import struct
 import hashlib
 import fnmatch
-try:
-    import logging
-except ImportError:
-    logging = None
+import logging
 try:
     import ctypes
 except ImportError:
@@ -190,49 +187,6 @@ class CertUtil(object):
         certdir = os.path.join(os.path.dirname(__file__), 'certs')
         if not os.path.exists(certdir):
             os.makedirs(certdir)
-
-class SimpleLogging(object):
-    """Simple Logger Class"""
-
-    CRITICAL = 50
-    FATAL = CRITICAL
-    ERROR = 40
-    WARNING = 30
-    WARN = WARNING
-    INFO = 20
-    DEBUG = 10
-    NOTSET = 0
-    def __init__(self, *args, **kwargs):
-        self.level = SimpleLogging.INFO
-        if self.level > SimpleLogging.DEBUG:
-            self.debug = self.dummy
-        self.__write = sys.stdout.write
-    @classmethod
-    def getLogger(cls, *args, **kwargs):
-        return cls(*args, **kwargs)
-    def basicConfig(self, *args, **kwargs):
-        self.level = kwargs.get('level', SimpleLogging.INFO)
-        if self.level > SimpleLogging.DEBUG:
-            self.debug = self.dummy
-    def log(self, level, fmt, *args, **kwargs):
-        self.__write('%s - [%s] %s\n' % (level, time.ctime()[4:-5], fmt%args))
-    def dummy(self, *args, **kwargs):
-        pass
-    def debug(self, fmt, *args, **kwargs):
-        self.log('DEBUG', fmt, *args, **kwargs)
-    def info(self, fmt, *args, **kwargs):
-        self.log('INFO', fmt, *args)
-    def warning(self, fmt, *args, **kwargs):
-        self.log('WARNING', fmt, *args, **kwargs)
-    def warn(self, fmt, *args, **kwargs):
-        self.log('WARNING', fmt, *args, **kwargs)
-    def error(self, fmt, *args, **kwargs):
-        self.log('ERROR', fmt, *args, **kwargs)
-    def exception(self, fmt, *args, **kwargs):
-        self.log('ERROR', fmt, *args, **kwargs)
-        traceback.print_exc(file=sys.stderr)
-    def critical(self, fmt, *args, **kwargs):
-        self.log('CRITICAL', fmt, *args, **kwargs)
 
 class Http(object):
     """Http Request Class"""
@@ -510,13 +464,13 @@ class Common(object):
         self.LISTEN_IP            = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
         self.LISTEN_VISIBLE       = self.CONFIG.getint('listen', 'visible')
+        self.LISTEN_DEBUGINFO     = self.CONFIG.getint('listen', 'debuginfo')
 
         self.GAE_APPIDS           = self.CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
         self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
-        self.GAE_DEBUGLEVEL       = self.CONFIG.getint('gae', 'debuglevel') if self.CONFIG.has_option('gae', 'debuglevel') else 0
 
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
@@ -607,7 +561,7 @@ class Common(object):
         info += 'GoAgent Version    : %s (python/%s gevent/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], gevent.__version__, (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
         info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP,self.LISTEN_PORT)
         info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
-        info += 'Debug Level        : %s\n' % self.GAE_DEBUGLEVEL if self.GAE_DEBUGLEVEL else ''
+        info += 'Debug INFO         : %s\n' % self.LISTEN_DEBUGINFO if self.LISTEN_DEBUGINFO else ''
         info += 'GAE Mode           : %s\n' % self.GOOGLE_MODE
         info += 'GAE Profile        : %s\n' % self.GAE_PROFILE
         info += 'GAE APPID          : %s\n' % '|'.join(self.GAE_APPIDS)
@@ -1106,43 +1060,37 @@ def pacserver_handler(sock, address):
         wfile.close()
     sock.close()
 
-def try_show_love():
-    """If you hate this funtion, please go back to gappproxy/wallproxy"""
-    if ctypes and os.name == 'nt' and common.LOVE_ENABLE:
-        SetConsoleTitleW = ctypes.windll.kernel32.SetConsoleTitleW
-        GetConsoleTitleW = ctypes.windll.kernel32.GetConsoleTitleW
-        if common.LOVE_TIMESTAMP.strip():
-            common.LOVE_TIMESTAMP = int(common.LOVE_TIMESTAMP)
-        else:
-            common.LOVE_TIMESTAMP = int(time.time())
-            with open(__config__, 'w') as fp:
-                common.CONFIG.set('love', 'timestamp', int(time.time()))
-                common.CONFIG.write(fp)
-        if time.time() - common.LOVE_TIMESTAMP > 86400 and random.randint(1,10) > 5:
-            title = ctypes.create_unicode_buffer(1024)
-            GetConsoleTitleW(ctypes.byref(title), len(title)-1)
-            SetConsoleTitleW(u'%s %s' % (title.value, random.choice(common.LOVE_TIP)))
-            with open(__config__, 'w') as fp:
-                common.CONFIG.set('love', 'timestamp', int(time.time()))
-                common.CONFIG.write(fp)
-
-def main():
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    global logging
-    if logging is None:
-        sys.modules['logging'] = logging = SimpleLogging()
-    logging.basicConfig(level=logging.DEBUG if common.GAE_DEBUGLEVEL else logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
+def pre_start():
+    if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
+        logging.critical('please edit %s to add your appid to [gae] !', __config__)
+        sys.exit(-1)
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
             sys.stdout.write('Double click addto-startup.vbs could add goagent to autorun programs. :)\n')
-        try_show_love()
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
-    if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
-        logging.critical('please edit %s to add your appid to [gae] !', __config__)
-        sys.exit(-1)
+        if common.LOVE_ENABLE:
+            if common.LOVE_TIMESTAMP.strip():
+                common.LOVE_TIMESTAMP = int(common.LOVE_TIMESTAMP)
+            else:
+                common.LOVE_TIMESTAMP = int(time.time())
+                with open(__config__, 'w') as fp:
+                    common.CONFIG.set('love', 'timestamp', int(time.time()))
+                    common.CONFIG.write(fp)
+            if time.time() - common.LOVE_TIMESTAMP > 86400 and random.randint(1,10) > 5:
+                title = ctypes.create_unicode_buffer(1024)
+                ctypes.windll.kernel32.GetConsoleTitleW(ctypes.byref(title), len(title)-1)
+                ctypes.windll.kernel32.SetConsoleTitleW(u'%s %s' % (title.value, random.choice(common.LOVE_TIP)))
+                with open(__config__, 'w') as fp:
+                    common.CONFIG.set('love', 'timestamp', int(time.time()))
+                    common.CONFIG.write(fp)
+
+def main():
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    logging.basicConfig(level=logging.DEBUG if common.LISTEN_DEBUGINFO else logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     CertUtil.check_ca()
+    pre_start()
     sys.stdout.write(common.info())
 
     if common.PAAS_ENABLE:
