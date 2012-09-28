@@ -750,6 +750,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
         raise
 
     if 'setup' not in ls:
+        http.dns.update(common.HOSTS)
         if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
