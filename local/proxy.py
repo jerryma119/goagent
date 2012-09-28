@@ -17,16 +17,19 @@ __config__  = 'proxy.ini'
 
 import sys
 import os
-import gevent, gevent.server, gevent.queue, gevent.pool, gevent.monkey
+import gevent, gevent.monkey, gevent.server, gevent.queue, gevent.pool
 gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 try:
     from gevent.lock import Semaphore as LockType
 except ImportError:
     from gevent.coros import Semaphore as LockType
 
-import re
-import time
+import collections
 import errno
+import time
+import cStringIO
+import struct
+import re
 import zlib
 import random
 import httplib
@@ -35,14 +38,11 @@ import urlparse
 import socket
 import ssl
 import select
-import collections
-import cStringIO
-import ConfigParser
 import traceback
-import struct
 import hashlib
 import fnmatch
 import logging
+import ConfigParser
 try:
     import ctypes
 except ImportError:
@@ -220,6 +220,7 @@ class Http(object):
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
         iplist = self.dns[host]
         if not iplist:
+            iplist = self.dns[host] = self.dns.default_factory([])
             if not dnsserver:
                 ips = [x[-1][0] for x in socket.getaddrinfo(host, 80)]
                 iplist.update()
