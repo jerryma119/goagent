@@ -410,10 +410,11 @@ class Http(object):
                     sock = self.create_connection((host, port), self.timeout)
                 else:
                     sock = self.create_connection_withproxy((host, port), port, self.timeout, None, proxy=self.proxy)
-                if scheme == 'https':
-                    sock = ssl.wrap_socket(sock)
-                code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data, bufsize=bufsize)
-                return code, headers, rfile
+                if sock:
+                    if scheme == 'https':
+                        sock = ssl.wrap_socket(sock)
+                    code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data, bufsize=bufsize)
+                    return code, headers, rfile
             except Exception as e:
                 logging.warn('Http.request failed:%s', e)
                 if sock:
