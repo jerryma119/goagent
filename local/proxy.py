@@ -725,8 +725,9 @@ class RangeFetch(object):
             if not content_range:
                 logging.error('Range Fetch "%s %s" failed: response_kwargs=%s response_headers=%s', self.method, self.url, response_kwargs, response_headers)
                 return
-            logging.info('>>>>>>>>>>>>>>> [greenlet %s] %s %s', id(gevent.getcurrent()), response_headers.get('Content-Length'), response_headers)
             content_length = int(response_headers['Content-Length'])
+            logging.info('>>>>>>>>>>>>>>> [greenlet %s] %s %s', id(gevent.getcurrent()), content_length, content_range)
+
             left = content_length
             while 1:
                 data = response_rfile.read(min(self.bufsize, left))
