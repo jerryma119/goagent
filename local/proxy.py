@@ -336,7 +336,7 @@ class Http(object):
             headers[keyword] = value
         return method, path, version, headers
 
-    def _request(self, sock, method, path, protocol_version, headers, data, crlf=None):
+    def _request(self, sock, method, path, protocol_version, headers, data, crlf=None, bufsize=8192):
         skip_headers = self.skip_headers
 
         request_data = '\r\n' * (crlf or self.crlf)
@@ -351,7 +351,7 @@ class Http(object):
 
         rfile = sock.makefile('rb', -1)
 
-        response_line = rfile.readline(8192)
+        response_line = rfile.readline(bufsize)
         if not response_line:
             raise socket.error('empty line')
         version, code, _ = response_line.split(' ', 2)
@@ -362,7 +362,7 @@ class Http(object):
         connection = ''
         transfer_encoding = ''
         while 1:
-            line = rfile.readline(8192)
+            line = rfile.readline(bufsize)
             if not line or line == '\r\n':
                 break
             keyword, _, value = line.partition(':')
@@ -370,7 +370,7 @@ class Http(object):
             headers[keyword] = value.strip()
         return code, headers, rfile
 
-    def request(self, method, url, data=None, headers={}, fullurl=False):
+    def request(self, method, url, data=None, headers={}, fullurl=False, bufsize=8192):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
         if not re.search(r':\d+$', netloc):
             host = netloc
@@ -395,7 +395,7 @@ class Http(object):
                 if sock:
                     if scheme == 'https':
                         sock = ssl.wrap_socket(sock)
-                    code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data)
+                    code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data, bufsize=bufsize)
                     return code, headers, rfile
             except Exception as e:
                 logging.warn('Http.request failed:%s', e)
@@ -415,30 +415,30 @@ class Http(object):
         if need_return:
             return output.getvalue()
 
-    def copy_body(self, rfile, headers, write=None):
+    def copy_body(self, rfile, headers, content_length=0, bufsize=8192, write=None):
         need_return = False
         if write is None:
             output = cStringIO.StringIO()
             write = output.write
             need_return = True
-        content_length = int(headers.get('Content-Length', 0))
+        content_length = int(headers.get('Content-Length', content_length))
         if content_length:
             left = content_length
             while left > 0:
-                data = rfile.read(min(left, 8192))
+                data = rfile.read(min(left, bufsize))
                 if not data:
                     break
                 left -= len(data)
                 write(data)
         elif headers.get('Connection', '').lower() == 'close':
             while 1:
-                data = rfile.read(8192)
+                data = rfile.read(bufsize)
                 if not data:
                     break
                 write(data)
         elif headers.get('Transfer-Encoding', '').lower() == 'chunked':
             while 1:
-                line = rfile.readline(8192)
+                line = rfile.readline(bufsize)
                 if not line:
                     break
                 if line == '\r\n':
@@ -840,8 +840,8 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             payload = rfile.read(content_length) if content_length else None
             response_code, response_headers, response_rfile = http.request(method, path, payload, headers)
             wfile = sock.makefile('wb', 0)
-            http.copy_response(response_code, response_headers, wfile.write)
-            http.copy_body(response_rfile, response_headers, wfile.write)
+            http.copy_response(response_code, response_headers, write=wfile.write)
+            http.copy_body(response_rfile, response_headers, write=wfile.write)
             response_rfile.close()
         except socket.error as e:
             if e[0] not in (10053, errno.EPIPE):
@@ -900,8 +900,8 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
 
             if 'Set-Cookie' not in response_headers:
                 logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
-                http.copy_response(code, response_headers, wfile.write)
-                http.copy_body(response_rfile, response_headers, wfile.write)
+                http.copy_response(code, response_headers, write=wfile.write)
+                http.copy_body(response_rfile, response_headers, write=wfile.write)
                 response_rfile.close()
                 return
 
@@ -912,8 +912,8 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             if code == 206:
                 rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD, rangesize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
-            http.copy_response(code, response_headers, wfile.write)
-            http.copy_body(response_rfile, response_headers, wfile.write)
+            http.copy_response(code, response_headers, write=wfile.write)
+            http.copy_body(response_rfile, response_headers, write=wfile.write)
             response_rfile.close()
         except socket.error as e:
             # Connection closed before proxy return
@@ -998,8 +998,8 @@ def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
             http.crlf = 0
 
         wfile = sock.makefile('wb', 0)
-        http.copy_response(code, response_headers, wfile.write)
-        http.copy_body(response_rfile, response_headers, wfile.write)
+        http.copy_response(code, response_headers, write=wfile.write)
+        http.copy_body(response_rfile, response_headers, write=wfile.write)
         response_rfile.close()
 
     except socket.error as e:
