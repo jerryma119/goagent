@@ -289,6 +289,26 @@ class Http(object):
             except Exception as e:
                 logging.error('%s', e)
 
+    def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
+        logging.debug('Http.create_connection_withproxy connect (%r, %r)', host, port)
+        username, password, proxyhost, proxyport = proxy
+        try:
+            proxyip = self.dns_resolve(proxyhost)
+            sock = socket.socket(socket.AF_INET if ':' not in proxyip else socket.AF_INET6)
+            sock.connect((proxyip, proxyport))
+            hostname = random.sample(self.dns[host] or [host], 1)[0]
+            request_data = 'CONNECT %s:%s\r\n' % (hostname, port)
+            if username and password:
+                request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
+            request_data += '\r\n'
+            sock.sendall(request_data)
+            data = ''
+            while not data.endswith('\r\n\r\n'):
+                data += sock.recv(1)
+            return sock
+        except socket.error as e:
+            logging.error('Http.create_connection_withproxy error %s', e)
+
     def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, trans=''):
         try:
             timecount = timeout
@@ -389,14 +409,11 @@ class Http(object):
                 if not self.proxy:
                     sock = self.create_connection((host, port), self.timeout)
                 else:
-                    username, password, host, port = self.proxy
-                    sock = socket.create_connection((host, int(port)))
-                    path = url
-                if sock:
-                    if scheme == 'https':
-                        sock = ssl.wrap_socket(sock)
-                    code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data, bufsize=bufsize)
-                    return code, headers, rfile
+                    sock = self.create_connection_withproxy((host, port), port, self.timeout, None, proxy=self.proxy)
+                if scheme == 'https':
+                    sock = ssl.wrap_socket(sock)
+                code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data, bufsize=bufsize)
+                return code, headers, rfile
             except Exception as e:
                 logging.warn('Http.request failed:%s', e)
                 if sock:
@@ -549,12 +566,8 @@ class Common(object):
         """rebuild gae fetch server config"""
         if self.PROXY_ENABLE:
             self.GOOGLE_MODE = 'https'
-        self.GAE_FETCHHOST = '%s.appspot.com' % self.GAE_APPIDS[0]
-        if not self.PROXY_ENABLE:
-            # append '?' to url, it can avoid china telicom/unicom AD
-            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, self.GAE_FETCHHOST, self.GAE_PATH)
-        else:
-            self.GAE_FETCHSERVER = '%s://%s%s?' % (self.GOOGLE_MODE, random.choice(self.GOOGLE_HOSTS), self.GAE_PATH)
+        # append '?' to url, it can avoid china telicom/unicom AD
+        self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GOOGLE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
 
     def info(self):
         info = ''
@@ -601,11 +614,11 @@ def decode_request(request):
             headers[keyword.title()] = value.strip()
     return headers, kwargs
 
-def pack_request(method, url, headers, payload, fetchhost, **kwargs):
+def pack_request(method, url, headers, payload, fetchserver, **kwargs):
     content_length = int(headers.get('Content-Length',0))
     request_kwargs = {'method':method, 'url':url}
     request_kwargs.update(kwargs)
-    request_headers = {'Host':fetchhost, 'Cookie':encode_request(headers, **request_kwargs), 'Content-Length':str(content_length)}
+    request_headers = {'Host':urlparse.urlparse(fetchserver).netloc, 'Cookie':encode_request(headers, **request_kwargs), 'Content-Length':str(content_length)}
     if not isinstance(payload, str):
         payload = payload.read(content_length)
     return 'POST', request_headers, payload
@@ -619,7 +632,7 @@ class RangeFetch(object):
     threads   = 1
     retry     = 8
 
-    def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchhost, fetchserver, password, rangesize=0, bufsize=0, waitsize=0, threads=0):
+    def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchserver, password, rangesize=0, bufsize=0, waitsize=0, threads=0):
         self.response_code = response_code
         self.response_headers = response_headers
         self.response_rfile = response_rfile
@@ -627,7 +640,6 @@ class RangeFetch(object):
         self.url = url
         self.headers = headers
         self.payload = payload
-        self.fetchhost = fetchhost
         self.fetchserver = fetchserver
         self.password = password
 
@@ -700,7 +712,7 @@ class RangeFetch(object):
             headers['Range'] = 'bytes=%d-%d' % (start, end)
             headers['Connection'] = 'close'
             for i in xrange(self.retry):
-                request_method, request_headers, request_payload = pack_request(self.method, self.url, headers, self.payload, self.fetchhost, password=self.password)
+                request_method, request_headers, request_payload = pack_request(self.method, self.url, headers, self.payload, self.fetchserver, password=self.password)
                 response_code, response_headers, response_rfile = http.request(request_method, self.fetchserver, request_payload, request_headers)
                 if 'Set-Cookie' not in response_headers:
                     logging.error('Range Fetch %r return %s', self.url, response_code)
@@ -765,7 +777,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
                         if len(common.GOOGLE_HOSTS) == 0:
                             logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                             sys.exit(-1)
-            http.dns[common.GAE_FETCHHOST] = common.GOOGLE_HOSTS
+            http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
             logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         ls['setup'] = True
 
@@ -873,7 +885,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             except StopIteration:
                 pass
         try:
-            request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.GAE_FETCHHOST, password=common.GAE_PASSWORD, fetchmaxsize=common.AUTORANGE_MAXSIZE)
+            request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD, fetchmaxsize=common.AUTORANGE_MAXSIZE)
             try:
                 code, response_headers, response_rfile = http.request(request_method, common.GAE_FETCHSERVER, data=request_payload or None, headers=request_headers)
             except socket.error as e:
@@ -892,7 +904,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             if code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 common.build_gae_fetchserver()
-                http.dns[common.GAE_FETCHHOST] = common.GOOGLE_HOSTS
+                http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
             # bad request, disable CRLF injection
             if code in (400, 405):
                 http.crlf = 0
@@ -911,7 +923,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
 
             if code == 206:
-                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD, rangesize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
+                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_FETCHSERVER, common.GAE_PASSWORD, rangesize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
             http.copy_response(code, response_headers, write=wfile.write)
             http.copy_body(response_rfile, response_headers, write=wfile.write)
