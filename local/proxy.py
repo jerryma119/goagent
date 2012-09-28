@@ -687,7 +687,8 @@ class RangeFetch(object):
                 else:
                     self._sock.sendall(data)
                     left -= len(data)
-            for queue in queues:
+            while queues:
+                queue = queues.pop(0)
                 while 1:
                     data = queue.get()
                     if data is StopIteration:
