@@ -17,7 +17,7 @@ __config__  = 'proxy.ini'
 
 import sys
 import os
-import gevent, gevent.server, gevent.monkey
+import gevent, gevent.server, gevent.queue, gevent.pool, gevent.monkey
 gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 try:
     from gevent.lock import Semaphore as LockType
@@ -324,7 +324,7 @@ class Http(object):
                     self.spawn_later(0.5, lambda ss:any(x.close() for x in ss), socks)
                     return sock
                 else:
-                    self.window = int(1.5 * self.window)
+                    self.window = round(1.5 * self.window)
                     if self.window > self.max_window:
                         self.window = self.max_window
                     if self.window > len(iplist):
@@ -566,6 +566,7 @@ class Common(object):
         self.AUTORANGE_MAXSIZE    = self.CONFIG.getint('autorange', 'maxsize')
         self.AUTORANGE_WAITSIZE   = self.CONFIG.getint('autorange', 'waitsize')
         self.AUTORANGE_BUFSIZE    = self.CONFIG.getint('autorange', 'bufsize')
+        self.AUTORANGE_THREADS    = self.CONFIG.getint('autorange', 'threads')
 
         self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
@@ -654,68 +655,126 @@ def pack_request(method, url, headers, payload, fetchhost, **kwargs):
         payload = payload.read(content_length)
     return 'POST', request_headers, payload
 
-def rangefetch(wfile, response_headers, response_rfile, method, url, headers, payload, fetchhost, fetchserver, password):
+class RangeFetch(object):
+    """Range Fetch Class"""
+
     rangesize = common.AUTORANGE_MAXSIZE
     bufsize   = common.AUTORANGE_BUFSIZE
     waitsize  = common.AUTORANGE_WAITSIZE
-    content_range  = response_headers['Content-Range']
-    content_length = response_headers['Content-Length']
-    start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
-    if start == 0:
-        response_status = 200
-        response_headers['Content-Length'] = str(length)
-    else:
-        response_status = 206
-        if not headers.get('Range'):
-            response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, length-1, length)
-            response_headers['Content-Length'] = str(length-start)
+    threads   = common.AUTORANGE_THREADS
+    retry     = 8
 
-    logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', url, start, end)
-    http.copy_response(response_status, response_headers, wfile.write)
-    http.copy_body(response_rfile, response_headers, wfile.write)
-    response_rfile.close()
+    def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchhost, fetchserver, password):
+        self.sock = sock
+        self.response_code = response_code
+        self.response_headers = response_headers
+        self.response_rfile = response_rfile
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.payload = payload
+        self.fetchhost = fetchhost
+        self.fetchserver = fetchserver
+        self.password = password
+        self.stopped = None
 
-    current_length = end+1
-    content_length = length
-    logging.info('>>>>>>>>>>>>>>> Range Fetch next(%r) %d-%d', url, current_length, content_length)
-    while current_length < content_length:
-        headers['Range'] = 'bytes=%d-%d' % (current_length, min(current_length+rangesize-1, content_length-1))
-        for i in xrange(8):
-            request_method, request_headers, request_payload = pack_request(method, url, headers, payload, fetchhost, password=password)
-            code, response_headers, response_rfile = http.request(request_method, fetchserver, request_payload, request_headers)
-            if 'Set-Cookie' not in response_headers:
-                logging.error('Range Fetch %r return %s', url, code)
-                time.sleep(5)
-                continue
-            response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
-            code = int(response_kwargs['status'])
-            if 200 <= code < 300:
-                break
-            elif 300 <= code < 400:
-                url = response_headers['Location']
-                logging.info('Range Fetch Redirect(%r)', url)
-                response_rfile.close()
-                continue
-            else:
-                logging.error('Range Fetch %r return %s', url, code)
-                response_rfile.close()
-                time.sleep(5)
-                continue
+    def fetch(self):
+        response_headers = self.response_headers
+        response_rfile   = self.response_rfile
+        content_range    = response_headers['Content-Range']
+        content_length   = response_headers['Content-Length']
+        start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
+        if start == 0:
+            response_status = 200
+            response_headers['Content-Length'] = str(length)
+        else:
+            response_status = 206
+            if not self.headers.get('Range'):
+                response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, length-1, length)
+                response_headers['Content-Length'] = str(length-start)
 
-        content_range = response_headers.get('Content-Range')
-        if not content_range:
-            logging.error('Range Fetch "%s %s" failed: response_kwargs=%s response_headers=%s', method, url, response_kwargs, response_headers)
-            return
+        logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
+        self.sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
 
-        logging.info('>>>>>>>>>>>>>>> %s %d', content_range, content_length)
-        while 1:
-            data = response_rfile.read(bufsize)
-            if not data or current_length >= content_length:
-                response_rfile.close()
-                break
-            current_length += len(data)
-            wfile.write(data)
-    logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', url)
+        queues = [gevent.queue.Queue() for _ in xrange(end+1, length, self.rangesize)]
+        gevent.spawn_later(1, self._poolfetch, self.threads, queues, end, length, self.rangesize)
+
+        try:
+            left = end-start+1
+            while 1:
+                data = response_rfile.read(min(self.bufsize, left))
+                if not data:
+                    response_rfile.close()
+                    break
+                else:
+                    self.sock.sendall(data)
+                    left -= len(data)
+            for queue in queues:
+                while 1:
+                    data = queue.get()
+                    if data is StopIteration:
+                        break
+                    self.sock.sendall(data)
+            logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', self.url)
+        except socket.error as e:
+            logging.exception('Range Fetch error: %s', e)
+            self.stopped = True
+            raise
+
+    def _poolfetch(self, size, queues, end, length, rangesize):
+        pool = gevent.pool.Pool(size)
+        for queue, partial_start in zip(queues, xrange(end+1, length, rangesize)):
+            pool.spawn(self._fetch, queue, partial_start, min(length, partial_start+rangesize-1))
+
+    def _fetch(self, queue, start, end):
+        try:
+            if self.stopped:
+                queue.put(StopIteration)
+                return
+            headers = self.headers.copy()
+            headers['Range'] = 'bytes=%d-%d' % (start, end)
+            headers['Connection'] = 'close'
+            for i in xrange(self.retry):
+                request_method, request_headers, request_payload = pack_request(self.method, self.url, headers, self.payload, self.fetchhost, password=self.password)
+                response_code, response_headers, response_rfile = http.request(request_method, self.fetchserver, request_payload, request_headers)
+                if 'Set-Cookie' not in response_headers:
+                    logging.error('Range Fetch %r return %s', self.url, response_code)
+                    time.sleep(5)
+                    continue
+                response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
+                response_code = int(response_kwargs['status'])
+                if 200 <= response_code < 300:
+                    break
+                elif 300 <= response_code < 400:
+                    selfurl = response_headers['Location']
+                    logging.info('Range Fetch Redirect(%r)', self.url)
+                    response_rfile.close()
+                    continue
+                else:
+                    logging.error('Range Fetch %r return %s', self.url, response_code)
+                    response_rfile.close()
+                    time.sleep(5)
+                    continue
+
+            content_range = response_headers.get('Content-Range')
+            if not content_range:
+                logging.error('Range Fetch "%s %s" failed: response_kwargs=%s response_headers=%s', self.method, self.url, response_kwargs, response_headers)
+                return
+            logging.info('>>>>>>>>>>>>>>> [greenlet %s] %s %s', id(gevent.getcurrent()), response_headers.get('Content-Length'), response_headers)
+            content_length = int(response_headers['Content-Length'])
+            left = content_length
+            while 1:
+                data = response_rfile.read(min(self.bufsize, left))
+                if not data:
+                    response_rfile.close()
+                    queue.put(StopIteration)
+                    break
+                else:
+                    queue.put(data)
+                    left -= len(data)
+        except Exception as e:
+            logging.exception('_fetch error:%s', e)
+            raise
 
 def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
     rfile = sock.makefile('rb', 8192)
@@ -885,8 +944,8 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
 
             if code == 206:
-                rangefetch(wfile, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD)
-                return
+                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, common.GAE_FETCHHOST, common.GAE_FETCHSERVER, common.GAE_PASSWORD)
+                return rangefetch.fetch()
             http.copy_response(code, response_headers, wfile.write)
             http.copy_body(response_rfile, response_headers, wfile.write)
             response_rfile.close()
@@ -1031,22 +1090,21 @@ def pacserver_handler(sock, address):
             return rfile.close()
         raise
 
+    remote_addr, remote_port = address
     wfile = sock.makefile('wb', 0)
     filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
     if path != '/'+common.PAC_FILE or not os.path.isfile(filename):
-        return self.send_error(404, 'Not Found')
+        wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n')
+        wfile.close()
+        logging.info('%s:%s "%s %s HTTP/1.1" 404 -' % (remote_addr, remote_port, method, path))
+        return
     with open(filename, 'rb') as fp:
         data = fp.read()
-        wfile.write('HTTP/1.1 200\r\nContent-Type: application/x-ns-proxy-autoconfig\r\n')
+        wfile.write('HTTP/1.1 200\r\nContent-Type: text/plain\r\nConnection: close\r\n')
+        logging.info('%s:%s "%s %s HTTP/1.1" 200 -' % (remote_addr, remote_port, method, path))
         wfile.write(data)
         wfile.close()
     sock.close()
-
-def gaeproxy_withpac_handler(sock, address, rfile, method, path, version, headers, server, ls={'setuplock':LockType()}):
-    if path[0] == '/' and path[-4:] == '.pac':
-        return pacserver_handler(sock, address, rfile, method, path, version, headers, server)
-    else:
-        return gaeproxy_handler(sock, address, rfile, method, path, version, headers, server, ls)
 
 def try_show_love():
     """If you hate this funtion, please go back to gappproxy/wallproxy"""
@@ -1095,14 +1153,11 @@ def main():
         server = gevent.server.StreamServer(common.SOCKS5_LISTEN, socks5proxy_handler)
         server.start()
 
-    if common.PAC_ENABLE and common.PAC_PORT != common.LISTEN_PORT:
+    if common.PAC_ENABLE:
         server = gevent.server.StreamServer((common.PAC_IP, common.PAC_PORT), pacserver_handler)
         server.start()
 
-    if common.PAC_ENABLE and common.PAC_PORT == common.LISTEN_PORT:
-        server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_withpac_handler, spawn=1024)
-    else:
-        server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler, spawn=1024)
+    server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler, spawn=1024)
     server.serve_forever()
 
 if __name__ == '__main__':
