@@ -495,7 +495,6 @@ class Common(object):
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
         self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
-        self.PAAS_FETCHHOST        = urlparse.urlparse(self.CONFIG.get('paas', 'fetchserver')).netloc.rsplit(':', 1)[0]
 
         if self.CONFIG.has_section('socks5'):
             self.SOCKS5_ENABLE           = self.CONFIG.getint('socks5', 'enable')
@@ -696,7 +695,7 @@ class RangeFetch(object):
                     self._sock.sendall(data)
             logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', urlparse.urlparse(self.url).netloc)
         except socket.error as e:
-            logging.exception('Range Fetch error: %s', e)
+            logging.exception('Range Fetch socket.error: %s', e)
             self._stopped = True
             raise
 
@@ -953,14 +952,15 @@ def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
 
     if 'setup' not in ls:
         if not common.PROXY_ENABLE:
-            logging.info('resolve common.PAAS_FETCHHOST domian=%r to iplist', common.PAAS_FETCHHOST)
+            fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
+            logging.info('resolve common.PAAS_FETCHSERVER domian=%r to iplist', fetchhost)
             with ls['setuplock']:
-                paas_fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(common.PAAS_FETCHHOST, 80)]
-                if len(paas_fethhost_iplist) == 0:
+                fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(fetchhost, 80)]
+                if len(fethhost_iplist) == 0:
                     logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                     sys.exit(-1)
-                http.dns[common.PAAS_FETCHHOST] = set(paas_fethhost_iplist)
-                logging.info('resolve common.PAAS_FETCHHOST domian to iplist=%r', paas_fethhost_iplist)
+                http.dns[fetchhost] = set(fethhost_iplist)
+                logging.info('resolve common.PAAS_FETCHSERVER domian to iplist=%r', fethhost_iplist)
         ls['setup'] = True
 
     if common.USERAGENT_ENABLE:
@@ -998,7 +998,7 @@ def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
         path = 'http://%s%s' % (host, path)
 
     try:
-        request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.PAAS_FETCHHOST, password=common.PAAS_PASSWORD)
+        request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
         try:
             code, response_headers, response_rfile = http.request(request_method, common.PAAS_FETCHSERVER, data=request_payload or None, headers=request_headers)
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
@@ -1032,16 +1032,16 @@ def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
 def socks5proxy_handler(sock, address, ls={'setuplock':LockType()}):
     if 'setup' not in ls:
         if not common.PROXY_ENABLE:
-            socks5_fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
-            logging.info('resolve common.SOCKS5_FETCHSERVER domian=%r to iplist', socks5_fetchhost)
+            fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
+            logging.info('resolve common.SOCKS5_FETCHSERVER domian=%r to iplist', fetchhost)
             with ls['setuplock']:
-                socks5_fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(socks5_fetchhost, 80)]
-                if len(socks5_fethhost_iplist) == 0:
-                    logging.error('resolve %s domian return empty! please use ip list to replace domain list!', socks5_fetchhost)
+                fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(fetchhost, 80)]
+                if len(fethhost_iplist) == 0:
+                    logging.error('resolve %s domian return empty! please use ip list to replace domain list!', fetchhost)
                     sys.exit(-1)
                 ls['dns'] = collections.defaultdict(list)
-                ls['dns'][socks5_fetchhost] = list(set(socks5_fethhost_iplist))
-                logging.info('resolve common.PAAS_FETCHHOST domian to iplist=%r', socks5_fethhost_iplist)
+                ls['dns'][fetchhost] = list(set(fethhost_iplist))
+                logging.info('resolve common.PAAS_SOCKS5SERVER domian to iplist=%r', fethhost_iplist)
         ls['setup'] = True
 
     remote_addr, remote_port = address
