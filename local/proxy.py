@@ -696,7 +696,7 @@ class RangeFetch(object):
             logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', urlparse.urlparse(self.url).netloc)
         except socket.error as e:
             self._stopped = True
-            if e[0] not in (10053, errno.EPIPE)
+            if e[0] not in (10053, errno.EPIPE):
                 logging.exception('Range Fetch socket.error: %s', e)
                 raise
 
