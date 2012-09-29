@@ -282,7 +282,7 @@ class Http(object):
                     self.window = round(1.5 * self.window)
                     if self.window > self.max_window:
                         self.window = self.max_window
-                    if self.window > len(iplist):
+                    if self.min_window <= len(iplist) < self.window:
                         self.window = len(iplist)
                     self.window_ack = 0
                     logging.error('Http.create_connection to (%s, %r) failed, switch window=%r', ips, port, self.window)
@@ -796,6 +796,8 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             logging.info('%s:%s "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
             http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems())
             if not common.PROXY_ENABLE:
+                if host not in http.dns:
+                    http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
                 remote = http.create_connection((host, port), 8)
             else:
                 remote = socket.create_connection((host, int(port)))
@@ -837,7 +839,8 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % path.replace('http://', 'https://'))
             return
         else:
-            http.dns[host] = common.GOOGLE_HOSTS
+            if host not in http.dns:
+                http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
             need_direct = True
     elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
         if host not in http.dns:
