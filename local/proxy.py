@@ -695,9 +695,10 @@ class RangeFetch(object):
                     self._sock.sendall(data)
             logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', urlparse.urlparse(self.url).netloc)
         except socket.error as e:
-            logging.exception('Range Fetch socket.error: %s', e)
             self._stopped = True
-            raise
+            if e[0] not in (10053, errno.EPIPE)
+                logging.exception('Range Fetch socket.error: %s', e)
+                raise
 
     def _poolfetch(self, size, queues, end, length, rangesize):
         pool = gevent.pool.Pool(size)
