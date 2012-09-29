@@ -12,7 +12,7 @@
 
 from __future__ import with_statement
 
-__version__ = '2.0.8'
+__version__ = '2.0.9'
 __config__  = 'proxy.ini'
 
 import sys
@@ -211,9 +211,9 @@ class Http(object):
         if proxy_uri:
             scheme, netloc = urlparse.urlparse(proxy_uri)[:2]
             if '@' in netloc:
-                self.proxy = re.match('(\w+):(\w+)@(\w+):(\d+)').group(1,2,3,4)
+                self.proxy = re.search(r'([^:]+):([^@]+)@(.+):(\d+)', netloc).group(1,2,3,4)
             else:
-                self.proxy = (None, None) + (re.match('(\w+):(\d+)').group(1,2))
+                self.proxy = (None, None) + (re.match('(.+):(\d+)', netloc).group(1,2))
         else:
             self.proxy = ''
 
@@ -521,9 +521,9 @@ class Common(object):
 
         if self.PROXY_ENABLE:
             if self.PROXY_USERNAME:
-                self.proxy_uri = '%s:%s@%s:%d' % (common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
+                self.proxy_uri = 'http://%s:%s@%s:%d' % (self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
             else:
-                self.proxy_uri = '%s:%s' % (common.PROXY_HOST, common.PROXY_PORT)
+                self.proxy_uri = 'http://%s:%s' % (self.PROXY_HOST, self.PROXY_PORT)
         else:
             self.proxy_uri = ''
 
