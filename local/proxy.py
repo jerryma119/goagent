@@ -718,7 +718,7 @@ class RangeFetch(object):
                 request_method, request_headers, request_payload = pack_request(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
                 response_code, response_headers, response_rfile = http.request(request_method, fetchserver, request_payload, request_headers)
                 if 'Set-Cookie' not in response_headers:
-                    logging.error('Range Fetch %r return %s', self.url, response_code)
+                    logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], response_code)
                     time.sleep(5)
                     continue
                 response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
