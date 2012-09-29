@@ -869,6 +869,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             if __realrfile:
                 __realrfile.close()
             if __realsock:
+                __realsock.shutdown(socket.SHUT_WR)
                 __realsock.close()
     else:
         if 'Range' in headers:
