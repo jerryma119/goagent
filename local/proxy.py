@@ -766,7 +766,10 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
 
     if 'setup' not in ls:
         http.dns.update(common.HOSTS)
-        if not common.PROXY_ENABLE and common.GAE_PROFILE != 'google_ipv6':
+        fetchhost = urlparse.urlparse(common.GAE_FETCHSERVER).netloc
+        if common.GAE_PROFILE == 'google_ipv6':
+            http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
+        elif not common.PROXY_ENABLE:
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with ls['setuplock']:
@@ -778,7 +781,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
                         if len(common.GOOGLE_HOSTS) == 0:
                             logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                             sys.exit(-1)
-            http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
+            http.dns[fetchhost] = common.GOOGLE_HOSTS
             logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         ls['setup'] = True
 
