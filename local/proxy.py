@@ -22,8 +22,10 @@ try:
     import gevent.monkey
     import gevent.coros
     import gevent.server
+    import gevent.pool
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
+    sys.stderr.write('WARN: python-gevent not installed\n')
     import Queue
     import thread
     import threading
@@ -33,20 +35,51 @@ except ImportError:
     def GeventSpawn(target, *args, **kwargs):
         thread.start_new_thread(target, args, kwargs)
         return thread.get_ident()
+    def GeventSpawnLater(seconds, target, *args):
+        def wrap(*args):
+            import time
+            time.sleep(seconds)
+            return target(*args)
+        thread.start_new_thread(wrap, args)
+        return thread.get_ident()
     class GeventServerStreamServer(SocketServer.ThreadingTCPServer):
         allow_reuse_address = True
         def finish_request(self, request, client_address):
             self.RequestHandlerClass(request, client_address)
+    class GeventPoolPool(object):
+        def __init__(self, size):
+            self._lock = threading.Semaphore(size)
+            self._queue = Queue.Queue()
+        def __lock_releaser(self):
+            while 1:
+                t = self._queue.get()
+                if t is StopIteration:
+                    break
+                try:
+                    t.join()
+                except Exception as e:
+                    logging.exception('threading.Thread join error:%s', e)
+                    continue
+                finally:
+                    self._lock.release()
+        def spawn(self, target, *args, **kwargs):
+            self._lock.acquire()
+            t = threading.Thread(target=target, args=args, kwargs=kwargs)
+            t.start()
+            self._queue.put(t)
 
     gevent        = module('gevent')
     gevent.queue  = module('gevent.queue')
     gevent.coros  = module('gevent.coros')
     gevent.server = module('gevent.server')
+    gevent.pool   = module('gevent.pool')
 
     gevent.queue.Queue         = Queue.Queue
     gevent.coros.Semaphore     = threading.Semaphore
     gevent.spawn               = GeventSpawn
+    gevent.spawn_later         = GeventSpawnLater
     gevent.server.StreamServer = GeventServerStreamServer
+    gevent.pool.Pool           = GeventPoolPool
 
 
 import collections
@@ -712,7 +745,7 @@ class RangeFetch(object):
         self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
 
         queues = [gevent.queue.Queue() for _ in range(end+1, length, self.rangesize)]
-        gevent.spawn(self._poolfetch, self.threads, queues, end, length, self.rangesize)
+        gevent.spawn_later(1, self._poolfetch, self.threads, queues, end, length, self.rangesize)
 
         try:
             left = end-start+1
@@ -740,10 +773,9 @@ class RangeFetch(object):
 
     def _poolfetch(self, size, queues, end, length, rangesize):
         time.sleep(0.5)
-        self._poolfetch_lock = gevent.coros.Semaphore(size)
+        pool = gevent.pool.Pool(size)
         for queue, partial_start in zip(queues, range(end+1, length, rangesize)):
-            self._poolfetch_lock.acquire()
-            gevent.spawn(self._fetch, queue, partial_start, min(length, partial_start+rangesize-1))
+            pool.spawn(self._fetch, queue, partial_start, min(length, partial_start+rangesize-1))
 
     def _fetch(self, queue, start, end):
         try:
@@ -796,8 +828,6 @@ class RangeFetch(object):
         except Exception as e:
             logging.exception('_fetch error:%s', e)
             raise
-        finally:
-            self._poolfetch_lock.release()
 
 def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
     rfile = sock.makefile('rb', 8192)
