@@ -277,7 +277,7 @@ class Http(object):
                     self.spawn_later(0.5, lambda ss:any(x.close() for x in ss), socks)
                     return sock
                 else:
-                    self.window = round(1.5 * self.window)
+                    self.window = int(round(1.5 * self.window))
                     if self.window > self.max_window:
                         self.window = self.max_window
                     if self.min_window <= len(iplist) < self.window:
