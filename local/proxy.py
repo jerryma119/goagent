@@ -10,17 +10,20 @@
 #      AlsoTang       <alsotang@gmail.com>
 #      Yonsm          <YonsmGuo@gmail.com>
 
-__version__ = '2.0.10'
+__version__ = '2.0.11'
 __config__  = 'proxy.ini'
 
 import sys
 import os
-import gevent, gevent.monkey, gevent.server, gevent.queue, gevent.pool
 try:
-    from gevent.lock import Semaphore as LockType
+    import gevent, gevent.monkey, gevent.server, gevent.queue, gevent.pool
+    from gevent.coros import Semaphore
+    from gevent.queue import Queue
+    gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
-    from gevent.coros import Semaphore as LockType
-gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
+    from threading import Semaphore
+    from Queue import Queue
+    gevent = None
 
 import collections
 import errno
@@ -41,6 +44,9 @@ import hashlib
 import fnmatch
 import logging
 import ConfigParser
+import SocketServer
+import thread
+import threading
 try:
     import ctypes
 except ImportError:
@@ -53,7 +59,7 @@ except ImportError:
 class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
 
-    ca_lock = __import__('threading').Lock()
+    ca_lock = threading.Lock()
 
     @staticmethod
     def create_ca():
@@ -192,9 +198,8 @@ class Http(object):
     MessageClass = dict
     protocol_version = 'HTTP/1.1'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'Keep-Alive'])
-    spawn_later = gevent.spawn_later
 
-    def __init__(self, min_window=3, max_window=64, max_retry=2, max_timeout=30, spawn_later=None, proxy_uri=''):
+    def __init__(self, min_window=3, max_window=64, max_retry=2, max_timeout=30, proxy_uri=''):
         self.min_window = min_window
         self.max_window = max_window
         self.max_retry = max_retry
@@ -204,8 +209,6 @@ class Http(object):
         self.timeout = max_timeout // 2
         self.dns = collections.defaultdict(set)
         self.crlf = 0
-        if spawn_later is not None:
-            self.spawn_later = spawn_later
         if proxy_uri:
             scheme, netloc = urlparse.urlparse(proxy_uri)[:2]
             if '@' in netloc:
@@ -214,6 +217,19 @@ class Http(object):
                 self.proxy = (None, None) + (re.match('(.+):(\d+)', netloc).group(1,2))
         else:
             self.proxy = ''
+        self._socket_queue = Queue()
+        self._socket_closer = threading.Thread(target=self.__socket_closer)
+        self._socket_closer.start()
+
+    def __socket_closer(self):
+        while 1:
+            sock = self._socket_queue.get()
+            if sock is StopIteration:
+                break
+            try:
+                sock.close()
+            except Exception as e:
+                pass
 
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
         iplist = self.dns[host]
@@ -274,7 +290,7 @@ class Http(object):
                             self.window = window - 1
                             logging.info('Http.create_connection to (%s, %r) successed, switch window=%r', iplist, port, self.window)
                     socks.remove(sock)
-                    self.spawn_later(0.5, lambda ss:any(x.close() for x in ss), socks)
+                    any(self._socket_queue.put(x) for x in socks)
                     return sock
                 else:
                     self.window = int(round(1.5 * self.window))
@@ -469,6 +485,13 @@ class Http(object):
         if need_return:
             return output.getvalue()
 
+if gevent is not None:
+    StreamServer = gevent.server.StreamServer
+else:
+    class StreamServer(SocketServer.ThreadingTCPServer):
+        def finish_request(self, request, client_address):
+            self.RequestHandlerClass(request, client_address)
+
 class Common(object):
     """Global Config Object"""
 
@@ -570,7 +593,7 @@ class Common(object):
     def info(self):
         info = ''
         info += '------------------------------------------------------\n'
-        info += 'GoAgent Version    : %s (python/%s gevent/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], gevent.__version__, (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
+        info += 'GoAgent Version    : %s (python/%s gevent/%s pyopenssl/%s)\n' % (__version__, sys.version.partition(' ')[0], getattr(gevent, '__version__', None), (OpenSSL.version.__version__ if OpenSSL else 'Disabled'))
         info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP,self.LISTEN_PORT)
         info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'Debug INFO         : %s\n' % self.LISTEN_DEBUGINFO if self.LISTEN_DEBUGINFO else ''
@@ -671,8 +694,8 @@ class RangeFetch(object):
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
         self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
 
-        queues = [gevent.queue.Queue() for _ in range(end+1, length, self.rangesize)]
-        gevent.spawn_later(1, self._poolfetch, self.threads, queues, end, length, self.rangesize)
+        queues = [Queue() for _ in range(end+1, length, self.rangesize)]
+        thread.start_new_thread(self._poolfetch, (self.threads, queues, end, length, self.rangesize))
 
         try:
             left = end-start+1
@@ -699,9 +722,11 @@ class RangeFetch(object):
                 raise
 
     def _poolfetch(self, size, queues, end, length, rangesize):
-        pool = gevent.pool.Pool(size)
+        time.sleep(1)
+        self._poolfetch_lock = Semaphore(size)
         for queue, partial_start in zip(queues, range(end+1, length, rangesize)):
-            pool.spawn(self._fetch, queue, partial_start, min(length, partial_start+rangesize-1))
+            self._poolfetch_lock.acquire()
+            thread.start_new_thread(self._fetch, (queue, partial_start, min(length, partial_start+rangesize-1)))
 
     def _fetch(self, queue, start, end):
         try:
@@ -739,7 +764,7 @@ class RangeFetch(object):
                 logging.error('Range Fetch "%s %s" failed: response_kwargs=%s response_headers=%s', self.method, self.url, response_kwargs, response_headers)
                 return
             content_length = int(response_headers['Content-Length'])
-            logging.info('>>>>>>>>>>>>>>> [greenlet %s] %s %s', id(gevent.getcurrent()), content_length, content_range)
+            logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', thread.get_ident(), content_length, content_range)
 
             left = content_length
             while 1:
@@ -754,8 +779,10 @@ class RangeFetch(object):
         except Exception as e:
             logging.exception('_fetch error:%s', e)
             raise
+        finally:
+            self._poolfetch_lock.release()
 
-def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
+def gaeproxy_handler(sock, address, ls={'setuplock':Semaphore()}):
     rfile = sock.makefile('rb', 8192)
     try:
         method, path, version, headers = http.parse_request(rfile)
@@ -951,7 +978,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':LockType()}):
             if __realsock:
                 __realsock.close()
 
-def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
+def paasproxy_handler(sock, address, ls={'setuplock':Semaphore()}):
     rfile = sock.makefile('rb', 8192)
     try:
         method, path, version, headers = http.parse_request(rfile)
@@ -1041,7 +1068,7 @@ def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
         if __realsock:
             __realsock.close()
 
-def socks5proxy_handler(sock, address, ls={'setuplock':LockType()}):
+def socks5proxy_handler(sock, address, ls={'setuplock':Semaphore()}):
     if 'setup' not in ls:
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
@@ -1133,18 +1160,20 @@ def main():
     sys.stdout.write(common.info())
 
     if common.PAAS_ENABLE:
-        server = gevent.server.StreamServer(common.PAAS_LISTEN, paasproxy_handler)
-        server.start()
+        host, port = common.PAAS_LISTEN.split(':')
+        server = StreamServer((host, port), paasproxy_handler)
+        thread.start_new_thread(server.serve_forever, tuple())
 
     if common.SOCKS5_ENABLE:
-        server = gevent.server.StreamServer(common.SOCKS5_LISTEN, socks5proxy_handler)
-        server.start()
+        host, port = common.PAAS_LISTEN.split(':')
+        server = StreamServer((host, port), socks5proxy_handler)
+        thread.start_new_thread(server.serve_forever, tuple())
 
     if common.PAC_ENABLE:
-        server = gevent.server.StreamServer((common.PAC_IP, common.PAC_PORT), pacserver_handler)
-        server.start()
+        server = StreamServer((common.PAC_IP, common.PAC_PORT), pacserver_handler)
+        thread.start_new_thread(server.serve_forever, tuple())
 
-    server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler, spawn=1024)
+    server = StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler)
     server.serve_forever()
 
 if __name__ == '__main__':
