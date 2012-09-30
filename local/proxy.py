@@ -15,15 +15,39 @@ __config__  = 'proxy.ini'
 
 import sys
 import os
+
 try:
-    import gevent, gevent.monkey, gevent.server, gevent.queue, gevent.pool
-    from gevent.coros import Semaphore
-    from gevent.queue import Queue
+    import gevent
+    import gevent.queue
+    import gevent.monkey
+    import gevent.coros
+    import gevent.server
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
-    from threading import Semaphore
-    from Queue import Queue
-    gevent = None
+    import Queue
+    import thread
+    import threading
+    import SocketServer
+
+    class GeventStyleObject(object):
+        pass
+    def GeventStyleSpawn(target, *args, **kwargs):
+        thread.start_new_thread(target, args, kwargs)
+        return thread.get_ident()
+    class GeventStyleStreamServer(SocketServer.ThreadingTCPServer):
+        def finish_request(self, request, client_address):
+            self.RequestHandlerClass(request, client_address)
+
+    gevent = GeventStyleObject()
+    gevent.queue  = GeventStyleObject()
+    gevent.coros  = GeventStyleObject()
+    gevent.server = GeventStyleObject()
+
+    gevent.spawn = GeventStyleSpawn
+    gevent.queue.Queue = Queue.Queue
+    gevent.coros.Semaphore = threading.Semaphore
+    gevent.server.StreamServer = GeventStyleStreamServer
+
 
 import collections
 import errno
@@ -217,7 +241,7 @@ class Http(object):
                 self.proxy = (None, None) + (re.match('(.+):(\d+)', netloc).group(1,2))
         else:
             self.proxy = ''
-        self._socket_queue = Queue()
+        self._socket_queue = gevent.queue.Queue()
         self._socket_closer = threading.Thread(target=self.__socket_closer)
         self._socket_closer.start()
 
@@ -485,13 +509,6 @@ class Http(object):
         if need_return:
             return output.getvalue()
 
-if gevent is not None:
-    StreamServer = gevent.server.StreamServer
-else:
-    class StreamServer(SocketServer.ThreadingTCPServer):
-        def finish_request(self, request, client_address):
-            self.RequestHandlerClass(request, client_address)
-
 class Common(object):
     """Global Config Object"""
 
@@ -694,8 +711,8 @@ class RangeFetch(object):
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
         self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
 
-        queues = [Queue() for _ in range(end+1, length, self.rangesize)]
-        thread.start_new_thread(self._poolfetch, (self.threads, queues, end, length, self.rangesize))
+        queues = [gevent.queue.Queue() for _ in range(end+1, length, self.rangesize)]
+        gevent.spawn(self._poolfetch, self.threads, queues, end, length, self.rangesize)
 
         try:
             left = end-start+1
@@ -723,10 +740,10 @@ class RangeFetch(object):
 
     def _poolfetch(self, size, queues, end, length, rangesize):
         time.sleep(1)
-        self._poolfetch_lock = Semaphore(size)
+        self._poolfetch_lock = gevent.coros.Semaphore(size)
         for queue, partial_start in zip(queues, range(end+1, length, rangesize)):
             self._poolfetch_lock.acquire()
-            thread.start_new_thread(self._fetch, (queue, partial_start, min(length, partial_start+rangesize-1)))
+            gevent.spawn(self._fetch, queue, partial_start, min(length, partial_start+rangesize-1))
 
     def _fetch(self, queue, start, end):
         try:
@@ -782,7 +799,7 @@ class RangeFetch(object):
         finally:
             self._poolfetch_lock.release()
 
-def gaeproxy_handler(sock, address, ls={'setuplock':Semaphore()}):
+def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
     rfile = sock.makefile('rb', 8192)
     try:
         method, path, version, headers = http.parse_request(rfile)
@@ -982,7 +999,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':Semaphore()}):
             if __realsock:
                 __realsock.close()
 
-def paasproxy_handler(sock, address, ls={'setuplock':Semaphore()}):
+def paasproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
     rfile = sock.makefile('rb', 8192)
     try:
         method, path, version, headers = http.parse_request(rfile)
@@ -1072,7 +1089,7 @@ def paasproxy_handler(sock, address, ls={'setuplock':Semaphore()}):
         if __realsock:
             __realsock.close()
 
-def socks5proxy_handler(sock, address, ls={'setuplock':Semaphore()}):
+def socks5proxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
     if 'setup' not in ls:
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
@@ -1165,19 +1182,19 @@ def main():
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
-        server = StreamServer((host, port), paasproxy_handler)
-        thread.start_new_thread(server.serve_forever, tuple())
+        server = gevent.server.StreamServer((host, port), paasproxy_handler)
+        gevent.spawn(server.serve_forever)
 
     if common.SOCKS5_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
-        server = StreamServer((host, port), socks5proxy_handler)
-        thread.start_new_thread(server.serve_forever, tuple())
+        server = gevent.server.StreamServer((host, port), socks5proxy_handler)
+        gevent.spawn(server.serve_forever)
 
     if common.PAC_ENABLE:
-        server = StreamServer((common.PAC_IP, common.PAC_PORT), pacserver_handler)
-        thread.start_new_thread(server.serve_forever, tuple())
+        server = gevent.server.StreamServer((common.PAC_IP, common.PAC_PORT), pacserver_handler)
+        gevent.spawn(server.serve_forever)
 
-    server = StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler)
+    server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler)
     server.serve_forever()
 
 if __name__ == '__main__':
