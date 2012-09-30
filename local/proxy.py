@@ -788,7 +788,12 @@ class RangeFetch(object):
             for i in xrange(self.retry):
                 fetchserver = random.choice(self.fetchservers)
                 request_method, request_headers, request_payload = pack_request(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
-                response_code, response_headers, response_rfile = http.request(request_method, fetchserver, request_payload, request_headers)
+                response = http.request(request_method, fetchserver, request_payload, request_headers)
+                if not response:
+                    logging.warning('Range Fetch %r %s failed(%s)', self.url, headers['Range'], response)
+                    time.sleep(5)
+                    continue
+                response_code, response_headers, response_rfile = response
                 if 'Set-Cookie' not in response_headers:
                     logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], response_code)
                     time.sleep(5)
@@ -1011,7 +1016,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
 
             if code == 206:
-                fetchservers = ['http://%s.appspot.com%s' % (x, common.GAE_PATH) for x in common.GAE_APPIDS]
+                fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
                 rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, fetchservers, common.GAE_PASSWORD, rangesize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
             http.copy_response(code, response_headers, write=wfile.write)
