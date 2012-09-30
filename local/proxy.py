@@ -992,7 +992,9 @@ def paasproxy_handler(sock, address, ls={'setuplock':LockType()}):
             sock = ssl.wrap_socket(__realsock, certfile=certfile, keyfile=keyfile, server_side=True)
         except Exception as e:
             logging.exception('ssl.wrap_socket(__realsock=%r) failed: %s', __realsock, e)
-            sock = ssl.wrap_socket(__realsock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
+            __realrfile.close()
+            __realsock.close()
+            return
         rfile = sock.makefile('rb', 8192)
         try:
             method, path, version, headers = http.parse_request(rfile)
