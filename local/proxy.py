@@ -274,19 +274,6 @@ class Http(object):
                 self.proxy = (None, None) + (re.match('(.+):(\d+)', netloc).group(1,2))
         else:
             self.proxy = ''
-        self._socket_queue = gevent.queue.Queue()
-        self._socket_closer = threading.Thread(target=self.__socket_closer)
-        self._socket_closer.start()
-
-    def __socket_closer(self):
-        while 1:
-            sock = self._socket_queue.get()
-            if sock is StopIteration:
-                break
-            try:
-                sock.close()
-            except Exception as e:
-                pass
 
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
         iplist = self.dns[host]
@@ -347,7 +334,8 @@ class Http(object):
                             self.window = window - 1
                             logging.info('Http.create_connection to (%s, %r) successed, switch window=%r', iplist, port, self.window)
                     socks.remove(sock)
-                    any(self._socket_queue.put(x) for x in socks)
+                    #any(self._socket_queue.put(x) for x in socks)
+                    gevent.spawn_later(1, lambda ss:any(x.close() for x in ss), socks)
                     return sock
                 else:
                     self.window = int(round(1.5 * self.window))
