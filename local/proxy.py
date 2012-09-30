@@ -255,7 +255,7 @@ class Http(object):
             try:
                 iplist = self.dns_resolve(host)
                 window = self.window
-                ips = iplist if len(iplist) <= window else random.sample(iplist, window)
+                ips = iplist if len(iplist) <= window else random.sample(iplist, int(window))
                 sock  = None
                 socks = []
                 for ip in ips:
