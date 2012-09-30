@@ -49,24 +49,18 @@ except ImportError:
     class GeventPoolPool(object):
         def __init__(self, size):
             self._lock = threading.Semaphore(size)
-            self._queue = Queue.Queue()
-        def __lock_releaser(self):
-            while 1:
-                t = self._queue.get()
-                if t is StopIteration:
-                    break
-                try:
-                    t.join()
-                except Exception as e:
-                    logging.exception('threading.Thread join error:%s', e)
-                    continue
-                finally:
-                    self._lock.release()
+        def __target_wrapper(self, target, args, kwargs):
+            t = threading.Thread(target=target, args=args, kwargs=kwargs)
+            try:
+                t.start()
+                t.join()
+            except Exception as e:
+                logging.error('threading.Thread target=%r error:%s', target, e)
+            finally:
+                self._lock.release()
         def spawn(self, target, *args, **kwargs):
             self._lock.acquire()
-            t = threading.Thread(target=target, args=args, kwargs=kwargs)
-            t.start()
-            self._queue.put(t)
+            thread.start_new_thread(self.__target_wrapper, (target, args, kwargs))
 
     gevent        = module('gevent')
     gevent.queue  = module('gevent.queue')
