@@ -724,7 +724,7 @@ class RangeFetch(object):
                 if 200 <= response_code < 300:
                     break
                 elif 300 <= response_code < 400:
-                    selfurl = response_headers['Location']
+                    self.url = response_headers['Location']
                     logging.info('Range Fetch Redirect(%r)', self.url)
                     response_rfile.close()
                     continue
