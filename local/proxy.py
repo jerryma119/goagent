@@ -29,24 +29,24 @@ except ImportError:
     import threading
     import SocketServer
 
-    class GeventStyleObject(object):
-        pass
-    def GeventStyleSpawn(target, *args, **kwargs):
+    module = type(__import__('sys'))
+    def GeventSpawn(target, *args, **kwargs):
         thread.start_new_thread(target, args, kwargs)
         return thread.get_ident()
-    class GeventStyleStreamServer(SocketServer.ThreadingTCPServer):
+    class GeventServerStreamServer(SocketServer.ThreadingTCPServer):
+        allow_reuse_address = True
         def finish_request(self, request, client_address):
             self.RequestHandlerClass(request, client_address)
 
-    gevent = GeventStyleObject()
-    gevent.queue  = GeventStyleObject()
-    gevent.coros  = GeventStyleObject()
-    gevent.server = GeventStyleObject()
+    gevent        = module('gevent')
+    gevent.queue  = module('gevent.queue')
+    gevent.coros  = module('gevent.coros')
+    gevent.server = module('gevent.server')
 
-    gevent.spawn = GeventStyleSpawn
-    gevent.queue.Queue = Queue.Queue
-    gevent.coros.Semaphore = threading.Semaphore
-    gevent.server.StreamServer = GeventStyleStreamServer
+    gevent.queue.Queue         = Queue.Queue
+    gevent.coros.Semaphore     = threading.Semaphore
+    gevent.spawn               = GeventSpawn
+    gevent.server.StreamServer = GeventServerStreamServer
 
 
 import collections
@@ -739,7 +739,7 @@ class RangeFetch(object):
                 raise
 
     def _poolfetch(self, size, queues, end, length, rangesize):
-        time.sleep(1)
+        time.sleep(0.5)
         self._poolfetch_lock = gevent.coros.Semaphore(size)
         for queue, partial_start in zip(queues, range(end+1, length, rangesize)):
             self._poolfetch_lock.acquire()
