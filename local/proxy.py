@@ -430,7 +430,7 @@ class Http(object):
                     code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data, bufsize=bufsize)
                     return code, headers, rfile
             except Exception as e:
-                logging.warn('Http.request failed:%s', e)
+                logging.debug('Http.request "%s %s" failed:%s', method, url, e)
                 if sock:
                     sock.close()
                 continue
@@ -887,7 +887,11 @@ def gaeproxy_handler(sock, address, ls={'setuplock':Semaphore()}):
             logging.info('%s:%s "%s %s HTTP/1.1" - -' % (remote_addr, remote_port, method, path))
             content_length = int(headers.get('Content-Length', 0))
             payload = rfile.read(content_length) if content_length else None
-            response_code, response_headers, response_rfile = http.request(method, path, payload, headers)
+            response = http.request(method, path, payload, headers)
+            if not response:
+                logging.warning('http.request "%s %s") return %r', method, path, response)
+                return
+            response_code, response_headers, response_rfile = response
             wfile = sock.makefile('wb', 0)
             http.copy_response(response_code, response_headers, write=wfile.write)
             http.copy_body(response_rfile, response_headers, write=wfile.write)
