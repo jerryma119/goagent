@@ -671,7 +671,7 @@ class RangeFetch(object):
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
         self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
 
-        queues = [gevent.queue.Queue() for _ in xrange(end+1, length, self.rangesize)]
+        queues = [gevent.queue.Queue() for _ in range(end+1, length, self.rangesize)]
         gevent.spawn_later(1, self._poolfetch, self.threads, queues, end, length, self.rangesize)
 
         try:
@@ -700,7 +700,7 @@ class RangeFetch(object):
 
     def _poolfetch(self, size, queues, end, length, rangesize):
         pool = gevent.pool.Pool(size)
-        for queue, partial_start in zip(queues, xrange(end+1, length, rangesize)):
+        for queue, partial_start in zip(queues, range(end+1, length, rangesize)):
             pool.spawn(self._fetch, queue, partial_start, min(length, partial_start+rangesize-1))
 
     def _fetch(self, queue, start, end):
