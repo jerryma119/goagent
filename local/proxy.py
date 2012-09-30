@@ -10,19 +10,17 @@
 #      AlsoTang       <alsotang@gmail.com>
 #      Yonsm          <YonsmGuo@gmail.com>
 
-from __future__ import with_statement
-
-__version__ = '2.0.9'
+__version__ = '2.0.10'
 __config__  = 'proxy.ini'
 
 import sys
 import os
 import gevent, gevent.monkey, gevent.server, gevent.queue, gevent.pool
-gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 try:
     from gevent.lock import Semaphore as LockType
 except ImportError:
     from gevent.coros import Semaphore as LockType
+gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 
 import collections
 import errno
@@ -1093,7 +1091,7 @@ def pacserver_handler(sock, address):
         return
     with open(filename, 'rb') as fp:
         data = fp.read()
-        wfile.write('HTTP/1.1 200\r\nContent-Type: text/plain\r\nConnection: close\r\n')
+        wfile.write('HTTP/1.1 200\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n')
         logging.info('%s:%s "%s %s HTTP/1.1" 200 -' % (remote_addr, remote_port, method, path))
         wfile.write(data)
         wfile.close()
