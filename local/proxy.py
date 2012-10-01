@@ -1199,12 +1199,12 @@ def main():
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
-        server = gevent.server.StreamServer((host, port), paasproxy_handler)
+        server = gevent.server.StreamServer((host, int(port)), paasproxy_handler)
         gevent.spawn(server.serve_forever)
 
     if common.SOCKS5_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
-        server = gevent.server.StreamServer((host, port), socks5proxy_handler)
+        server = gevent.server.StreamServer((host, int(port)), socks5proxy_handler)
         gevent.spawn(server.serve_forever)
 
     if common.PAC_ENABLE:
