@@ -25,23 +25,24 @@ try:
     import gevent.pool
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
-    sys.stderr.write('WARN: python-gevent not installed\n')
+    sys.stderr.write('WARNING: python-gevent(http://code.google.com/p/gevent/downloads/list) not installed.\n')
     import Queue
     import thread
     import threading
     import SocketServer
 
-    module = type(__import__('sys'))
+    def GeventImport(name):
+        import sys
+        sys.modules[name] = type(sys)(name)
+        return sys.modules[name]
     def GeventSpawn(target, *args, **kwargs):
-        thread.start_new_thread(target, args, kwargs)
-        return thread.get_ident()
-    def GeventSpawnLater(seconds, target, *args):
-        def wrap(*args):
+        return thread.start_new_thread(target, args, kwargs)
+    def GeventSpawnLater(seconds, target, *args, **kwargs):
+        def wrap(*args, **kwargs):
             import time
             time.sleep(seconds)
-            return target(*args)
-        thread.start_new_thread(wrap, args)
-        return thread.get_ident()
+            return target(*args, **kwargs)
+        return thread.start_new_thread(wrap, args, kwargs)
     class GeventServerStreamServer(SocketServer.ThreadingTCPServer):
         allow_reuse_address = True
         def finish_request(self, request, client_address):
@@ -60,13 +61,13 @@ except ImportError:
                 self._lock.release()
         def spawn(self, target, *args, **kwargs):
             self._lock.acquire()
-            thread.start_new_thread(self.__target_wrapper, (target, args, kwargs))
+            return thread.start_new_thread(self.__target_wrapper, (target, args, kwargs))
 
-    gevent        = module('gevent')
-    gevent.queue  = module('gevent.queue')
-    gevent.coros  = module('gevent.coros')
-    gevent.server = module('gevent.server')
-    gevent.pool   = module('gevent.pool')
+    gevent        = GeventImport('gevent')
+    gevent.queue  = GeventImport('gevent.queue')
+    gevent.coros  = GeventImport('gevent.coros')
+    gevent.server = GeventImport('gevent.server')
+    gevent.pool   = GeventImport('gevent.pool')
 
     gevent.queue.Queue         = Queue.Queue
     gevent.coros.Semaphore     = threading.Semaphore
@@ -75,6 +76,7 @@ except ImportError:
     gevent.server.StreamServer = GeventServerStreamServer
     gevent.pool.Pool           = GeventPoolPool
 
+    del GeventImport, GeventSpawn, GeventSpawnLater, GeventServerStreamServer, GeventPoolPool
 
 import collections
 import errno
@@ -679,13 +681,13 @@ def pack_request(method, url, headers, payload, fetchserver, **kwargs):
 class RangeFetch(object):
     """Range Fetch Class"""
 
-    rangesize = 1024*1024*2
+    maxsize   = 1024*1024*4
     bufsize   = 8192
     waitsize  = 1024*512
     threads   = 1
     retry     = 8
 
-    def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchservers, password, rangesize=0, bufsize=0, waitsize=0, threads=0):
+    def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchservers, password, maxsize=0, bufsize=0, waitsize=0, threads=0):
         self.response_code = response_code
         self.response_headers = response_headers
         self.response_rfile = response_rfile
@@ -696,8 +698,8 @@ class RangeFetch(object):
         self.fetchservers = fetchservers
         self.password = password
 
-        if rangesize:
-            self.rangesize = rangesize
+        if maxsize:
+            self.maxsize = maxsize
         if bufsize:
             self.bufsize = bufsize
         if waitsize:
@@ -726,8 +728,8 @@ class RangeFetch(object):
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
         self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
 
-        queues = [gevent.queue.Queue() for _ in range(end+1, length, self.rangesize)]
-        gevent.spawn_later(1, self._poolfetch, self.threads, queues, end, length, self.rangesize)
+        queues = [gevent.queue.Queue() for _ in range(end+1, length, self.maxsize)]
+        gevent.spawn_later(0.5, self._poolfetch, min(len(queues), self.threads), queues, end, length, self.maxsize)
 
         try:
             left = end-start+1
@@ -753,11 +755,10 @@ class RangeFetch(object):
                 logging.exception('Range Fetch socket.error: %s', e)
                 raise
 
-    def _poolfetch(self, size, queues, end, length, rangesize):
-        time.sleep(0.5)
+    def _poolfetch(self, size, queues, end, length, maxsize):
         pool = gevent.pool.Pool(size)
-        for queue, partial_start in zip(queues, range(end+1, length, rangesize)):
-            pool.spawn(self._fetch, queue, partial_start, min(length, partial_start+rangesize-1))
+        for queue, partial_start in zip(queues, range(end+1, length, maxsize)):
+            pool.spawn(self._fetch, queue, partial_start, min(length, partial_start+maxsize-1))
 
     def _fetch(self, queue, start, end):
         try:
@@ -836,15 +837,21 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with ls['setuplock']:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
-                        google_iplist = [host for host in common.GOOGLE_HOSTS if re.match(r'\d+\.\d+\.\d+\.\d+', host)]
-                        google_hosts = [host for host in common.GOOGLE_HOSTS if not re.match(r'\d+\.\d+\.\d+\.\d+', host)]
-                        google_hosts_iplist = [[x[-1][0] for x in socket.getaddrinfo(host, 80)] for host in google_hosts]
-                        common.GOOGLE_HOSTS = tuple(x for x in set(sum(google_hosts_iplist, google_iplist)) if ':' not in x)
+                        google_ipmap = dict((g, [x[-1][0] for x in socket.getaddrinfo(g, 80)]) for g in common.GOOGLE_HOSTS)
+                        need_resolve_remote = [x for x in google_ipmap if not re.match(r'\d+\.\d+\.\d+\.\d+', x) and len(google_ipmap[x]) <= 1]
+                        try:
+                            for g in need_resolve_remote:
+                                logging.info('resolve remote domian=%r to iplist', g)
+                                google_ipmap[g] = list(http.dns_resolve(g, common.CRLF_DNSSERVER))
+                                logging.info('resolve remote domian=%r to iplist=%s', g, google_ipmap[g])
+                        except socket.error as e:
+                            logging.exception('resolve remote domain=%r failed: %s', need_resolve_remote, e)
+                        common.GOOGLE_HOSTS = tuple(sum(google_ipmap.values(), []))
                         if len(common.GOOGLE_HOSTS) == 0:
                             logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                             sys.exit(-1)
             for fetchhost in fetchhosts:
-                http.dns[fetchhost] = common.GOOGLE_HOSTS
+                http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
             logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
         ls['setup'] = True
 
@@ -999,7 +1006,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
 
             if code == 206:
                 fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
-                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, fetchservers, common.GAE_PASSWORD, rangesize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
+                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
             http.copy_response(code, response_headers, write=wfile.write)
             http.copy_body(response_rfile, response_headers, write=wfile.write)
