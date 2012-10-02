@@ -281,7 +281,6 @@ class Http(object):
             iplist = self.dns[host] = self.dns.default_factory([])
             if not dnsserver:
                 ips = [x[-1][0] for x in socket.getaddrinfo(host, 80)]
-                iplist.update()
             else:
                 #resolver = gevent.resolver_ares.Resolver(servers=[dnsserver], tcp_port=53)
                 #ips = [x[-1][0] for x in resolver.getaddrinfo(host, 80)]
@@ -844,7 +843,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with ls['setuplock']:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
-                        google_ipmap = dict((g, [x[-1][0] for x in socket.getaddrinfo(g, 80)]) for g in common.GOOGLE_HOSTS)
+                        google_ipmap = dict((g, [x[-1][0] for x in socket.getaddrinfo(g, 80) if re.match(r'\d+\.\d+\.\d+\.\d+', x[-1][0])]) for g in common.GOOGLE_HOSTS)
                         need_resolve_remote = [x for x in google_ipmap if not re.match(r'\d+\.\d+\.\d+\.\d+', x) and len(google_ipmap[x]) <= 1]
                         try:
                             for g in need_resolve_remote:
