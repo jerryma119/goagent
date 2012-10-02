@@ -415,7 +415,7 @@ class Http(object):
             headers[keyword] = value
         return method, path, version, headers
 
-    def _request(self, sock, method, path, protocol_version, headers, data, crlf=None, bufsize=8192):
+    def _request(self, sock, method, path, protocol_version, headers, data, bufsize=8192, crlf=0):
         skip_headers = self.skip_headers
 
         request_data = '\r\n' * (crlf or self.crlf)
@@ -449,7 +449,7 @@ class Http(object):
             headers[keyword] = value.strip()
         return code, headers, rfile
 
-    def request(self, method, url, data=None, headers={}, fullurl=False, bufsize=8192):
+    def request(self, method, url, data=None, headers={}, fullurl=False, bufsize=8192, crlf=0):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
         if not re.search(r':\d+$', netloc):
             host = netloc
@@ -473,7 +473,7 @@ class Http(object):
                 if sock:
                     if scheme == 'https':
                         sock = ssl.wrap_socket(sock)
-                    code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data, bufsize=bufsize)
+                    code, headers, rfile = self._request(sock, method, path, self.protocol_version, headers, data, bufsize=bufsize, crlf=crlf)
                     return code, headers, rfile
             except Exception as e:
                 logging.debug('Http.request "%s %s" failed:%s', method, url, e)
@@ -912,6 +912,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
         path = 'http://%s%s' % (host, path)
 
     need_direct = False
+    need_crlf   = 0
     if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
         if host in common.GOOGLE_FORCEHTTPS:
             sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % path.replace('http://', 'https://'))
@@ -919,13 +920,14 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
         else:
             if host not in http.dns:
                 http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
+            need_crlf   = 1
             need_direct = True
     elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
         if host not in http.dns:
             logging.info('crlf dns_resolve(host=%r, dnsservers=%r)', host, common.CRLF_DNSSERVER)
             http.dns[host] = set(http.dns_resolve(host, common.CRLF_DNSSERVER))
             logging.info('crlf dns_resolve(host=%r) return %s', host, list(http.dns[host]))
-        http.crlf = 1
+        need_crlf = 1
         need_direct = True
 
     if need_direct:
@@ -933,7 +935,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             logging.info('%s:%s "%s %s HTTP/1.1" - -' % (remote_addr, remote_port, method, path))
             content_length = int(headers.get('Content-Length', 0))
             payload = rfile.read(content_length) if content_length else None
-            response = http.request(method, path, payload, headers)
+            response = http.request(method, path, payload, headers, crlf=need_crlf)
             if not response:
                 logging.warning('http.request "%s %s") return %r', method, path, response)
                 return
@@ -974,7 +976,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
         try:
             request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD, fetchmaxsize=common.AUTORANGE_MAXSIZE)
             try:
-                code, response_headers, response_rfile = http.request(request_method, common.GAE_FETCHSERVER, data=request_payload or None, headers=request_headers)
+                code, response_headers, response_rfile = http.request(request_method, common.GAE_FETCHSERVER, data=request_payload or None, headers=request_headers, crlf=need_crlf)
             except socket.error as e:
                 if e[0] in (11004, 10051, 10054, 10060, 'timed out', 'empty line'):
                     # connection reset or timeout, switch to https
