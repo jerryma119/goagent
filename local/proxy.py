@@ -1169,7 +1169,7 @@ def pacserver_handler(sock, address):
         return
     with open(filename, 'rb') as fp:
         data = fp.read()
-        wfile.write('HTTP/1.1 200\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n')
+        wfile.write('HTTP/1.1 200\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nConnection: close\r\n\r\n')
         logging.info('%s:%s "%s %s HTTP/1.1" 200 -' % (remote_addr, remote_port, method, path))
         wfile.write(data)
         wfile.close()
