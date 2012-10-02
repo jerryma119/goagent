@@ -5,7 +5,7 @@
 
 __version__ = '2.0.12'
 __password__ = ''
-__hostsdeny__ = set([]) # __hostsdeny__ = set(['www.youtube.com', 't.cn'])
+__hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
 import sys
 import os
@@ -246,6 +246,9 @@ def gae_post(environ, start_response):
     if __password__ and __password__ != request.get('password', ''):
         return send_notify(start_response, method, url, 403, 'Wrong password.')
 
+    if __hostsdeny__ and urlparse.urlparse(url).netloc.endswith(__hostsdeny__):
+        return send_notify(start_response, method, url, 403, 'Hosts Deny: url=%r' % url)
+
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
         return send_notify(start_response, method, url, 501, 'Invalid Method')
@@ -356,7 +359,7 @@ def gae_post_ex(environ, start_response):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
         return [gae_error_html(errno='403', error='Wrong password.', description='GoAgent proxy.ini password is wrong!')]
 
-    if __hostsdeny__ and urlparse.urlparse(url).netloc in __hostsdeny__:
+    if __hostsdeny__ and urlparse.urlparse(url).netloc.endswith(__hostsdeny__):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
         return [gae_error_html(errno='403', error='Hosts Deny', description='url=%r' % url)]
 
