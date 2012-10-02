@@ -852,7 +852,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
                                 logging.info('resolve remote domian=%r to iplist=%s', g, google_ipmap[g])
                         except socket.error as e:
                             logging.exception('resolve remote domain=%r failed: %s', need_resolve_remote, e)
-                        common.GOOGLE_HOSTS = tuple(sum(google_ipmap.values(), []))
+                        common.GOOGLE_HOSTS = tuple(set(sum(google_ipmap.values(), [])))
                         if len(common.GOOGLE_HOSTS) == 0:
                             logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                             sys.exit(-1)
