@@ -464,6 +464,7 @@ class Http(object):
             headers['Host'] = host
 
         for i in xrange(self.max_retry):
+            sock = None
             try:
                 if not self.proxy:
                     sock = self.create_connection((host, port), self.timeout)
@@ -1214,7 +1215,7 @@ def main():
         gevent.spawn(server.serve_forever)
 
     if common.SOCKS5_ENABLE:
-        host, port = common.PAAS_LISTEN.split(':')
+        host, port = common.SOCKS5_LISTEN.split(':')
         server = gevent.server.StreamServer((host, int(port)), socks5proxy_handler)
         gevent.spawn(server.serve_forever)
 
