@@ -10,7 +10,7 @@
 #      AlsoTang       <alsotang@gmail.com>
 #      Yonsm          <YonsmGuo@gmail.com>
 
-__version__ = '2.0.11'
+__version__ = '2.0.12'
 __config__  = 'proxy.ini'
 
 import sys
@@ -25,7 +25,10 @@ try:
     import gevent.pool
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
-    sys.stderr.write('WARNING: python-gevent(http://code.google.com/p/gevent/downloads/list) not installed.\n')
+    if os.name == 'nt':
+        sys.stderr.write('WARNING: python-gevent not installed. `http://code.google.com/p/gevent/downloads/list`\n')
+    else:
+        sys.stderr.write('WARNING: python-gevent not installed. `curl -k -L http://git.io/I9B7RQ|sh`\n')
     import Queue
     import thread
     import threading
@@ -331,7 +334,8 @@ class Http(object):
                             logging.info('Http.create_connection to (%s, %r) successed, switch window=%r', iplist, port, self.window)
                     socks.remove(sock)
                     #any(self._socket_queue.put(x) for x in socks)
-                    gevent.spawn_later(1, lambda ss:any(x.close() for x in ss), socks)
+                    if socks:
+                        gevent.spawn_later(1, lambda ss:any(x.close() for x in ss), socks)
                     return sock
                 else:
                     self.window = int(round(1.5 * self.window))
@@ -538,7 +542,7 @@ class Common(object):
         self.LISTEN_IP            = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT          = self.CONFIG.getint('listen', 'port')
         self.LISTEN_VISIBLE       = self.CONFIG.getint('listen', 'visible')
-        self.LISTEN_DEBUGINFO     = self.CONFIG.getint('listen', 'debuginfo')
+        self.LISTEN_DEBUGINFO     = self.CONFIG.getint('listen', 'debuginfo') if self.CONFIG.has_option('listen', 'debuginfo') else 0
 
         self.GAE_APPIDS           = self.CONFIG.get('gae', 'appid').replace('.appspot.com', '').split('|')
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
