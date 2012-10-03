@@ -393,7 +393,7 @@ class Http(object):
                         else:
                             return
         except socket.error as e:
-            if e[0] not in (10053, 10054, errno.EPIPE):
+            if e[0] not in (10053, 10054, 10057, errno.EPIPE):
                 raise
         finally:
             local.close()
@@ -617,7 +617,7 @@ class Common(object):
 
         self.LOVE_ENABLE          = self.CONFIG.getint('love','enable')
         self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
-        self.LOVE_TIP             = [re.sub(r'(?i)\\u([0-9a-f]{4})', lambda m:unichr(int(m.group(1),16)), x) for x in self.CONFIG.get('love','tip').split('|')]
+        self.LOVE_TIP             = self.CONFIG.get('love','tip').decode('unicode-escape').split('|')
 
         self.HOSTS                = dict((k, tuple(v.split('|')) if v else tuple()) for k, v in self.CONFIG.items('hosts'))
 
@@ -823,7 +823,7 @@ class RangeFetch(object):
             logging.exception('_fetch error:%s', e)
             raise
 
-def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
+def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
     rfile = sock.makefile('rb', 8192)
     try:
         method, path, version, headers = http.parse_request(rfile)
@@ -832,7 +832,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             return rfile.close()
         raise
 
-    if 'setup' not in ls:
+    if 'setup' not in hls:
         http.dns.update(common.HOSTS)
         fetchhosts = ['%s.appspot.com' % x for x in common.GAE_APPIDS]
         if common.GAE_PROFILE == 'google_ipv6':
@@ -841,7 +841,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
         elif not common.PROXY_ENABLE:
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
-                with ls['setuplock']:
+                with hls['setuplock']:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                         google_ipmap = dict((g, [x[-1][0] for x in socket.getaddrinfo(g, 80) if re.match(r'\d+\.\d+\.\d+\.\d+', x[-1][0])]) for g in common.GOOGLE_HOSTS)
                         need_resolve_remote = [x for x in google_ipmap if not re.match(r'\d+\.\d+\.\d+\.\d+', x) and len(google_ipmap[x]) <= 1]
@@ -859,7 +859,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             for fetchhost in fetchhosts:
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
             logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
-        ls['setup'] = True
+        hls['setup'] = True
 
     if common.USERAGENT_ENABLE:
         headers['User-Agent'] = common.USERAGENT_STRING
@@ -1031,7 +1031,7 @@ def gaeproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             if __realsock:
                 __realsock.close()
 
-def paasproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
+def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
     rfile = sock.makefile('rb', 8192)
     try:
         method, path, version, headers = http.parse_request(rfile)
@@ -1040,18 +1040,18 @@ def paasproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             return rfile.close()
         raise
 
-    if 'setup' not in ls:
+    if 'setup' not in hls:
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
             logging.info('resolve common.PAAS_FETCHSERVER domian=%r to iplist', fetchhost)
-            with ls['setuplock']:
+            with hls['setuplock']:
                 fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(fetchhost, 80)]
                 if len(fethhost_iplist) == 0:
                     logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                     sys.exit(-1)
                 http.dns[fetchhost] = set(fethhost_iplist)
                 logging.info('resolve common.PAAS_FETCHSERVER domian to iplist=%r', fethhost_iplist)
-        ls['setup'] = True
+        hls['setup'] = True
 
     if common.USERAGENT_ENABLE:
         headers['User-Agent'] = common.USERAGENT_STRING
@@ -1121,20 +1121,20 @@ def paasproxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
         if __realsock:
             __realsock.close()
 
-def socks5proxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
-    if 'setup' not in ls:
+def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
+    if 'setup' not in hls:
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
             logging.info('resolve common.SOCKS5_FETCHSERVER domian=%r to iplist', fetchhost)
-            with ls['setuplock']:
+            with hls['setuplock']:
                 fethhost_iplist = [x[-1][0] for x in socket.getaddrinfo(fetchhost, 80)]
                 if len(fethhost_iplist) == 0:
                     logging.error('resolve %s domian return empty! please use ip list to replace domain list!', fetchhost)
                     sys.exit(-1)
-                ls['dns'] = collections.defaultdict(list)
-                ls['dns'][fetchhost] = list(set(fethhost_iplist))
+                hls['dns'] = collections.defaultdict(list)
+                hls['dns'][fetchhost] = list(set(fethhost_iplist))
                 logging.info('resolve common.PAAS_SOCKS5SERVER domian to iplist=%r', fethhost_iplist)
-        ls['setup'] = True
+        hls['setup'] = True
 
     remote_addr, remote_port = address
     logging.info('%s:%s "GET %s SOCKS/5" - -' % (remote_addr, remote_port, common.SOCKS5_FETCHSERVER))
@@ -1145,8 +1145,8 @@ def socks5proxy_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}
     else:
         host = netloc
         port = {'https':443,'http':80}.get(scheme, 80)
-    if host in ls['dns']:
-        host = random.choice(ls['dns'][host])
+    if host in hls['dns']:
+        host = random.choice(hls['dns'][host])
     remote = socket.create_connection((host, port))
     if scheme == 'https':
         remote = ssl.wrap_socket(remote)
@@ -1239,7 +1239,9 @@ class Autoproxy2Pac(object):
             content = content.replace('{{%s}}'%keyword, value)
         return content
     @classmethod
-    def update_filename(cls, filename, url, proxy):
+    def update_filename(cls, filename, url, proxy, check_mtime=False):
+        if check_mtime and time.time() - os.path.getmtime(filename) < 60:
+            return
         logging.info('pacserver: pac filename=%r is expired, begin update', filename)
         autoproxy = cls(url, proxy)
         content = autoproxy.generate_pac()
@@ -1248,7 +1250,7 @@ class Autoproxy2Pac(object):
             fp.write(content)
         logging.info('pacserver: pac filename=%r updated', filename)
 
-def pacserver_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
+def pacserver_handler(sock, address, hls={}):
     rfile = sock.makefile('rb', 8192)
     try:
         method, path, version, headers = http.parse_request(rfile)
@@ -1257,17 +1259,15 @@ def pacserver_handler(sock, address, ls={'setuplock':gevent.coros.Semaphore()}):
             return rfile.close()
         raise
 
-    if 'setup' not in ls:
-        with ls['setuplock']:
-            if 'setup' not in ls:
-                filename = os.path.join('.', common.PAC_FILE)
-                if not os.path.exists(filename) or time.time() - os.path.getmtime(filename) > 86400:
-                    gevent.spawn_later(0.5, Autoproxy2Pac.update_filename, filename, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT))
-                ls['setup'] = True
+    filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
+    if 'mtime' not in hls:
+        hls['mtime'] = os.path.getmtime(filename)
+    if time.time() - hls['mtime'] > 86400:
+        hls['mtime'] = time.time()
+        gevent.spawn_later(1, Autoproxy2Pac.update_filename, filename, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), True)
 
     remote_addr, remote_port = address
     wfile = sock.makefile('wb', 0)
-    filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
     if path != '/'+common.PAC_FILE or not os.path.isfile(filename):
         wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
         wfile.close()
