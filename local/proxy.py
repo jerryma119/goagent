@@ -1177,7 +1177,7 @@ class Autoproxy2Pac(object):
         content  = response.read()
         response.close()
         if self.encoding:
-            if self.encoding == 'base64'
+            if self.encoding == 'base64':
                 content = base64.b64decode(content)
             else:
                 content = content.decode(self.encoding)
