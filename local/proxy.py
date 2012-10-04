@@ -1165,7 +1165,6 @@ class Autoproxy2Pac(object):
         return "DIRECT";
         }
     '''
-
     def __init__(self, url, proxy, encoding='base64'):
         self.url = url
         self.proxy = proxy
@@ -1184,10 +1183,7 @@ class Autoproxy2Pac(object):
         return content
     def _rule2js(self, ruleList, indent=4):
         jsCode = []
-        # The syntax of the list is based on Adblock Plus filter rules (http://adblockplus.org/en/filters)
-        #   Filter options (those parts start with "$") is not supported
-        # AutoProxy Add-on for Firefox has a Javascript implementation
-        #   http://github.com/lovelywcm/autoproxy/blob/master/chrome/content/filterClasses.js
+        # Filter options (those parts start with "$") is not supported
         for line in ruleList.splitlines()[1:]:
             # Ignore the first line ([AutoProxy x.x]), empty lines and comments
             if line and not line.startswith("!"):
@@ -1224,7 +1220,7 @@ class Autoproxy2Pac(object):
                     if jsRegexp == "":
                         jsRegexp = ".*"
                         logging.warning("There is one rule that matches all URL, which is highly *NOT* recommended: %s", line)
-                jsLine = 'if(/%s/i.test(url)) return "%s";' % (jsRegexp, self.proxy if useProxy else 'DIRECT')
+                jsLine = 'if(/%s/i.test(url)) return "%s";' % (jsRegexp, 'PROXY %s' % self.proxy if useProxy else 'DIRECT')
                 jsLine = ' '*indent + jsLine
                 if useProxy:
                     jsCode.append(jsLine)
@@ -1243,13 +1239,13 @@ class Autoproxy2Pac(object):
     def update_filename(cls, filename, url, proxy, check_mtime=False):
         if check_mtime and time.time() - os.path.getmtime(filename) < 60:
             return
-        logging.info('pacserver: pac filename=%r is expired, begin update', filename)
+        logging.info('autoproxy pac filename=%r out of date, try update it', filename)
         autoproxy = cls(url, proxy)
         content = autoproxy.generate_pac()
-        logging.info('pacserver: gfwlist=%r downoaded and parsed.', common.PAC_GFWLIST)
+        logging.info('autoproxy gfwlist=%r fetched and parsed.', common.PAC_GFWLIST)
         with open(filename, 'wb') as fp:
             fp.write(content)
-        logging.info('pacserver: pac filename=%r updated', filename)
+        logging.info('autoproxy pac filename=%r updated', filename)
 
 def pacserver_handler(sock, address, hls={}):
     rfile = sock.makefile('rb', 8192)
@@ -1263,7 +1259,7 @@ def pacserver_handler(sock, address, hls={}):
     filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
     if 'mtime' not in hls:
         hls['mtime'] = os.path.getmtime(filename)
-    if time.time() - hls['mtime'] > 86400:
+    if time.time() - hls['mtime'] > 60*60*12:
         hls['mtime'] = time.time()
         gevent.spawn_later(1, Autoproxy2Pac.update_filename, filename, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), True)
 
