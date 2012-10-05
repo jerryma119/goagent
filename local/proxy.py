@@ -10,7 +10,7 @@
 #      AlsoTang       <alsotang@gmail.com>
 #      Yonsm          <YonsmGuo@gmail.com>
 
-__version__ = '2.0.13'
+__version__ = '2.0.14'
 __config__  = 'proxy.ini'
 
 import sys
