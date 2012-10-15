@@ -12,6 +12,7 @@
 
 __version__ = '2.0.14'
 __config__  = 'proxy.ini'
+__file__    = getattr(__import__('os'), 'readlink', lambda x:x)(__file__)
 
 import sys
 import os
@@ -50,6 +51,22 @@ except ImportError:
         allow_reuse_address = True
         def finish_request(self, request, client_address):
             self.RequestHandlerClass(request, client_address)
+    class GeventServerDatagramServer(SocketServer.ThreadingUDPServer):
+        allow_reuse_address = True
+        def __init__(self, server_address, *args, **kwargs):
+            SocketServer.ThreadingUDPServer.__init__(self, server_address, GeventServerDatagramServer.RequestHandlerClass, *args, **kwargs)
+            self._writelock = threading.Semaphore()
+        def sendto(self, *args):
+            self._writelock.acquire()
+            try:
+                self.socket.sendto(*args)
+            finally:
+                self._writelock.release()
+        @staticmethod
+        def RequestHandlerClass((data, server_socket), client_addr, server):
+            return server.handle(data, client_addr)
+        def handle(self, data, address):
+            raise NotImplemented()
     class GeventPoolPool(object):
         def __init__(self, size):
             self._lock = threading.Semaphore(size)
@@ -72,15 +89,16 @@ except ImportError:
     gevent.server = GeventImport('gevent.server')
     gevent.pool   = GeventImport('gevent.pool')
 
-    gevent.queue.Queue         = Queue.Queue
-    gevent.coros.Semaphore     = threading.Semaphore
-    gevent.getcurrent          = threading.currentThread
-    gevent.spawn               = GeventSpawn
-    gevent.spawn_later         = GeventSpawnLater
-    gevent.server.StreamServer = GeventServerStreamServer
-    gevent.pool.Pool           = GeventPoolPool
+    gevent.queue.Queue           = Queue.Queue
+    gevent.coros.Semaphore       = threading.Semaphore
+    gevent.getcurrent            = threading.currentThread
+    gevent.spawn                 = GeventSpawn
+    gevent.spawn_later           = GeventSpawnLater
+    gevent.server.StreamServer   = GeventServerStreamServer
+    gevent.server.DatagramServer = GeventServerDatagramServer
+    gevent.pool.Pool             = GeventPoolPool
 
-    del GeventImport, GeventSpawn, GeventSpawnLater, GeventServerStreamServer, GeventPoolPool
+    del GeventImport, GeventSpawn, GeventSpawnLater, GeventServerStreamServer, GeventServerDatagramServer, GeventPoolPool
 
 import collections
 import errno
@@ -550,12 +568,19 @@ class Common(object):
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
-        self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn')
+        self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn') if self.CONFIG.has_option('gae', 'mulconn') else 1
 
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
         self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
+
+        if self.CONFIG.has_section('dns'):
+            self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
+            self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
+            self.DNS_REMOTE = self.CONFIG.get('dns', 'remote')
+        else:
+            self.DNS_ENABLE = 0
 
         if self.CONFIG.has_section('socks5'):
             self.SOCKS5_ENABLE           = self.CONFIG.getint('socks5', 'enable')
@@ -644,6 +669,9 @@ class Common(object):
         if common.PAAS_ENABLE:
             info += 'PAAS Listen        : %s\n' % common.PAAS_LISTEN
             info += 'PAAS FetchServer   : %s\n' % common.PAAS_FETCHSERVER
+        if common.DNS_ENABLE:
+            info += 'DNS  Listen        : %s\n' % common.DNS_LISTEN
+            info += 'DNS  Remote        : %s\n' % common.DNS_REMOTE
         if common.SOCKS5_ENABLE:
             info += 'SOCKS5 Listen      : %s\n' % common.SOCKS5_LISTEN
             info += 'SOCKS5 FetchServer : %s\n' % common.SOCKS5_FETCHSERVER
@@ -1275,6 +1303,40 @@ def pacserver_handler(sock, address, hls={}):
         wfile.close()
     sock.close()
 
+class DNSServer(gevent.server.DatagramServer):
+    """DNS Proxy over TCP to avoid DNS poisoning"""
+    remote_address = ('8.8.8.8', 53)
+    max_retry = 3
+    timeout   = 3
+
+    def __init__(self, *args, **kwargs):
+        gevent.server.DatagramServer.__init__(self, *args, **kwargs)
+        self.cache = {}
+    def handle(self, data, address):
+        cache   = self.cache
+        timeout = self.timeout
+        reqid   = data[:2]
+        domain  = data[12:data.find('\x00', 12)]
+        if domain not in cache:
+            qname = re.sub(r'[\x01-\x10]', '.', domain[1:])
+            for i in xrange(self.max_retry):
+                logging.info('DNSServer resolve domain=%r to iplist', qname)
+                remote_sock = None
+                try:
+                    remote_sock = socket.create_connection(self.remote_address, timeout=timeout)
+                    remote_sock.sendall(struct.pack('!h', len(data)) + data)
+                    remote_data = remote_sock.recv(512)
+                    if remote_data:
+                        cache[domain] = remote_data[2:]
+                        break
+                except socket.error as e:
+                    logging.error('DNSServer resolve domain=%r to iplist failed:%s', qname, e)
+                finally:
+                    if remote_sock:
+                        remote_sock.close()
+        reply = reqid + cache[domain][2:]
+        self.sendto(reply, address)
+
 def pre_start():
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', __config__)
@@ -1320,6 +1382,12 @@ def main():
 
     if common.PAC_ENABLE:
         server = gevent.server.StreamServer((common.PAC_IP, common.PAC_PORT), pacserver_handler)
+        gevent.spawn(server.serve_forever)
+
+    if common.DNS_ENABLE:
+        host, port = common.DNS_LISTEN.split(':')
+        server = DNSServer((host, int(port)))
+        server.remote_address = (common.DNS_REMOTE, 53)
         gevent.spawn(server.serve_forever)
 
     server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler)
