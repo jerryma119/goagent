@@ -579,6 +579,8 @@ class Common(object):
             self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
             self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
             self.DNS_REMOTE = self.CONFIG.get('dns', 'remote')
+            self.DNS_CACHESIZE = self.CONFIG.getint('dns', 'cachesize')
+            self.DNS_TIMEOUT   = self.CONFIG.getint('dns', 'timeout')
         else:
             self.DNS_ENABLE = 0
 
@@ -670,8 +672,8 @@ class Common(object):
             info += 'PAAS Listen        : %s\n' % common.PAAS_LISTEN
             info += 'PAAS FetchServer   : %s\n' % common.PAAS_FETCHSERVER
         if common.DNS_ENABLE:
-            info += 'DNS  Listen        : %s\n' % common.DNS_LISTEN
-            info += 'DNS  Remote        : %s\n' % common.DNS_REMOTE
+            info += 'DNS Listen        : %s\n' % common.DNS_LISTEN
+            info += 'DNS Remote        : %s\n' % common.DNS_REMOTE
         if common.SOCKS5_ENABLE:
             info += 'SOCKS5 Listen      : %s\n' % common.SOCKS5_LISTEN
             info += 'SOCKS5 FetchServer : %s\n' % common.SOCKS5_FETCHSERVER
@@ -1307,6 +1309,7 @@ class DNSServer(gevent.server.DatagramServer):
     """DNS Proxy over TCP to avoid DNS poisoning"""
     remote_address = ('8.8.8.8', 53)
     max_retry = 3
+    max_cache_size = 2000
     timeout   = 3
 
     def __init__(self, *args, **kwargs):
@@ -1317,6 +1320,8 @@ class DNSServer(gevent.server.DatagramServer):
         timeout = self.timeout
         reqid   = data[:2]
         domain  = data[12:data.find('\x00', 12)]
+        if len(cache) > self.max_cache_size:
+            cache.clear()
         if domain not in cache:
             qname = re.sub(r'[\x01-\x10]', '.', domain[1:])
             for i in xrange(self.max_retry):
@@ -1388,6 +1393,8 @@ def main():
         host, port = common.DNS_LISTEN.split(':')
         server = DNSServer((host, int(port)))
         server.remote_address = (common.DNS_REMOTE, 53)
+        server.timeout = common.DNS_TIMEOUT
+        server.max_cache_size = common.DNS_CACHESIZE
         gevent.spawn(server.serve_forever)
 
     server = gevent.server.StreamServer((common.LISTEN_IP, common.LISTEN_PORT), gaeproxy_handler)
