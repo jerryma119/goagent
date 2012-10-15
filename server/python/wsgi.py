@@ -232,7 +232,7 @@ def send_response(start_response, status, headers, content, content_type='image/
 def send_notify(start_response, method, url, status, content):
     logging.warning('%r Failed: url=%r, status=%r', method, url, status)
     content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
-    send_response(start_response, status, {'content-type':'text/html'}, content)
+    return send_response(start_response, status, {'content-type':'text/html'}, content)
 
 def gae_post(environ, start_response):
     data = zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH'])))
@@ -276,41 +276,20 @@ def gae_post(environ, start_response):
         except urlfetch.InvalidURLError as e:
             return send_notify(start_response, method, url, 501, 'Invalid URL: %s' % e)
         except urlfetch.ResponseTooLargeError as e:
-            response = e.response
-            logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
-            m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
-            if m is None:
-                headers['Range'] = 'bytes=0-%d' % FetchMaxSize
+            logging.error('ResponseTooLargeError(deadline=%s, url=%r)', deadline, url)
+            range = request.pop('range', None)
+            if range:
+                headers['Range'] = range
             else:
-                headers.pop('Range', '')
-                headers.pop('range', '')
-                start = int(m.group(1))
-                headers['Range'] = 'bytes=%s-%d' % (start, start+FetchMaxSize)
+                errors.append('ResponseTooLargeError %s(deadline=%s)' % (e, deadline))
+                return send_notify(start_response, method, url, 500, 'Python Server: Urlfetch error: %s' % errors)
             deadline = Deadline * 2
         except Exception as e:
             errors.append('Exception %s(deadline=%s)' % (e, deadline))
     else:
         return send_notify(start_response, method, url, 500, 'Python Server: Urlfetch error: %s' % errors)
 
-    headers = response.headers
-    if 'set-cookie' in headers:
-        scs = headers['set-cookie'].split(', ')
-        cookies = []
-        i = -1
-        for sc in scs:
-            if re.match(r'[^ =]+ ', sc):
-                try:
-                    cookies[i] = '%s, %s' % (cookies[i], sc)
-                except IndexError:
-                    pass
-            else:
-                cookies.append(sc)
-                i += 1
-        headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
-    if 'content-length' not in headers:
-        headers['content-length'] = str(len(response.content))
-    headers['connection'] = 'close'
-    return send_response(start_response, response.status_code, headers, response.content)
+    return send_response(start_response, response.status_code, response.headers, response.content)
 
 def gae_error_html(**kwargs):
     GAE_ERROR_TEMPLATE = '''
