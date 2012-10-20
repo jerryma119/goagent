@@ -360,14 +360,14 @@ def gae_app_ex(environ, start_response):
             response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=False, follow_redirects=False, deadline=deadline, validate_certificate=False)
             break
         except apiproxy_errors.OverQuotaError as e:
-            time.sleep(4)
+            time.sleep(5)
         except urlfetch.DeadlineExceededError as e:
-            errors.append('DeadlineExceededError %s(deadline=%s)' % (e, deadline))
+            errors.append('DeadlineExceededError(error=%r, deadline=%s)' % (e, deadline))
             logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline * 2
         except urlfetch.DownloadError as e:
-            errors.append('DownloadError %s(deadline=%s)' % (e, deadline))
+            errors.append('DownloadError(error=%r, deadline=%s)' % (e, deadline))
             logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
             deadline = Deadline * 2
