@@ -214,15 +214,11 @@ def gae_response(start_response, status, headers, content, content_type='image/g
 def gae_notify(start_response, method, url, status, content):
     logging.warning('%r Failed: url=%r, status=%r', method, url, status)
     content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
-<<<<<<< HEAD
     return gae_response(start_response, status, {'content-type':'text/html'}, content)
 
 def gae_app(environ, start_response):
     if environ['REQUEST_METHOD'] == 'GET':
         return gae_get(environ, start_response)
-=======
-    return send_response(start_response, status, {'content-type':'text/html'}, content)
->>>>>>> 8eb9d896a68a783ff90f5643edc094bc32b8d586
 
     data = zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH'])))
     request = dict((k,binascii.a2b_hex(v)) for k, _, v in (x.partition('=') for x in data.split('&')))
@@ -278,29 +274,7 @@ def gae_app(environ, start_response):
     else:
         return gae_notify(start_response, method, url, 500, 'Python Server: Urlfetch error: %s' % errors)
 
-<<<<<<< HEAD
-    headers = response.headers
-    if 'set-cookie' in headers:
-        scs = headers['set-cookie'].split(', ')
-        cookies = []
-        i = -1
-        for sc in scs:
-            if re.match(r'[^ =]+ ', sc):
-                try:
-                    cookies[i] = '%s, %s' % (cookies[i], sc)
-                except IndexError:
-                    pass
-            else:
-                cookies.append(sc)
-                i += 1
-        headers['set-cookie'] = '\r\nSet-Cookie: '.join(cookies)
-    if 'content-length' not in headers:
-        headers['content-length'] = str(len(response.content))
-    headers['connection'] = 'close'
     return gae_response(start_response, response.status_code, headers, response.content)
-=======
-    return send_response(start_response, response.status_code, response.headers, response.content)
->>>>>>> 8eb9d896a68a783ff90f5643edc094bc32b8d586
 
 def gae_error_html(**kwargs):
     GAE_ERROR_TEMPLATE = '''
@@ -343,9 +317,8 @@ def gae_app_ex(environ, start_response):
         raise StopIteration
 
     wsgi_input = environ['wsgi.input']
-    data = wsgi_input.read(3)
-    version = data[0]
-    metadata_length = struct.unpack('!h', data[1:])[0]
+    data = wsgi_input.read(2)
+    metadata_length = struct.unpack('!h', data)[0]
     metadata = wsgi_input.read(metadata_length)
 
     metadata = zlib.decompress(metadata, -15)

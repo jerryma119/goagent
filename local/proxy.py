@@ -692,7 +692,7 @@ def urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         headers['Content-Length'] = str(len(payload))
     metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems()), '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v))
     metadata = zlib.compress(metadata)[2:-4]
-    gae_payload = '\x02%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+    gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     gae_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)})
     if gae_code != 200:
         return gae_code, gae_code, headers, rfile
