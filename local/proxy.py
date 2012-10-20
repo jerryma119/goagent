@@ -696,14 +696,13 @@ def urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     gae_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)})
     if gae_code != 200:
         return gae_code, gae_code, headers, rfile
-    data = rfile.read(5)
-    if len(data) < 5:
-        return gae_code, 502, headers, cStringIO.StringIO('connection aborted. data=%r' % data)
-    version = data[0]
-    code, headers_length = struct.unpack('!hh', data[1:])
+    data = rfile.read(4)
+    if len(data) < 4:
+        return gae_code, 502, headers, cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
+    code, headers_length = struct.unpack('!hh', data)
     data = rfile.read(headers_length)
     if len(data) < headers_length:
-        return gae_code, 502, headers, cStringIO.StringIO('connection aborted. data=%r' % data)
+        return gae_code, 502, headers, cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
     headers = dict(x.split(':', 1) for x in zlib.decompress(data, -15).splitlines())
     return gae_code, code, headers, rfile
 
