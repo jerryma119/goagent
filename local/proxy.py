@@ -687,24 +687,24 @@ class Common(object):
 common = Common()
 http   = Http(proxy_uri=common.proxy_uri)
 
-def urlfetch(method, url, headers, payload, fetchserver, **kwargs):
+def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if payload:
         headers['Content-Length'] = str(len(payload))
     metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems()), '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v))
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
-    gae_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)})
-    if gae_code != 200:
-        return gae_code, gae_code, headers, rfile
+    app_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)})
+    if app_code != 200:
+        return app_code, app_code, headers, rfile
     data = rfile.read(4)
     if len(data) < 4:
-        return gae_code, 502, headers, cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
+        return app_code, 502, headers, cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
     code, headers_length = struct.unpack('!hh', data)
     data = rfile.read(headers_length)
     if len(data) < headers_length:
-        return gae_code, 502, headers, cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
+        return app_code, 502, headers, cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
     headers = dict(x.split(':', 1) for x in zlib.decompress(data, -15).splitlines())
-    return gae_code, code, headers, rfile
+    return app_code, code, headers, rfile
 
 class RangeFetch(object):
     """Range Fetch Class"""
@@ -798,9 +798,9 @@ class RangeFetch(object):
             headers['Connection'] = 'close'
             for i in xrange(self.retry):
                 fetchserver = random.choice(self.fetchservers)
-                gae_code, code, response_headers, response_rfile = urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
-                if gae_code != 200:
-                    logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], gae_code)
+                app_code, code, response_headers, response_rfile = gae_urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
+                if app_code != 200:
+                    logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], app_code)
                     time.sleep(5)
                     continue
                 if 200 <= code < 300:
@@ -947,7 +947,6 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
 
     if need_direct:
         try:
-            logging.info('%s:%s "%s %s HTTP/1.1" - -' % (remote_addr, remote_port, method, path))
             content_length = int(headers.get('Content-Length', 0))
             payload = rfile.read(content_length) if content_length else None
             response = http.request(method, path, payload, headers, crlf=need_crlf)
@@ -955,6 +954,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                 logging.warning('http.request "%s %s") return %r', method, path, response)
                 return
             response_code, response_headers, response_rfile = response
+            logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, response_code, response_headers.get('Content-Length', '-')))
             wfile = sock.makefile('wb', 0)
             http.copy_response(response_code, response_headers, write=wfile.write)
             http.copy_body(response_rfile, response_headers, write=wfile.write)
@@ -992,7 +992,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             try:
                 content_length = int(headers.get('Content-Length', 0))
                 payload = rfile.read(content_length) if content_length else ''
-                gae_code, code, response_headers, response_rfile = urlfetch(method, path, headers, payload, common.GAE_FETCHSERVER, password=common.PAAS_PASSWORD)
+                app_code, code, response_headers, response_rfile = gae_urlfetch(method, path, headers, payload, common.GAE_FETCHSERVER, password=common.PAAS_PASSWORD)
             except socket.error as e:
                 if e[0] in (11004, 10051, 10054, 10060, 'timed out', 'empty line'):
                     # connection reset or timeout, switch to https
@@ -1002,28 +1002,28 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                     raise
 
             # gateway error, switch to https mode
-            if gae_code in (400, 504) or (gae_code==502 and common.GAE_PROFILE=='google_cn'):
+            if app_code in (400, 504) or (app_code==502 and common.GAE_PROFILE=='google_cn'):
                 common.GOOGLE_MODE = 'https'
                 common.build_gae_fetchserver()
             # appid over qouta, switch to next appid
-            if gae_code == 503:
+            if app_code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 common.build_gae_fetchserver()
                 http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
             # bad request, disable CRLF injection
-            if gae_code in (400, 405):
+            if app_code in (400, 405):
                 http.crlf = 0
 
             wfile = sock.makefile('wb', 0)
 
-            if gae_code != 200:
+            if app_code != 200:
                 logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
-                http.copy_response(gae_code, response_headers, write=wfile.write)
+                http.copy_response(app_code, response_headers, write=wfile.write)
                 http.copy_body(response_rfile, response_headers, write=wfile.write)
                 response_rfile.close()
                 return
 
-            logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
+            logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, code, response_headers.get('Content-Length', '-')))
 
             if code == 206:
                 fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
