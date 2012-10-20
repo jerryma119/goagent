@@ -12,7 +12,6 @@
 
 __version__ = '2.0.14'
 __config__  = 'proxy.ini'
-__file__    = getattr(__import__('os'), 'readlink', lambda x:x)(__file__)
 
 import sys
 import os
@@ -688,32 +687,25 @@ class Common(object):
 common = Common()
 http   = Http(proxy_uri=common.proxy_uri)
 
-def encode_request(headers, **kwargs):
-    if hasattr(headers, 'items'):
-        headers = headers.items()
-    data = ''.join('%s: %s\r\n' % (k, v) for k, v in headers) + ''.join('X-Goa-%s: %s\r\n' % (k.title(), v) for k, v in kwargs.iteritems())
-    return base64.b64encode(zlib.compress(data)).rstrip()
-
-def decode_request(request):
-    data     = zlib.decompress(base64.b64decode(request))
-    headers  = {}
-    kwargs   = {}
-    for line in data.splitlines():
-        keyword, _, value = line.partition(':')
-        if keyword.startswith('X-Goa-'):
-            kwargs[keyword[6:].lower()] = value.strip()
-        else:
-            headers[keyword.title()] = value.strip()
-    return headers, kwargs
-
-def pack_request(method, url, headers, payload, fetchserver, **kwargs):
-    content_length = int(headers.get('Content-Length',0))
-    request_kwargs = {'method':method, 'url':url}
-    request_kwargs.update(kwargs)
-    request_headers = {'Host':urlparse.urlparse(fetchserver).netloc, 'Cookie':encode_request(headers, **request_kwargs), 'Content-Length':str(content_length)}
-    if not isinstance(payload, str):
-        payload = payload.read(content_length)
-    return 'POST', request_headers, payload
+def urlfetch(method, url, headers, payload, fetchserver, **kwargs):
+    if payload:
+        headers['Content-Length'] = str(len(payload))
+    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems()), '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v))
+    metadata = zlib.compress(metadata)[2:-4]
+    gae_payload = '\x02%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+    gae_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)})
+    if gae_code != 200:
+        return gae_code, gae_code, headers, rfile
+    data = rfile.read(5)
+    if len(data) < 5:
+        return gae_code, 502, headers, cStringIO.StringIO('connection aborted. data=%r' % data)
+    version = data[0]
+    code, headers_length = struct.unpack('!hh', data[1:])
+    data = rfile.read(headers_length)
+    if len(data) < headers_length:
+        return gae_code, 502, headers, cStringIO.StringIO('connection aborted. data=%r' % data)
+    headers = dict(x.split(':', 1) for x in zlib.decompress(data, -15).splitlines())
+    return gae_code, code, headers, rfile
 
 class RangeFetch(object):
     """Range Fetch Class"""
@@ -807,28 +799,20 @@ class RangeFetch(object):
             headers['Connection'] = 'close'
             for i in xrange(self.retry):
                 fetchserver = random.choice(self.fetchservers)
-                request_method, request_headers, request_payload = pack_request(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
-                response = http.request(request_method, fetchserver, request_payload, request_headers)
-                if not response:
-                    logging.warning('Range Fetch %r %s failed(%s)', self.url, headers['Range'], response)
+                gae_code, code, response_headers, response_rfile = urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
+                if gae_code != 200:
+                    logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], gae_code)
                     time.sleep(5)
                     continue
-                response_code, response_headers, response_rfile = response
-                if 'Set-Cookie' not in response_headers:
-                    logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], response_code)
-                    time.sleep(5)
-                    continue
-                response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
-                response_code = int(response_kwargs['status'])
-                if 200 <= response_code < 300:
+                if 200 <= code < 300:
                     break
-                elif 300 <= response_code < 400:
+                elif 300 <= code < 400:
                     self.url = response_headers['Location']
                     logging.info('Range Fetch Redirect(%r)', self.url)
                     response_rfile.close()
                     continue
                 else:
-                    logging.error('Range Fetch %r return %s', self.url, response_code)
+                    logging.error('Range Fetch %r return %s', self.url, code)
                     response_rfile.close()
                     time.sleep(5)
                     continue
@@ -1006,9 +990,10 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             except StopIteration:
                 pass
         try:
-            request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD, fetchmaxsize=common.AUTORANGE_MAXSIZE)
             try:
-                code, response_headers, response_rfile = http.request(request_method, common.GAE_FETCHSERVER, data=request_payload or None, headers=request_headers, crlf=need_crlf)
+                content_length = int(headers.get('Content-Length', 0))
+                payload = rfile.read(content_length) if content_length else ''
+                gae_code, code, response_headers, response_rfile = urlfetch(method, path, headers, payload, common.GAE_FETCHSERVER, password=common.PAAS_PASSWORD)
             except socket.error as e:
                 if e[0] in (11004, 10051, 10054, 10060, 'timed out', 'empty line'):
                     # connection reset or timeout, switch to https
@@ -1018,34 +1003,32 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                     raise
 
             # gateway error, switch to https mode
-            if code in (400, 504) or (code==502 and common.GAE_PROFILE=='google_cn'):
+            if gae_code in (400, 504) or (gae_code==502 and common.GAE_PROFILE=='google_cn'):
                 common.GOOGLE_MODE = 'https'
                 common.build_gae_fetchserver()
             # appid over qouta, switch to next appid
-            if code == 503:
+            if gae_code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 common.build_gae_fetchserver()
                 http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
             # bad request, disable CRLF injection
-            if code in (400, 405):
+            if gae_code in (400, 405):
                 http.crlf = 0
 
             wfile = sock.makefile('wb', 0)
 
-            if 'Set-Cookie' not in response_headers:
+            if gae_code != 200:
                 logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
-                http.copy_response(code, response_headers, write=wfile.write)
+                http.copy_response(gae_code, response_headers, write=wfile.write)
                 http.copy_body(response_rfile, response_headers, write=wfile.write)
                 response_rfile.close()
                 return
 
-            response_headers, response_kwargs = decode_request(response_headers['Set-Cookie'])
-            code = int(response_kwargs['status'])
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
 
             if code == 206:
                 fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
-                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, request_payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
+                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
             http.copy_response(code, response_headers, write=wfile.write)
             http.copy_body(response_rfile, response_headers, write=wfile.write)
@@ -1369,6 +1352,9 @@ def pre_start():
                     common.CONFIG.write(fp)
 
 def main():
+    global __file__
+    if os.path.islink(__file__):
+        __file__ = getattr(os, 'readlink', lambda x:x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     logging.basicConfig(level=logging.DEBUG if common.LISTEN_DEBUGINFO else logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     CertUtil.check_ca()
