@@ -411,7 +411,7 @@ def gae_app_ex(environ, start_response):
     response.headers['Content-Length'] = str(len(data))
     response_headers = zlib.compress('\n'.join('%s:%s'%(k.title(),v) for k, v in response.headers.items()))[2:-4]
     start_response('200 OK', [('Content-Type', 'image/gif')])
-    yield '\x02'+struct.pack('!hh', int(response.status_code), len(response_headers))+response_headers
+    yield struct.pack('!hh', int(response.status_code), len(response_headers))+response_headers
     yield data
 
 def gae_get(environ, start_response):
