@@ -331,6 +331,7 @@ def gae_app_ex(environ, start_response):
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
 
     #logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
+    #logging.info('request headers=%s', headers)
 
     if __password__ and __password__ != kwargs.get('password', ''):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
@@ -413,7 +414,7 @@ def gae_app_ex(environ, start_response):
             dataio.write(struct.pack('<LL', zlib.crc32(data)&0xFFFFFFFFL, len(data)&0xFFFFFFFFL))
             data = dataio.getvalue()
     response.headers['Content-Length'] = str(len(data))
-    response_headers = zlib.compress('\n'.join('%s:%s'%(k.title(),v) for k, v in response.headers.items()))[2:-4]
+    response_headers = zlib.compress('\n'.join('%s:%s'%(k.title(),v) for k, v in response.headers.items() if not k.startswith('x-google-')))[2:-4]
     start_response('200 OK', [('Content-Type', 'image/gif')])
     yield struct.pack('!hh', int(response.status_code), len(response_headers))+response_headers
     yield data

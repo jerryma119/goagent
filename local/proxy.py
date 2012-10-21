@@ -696,7 +696,9 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 payload = zpayload
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
-    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems()), '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v))
+    skip_headers = http.skip_headers
+    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers), '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v))
+    print metadata
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     app_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)})
