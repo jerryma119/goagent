@@ -354,6 +354,7 @@ def gae_app_ex(environ, start_response):
     payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
     if headers.pop('Content-Encoding', '') == 'deflate':
         payload = zlib.decompress(payload, -15)
+        headers['Content-Length'] = len(payload)
 
     accept_encoding = headers.get('Accept-Encoding', '')
 
