@@ -688,7 +688,13 @@ common = Common()
 http   = Http(proxy_uri=common.proxy_uri)
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
+    # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
+        if len(payload) < 5 * 1024 * 1024:
+            zpayload = zlib.compress(payload)[2:-4]
+            if len(zpayload) < len(payload):
+                payload = zpayload
+                headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems()), '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v))
     metadata = zlib.compress(metadata)[2:-4]

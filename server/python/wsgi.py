@@ -316,6 +316,7 @@ def gae_app_ex(environ, start_response):
         yield gae_get(environ, start_response)
         raise StopIteration
 
+    # undeflate = lambda x:zlib.decompress(x, -15)
     wsgi_input = environ['wsgi.input']
     data = wsgi_input.read(2)
     metadata_length = struct.unpack('!h', data)[0]
@@ -351,6 +352,8 @@ def gae_app_ex(environ, start_response):
     headers = dict(headers)
     headers['Connection'] = 'close'
     payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
+    if headers.pop('Content-Encoding', '') == 'deflate':
+        payload = zlib.decompress(payload, -15)
 
     accept_encoding = headers.get('Accept-Encoding', '')
 
