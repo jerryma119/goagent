@@ -567,7 +567,7 @@ class Common(object):
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
-        self.GAE_MULCONN          = self.CONFIG.getint('gae', 'mulconn') if self.CONFIG.has_option('gae', 'mulconn') else 1
+        self.GAE_CRLF             = self.CONFIG.getint('gae', 'crlf')
 
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
@@ -700,8 +700,11 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers), '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v))
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
-    app_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)})
+    app_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)}, crlf=common.GAE_CRLF)
     if app_code != 200:
+        if app_code in (400, 405):
+            # filter by some firewall
+            common.GAE_CRLF = 0
         return app_code, app_code, headers, rfile
     data = rfile.read(4)
     if len(data) < 4:
