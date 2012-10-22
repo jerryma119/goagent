@@ -937,7 +937,6 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
         path = 'http://%s%s' % (host, path)
 
     need_direct = False
-    need_crlf   = 0
     if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
         if host in common.GOOGLE_FORCEHTTPS:
             sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % path.replace('http://', 'https://'))
@@ -945,25 +944,25 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
         else:
             if host not in http.dns:
                 http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
-            need_crlf   = 1
             need_direct = True
     elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
         if host not in http.dns:
             logging.info('crlf dns_resolve(host=%r, dnsservers=%r)', host, common.CRLF_DNSSERVER)
             http.dns[host] = set(http.dns_resolve(host, common.CRLF_DNSSERVER))
             logging.info('crlf dns_resolve(host=%r) return %s', host, list(http.dns[host]))
-        need_crlf = 1
         need_direct = True
 
     if need_direct:
         try:
             content_length = int(headers.get('Content-Length', 0))
             payload = rfile.read(content_length) if content_length else None
-            response = http.request(method, path, payload, headers, crlf=need_crlf)
+            response = http.request(method, path, payload, headers, crlf=common.GAE_CRLF)
             if not response:
                 logging.warning('http.request "%s %s") return %r', method, path, response)
                 return
             response_code, response_headers, response_rfile = response
+            if response_code in (400, 405):
+                common.GAE_CRLF = 0
             logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, response_code, response_headers.get('Content-Length', '-')))
             wfile = sock.makefile('wb', 0)
             http.copy_response(response_code, response_headers, write=wfile.write)
