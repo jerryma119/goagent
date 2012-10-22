@@ -697,7 +697,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     skip_headers = http.skip_headers
-    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers), '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v))
+    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     app_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)}, crlf=common.GAE_CRLF)
@@ -1002,7 +1002,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             try:
                 content_length = int(headers.get('Content-Length', 0))
                 payload = rfile.read(content_length) if content_length else ''
-                app_code, code, response_headers, response_rfile = gae_urlfetch(method, path, headers, payload, common.GAE_FETCHSERVER, password=common.PAAS_PASSWORD)
+                app_code, code, response_headers, response_rfile = gae_urlfetch(method, path, headers, payload, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD)
             except socket.error as e:
                 if e[0] in (11004, 10051, 10054, 10060, 'timed out', 'empty line'):
                     # connection reset or timeout, switch to https
