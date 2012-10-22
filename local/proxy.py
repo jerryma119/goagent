@@ -616,10 +616,10 @@ class Common(object):
             self.proxy_uri = ''
 
         self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
-        self.GOOGLE_HOSTS         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|'))
-        self.GOOGLE_SITES         = tuple(self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|'))
-        self.GOOGLE_FORCEHTTPS    = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|'))
-        self.GOOGLE_WITHGAE       = frozenset(self.CONFIG.get(self.GAE_PROFILE, 'withgae').split('|'))
+        self.GOOGLE_HOSTS         = tuple(x for x in self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|') if x)
+        self.GOOGLE_SITES         = tuple(x for x in self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|') if x)
+        self.GOOGLE_FORCEHTTPS    = frozenset(x for x in self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|') if x)
+        self.GOOGLE_WITHGAE       = frozenset(x for x in self.CONFIG.get(self.GAE_PROFILE, 'withgae').split('|') if x)
 
         self.AUTORANGE_HOSTS      = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
@@ -648,13 +648,8 @@ class Common(object):
 
         self.HOSTS                = dict((k, tuple(v.split('|')) if v else tuple()) for k, v in self.CONFIG.items('hosts'))
 
-        self.build_gae_fetchserver()
-
-    def build_gae_fetchserver(self):
-        """rebuild gae fetch server config"""
         if self.PROXY_ENABLE:
             self.GOOGLE_MODE = 'https'
-        # append '?' to url, it can avoid china telicom/unicom AD
         self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GOOGLE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
 
     def info(self):
@@ -686,6 +681,23 @@ class Common(object):
 
 common = Common()
 http   = Http(proxy_uri=common.proxy_uri)
+
+def modify_googlecn_iplist():
+    hosts = ('ditu.google.cn', 'www.google.cn', 'www.g.cn', 'ditu.g.cn')
+    iplist = []
+    for host in hosts:
+        try:
+            iplist += [x[-1][0] for x in socket.getaddrinfo(host, 80)]
+        except socket.error as e:
+            logging.error('socket.getaddrinfo(host=%r, 80) failed:%s', host, e)
+    prefix = re.sub(r'\d+\.\d+$', '', common.GOOGLE_HOSTS[0])
+    iplist = [x for x in iplist if x.startswith(prefix)]
+    if iplist:
+        common.GOOGLE_HOSTS = set(iplist)
+        for appid in common.GAE_APPIDS:
+            fetchhost = '%s.appspot.com'
+            http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
+        logging.info('modify_googlecn_iplist update common.GOOGLE_HOSTS=%s', common.GOOGLE_HOSTS)
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -883,6 +895,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             for fetchhost in fetchhosts:
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
             logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
+        gevent.spawn(modify_googlecn_iplist)
         hls['setup'] = True
 
     if common.USERAGENT_ENABLE:
@@ -1006,18 +1019,18 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                 if e[0] in (11004, 10051, 10054, 10060, 'timed out', 'empty line'):
                     # connection reset or timeout, switch to https
                     common.GOOGLE_MODE = 'https'
-                    common.build_gae_fetchserver()
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                 else:
                     raise
 
             # gateway error, switch to https mode
             if app_code in (400, 504) or (app_code==502 and common.GAE_PROFILE=='google_cn'):
                 common.GOOGLE_MODE = 'https'
-                common.build_gae_fetchserver()
+                common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
             # appid over qouta, switch to next appid
             if app_code == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                common.build_gae_fetchserver()
+                common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                 http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
             # bad request, disable CRLF injection
             if app_code in (400, 405):
