@@ -695,7 +695,7 @@ def modify_googlecn_iplist():
     if iplist:
         common.GOOGLE_HOSTS = set(iplist)
         for appid in common.GAE_APPIDS:
-            fetchhost = '%s.appspot.com'
+            fetchhost = '%s.appspot.com' % appid
             http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
         logging.info('modify_googlecn_iplist update common.GOOGLE_HOSTS=%s', common.GOOGLE_HOSTS)
 
