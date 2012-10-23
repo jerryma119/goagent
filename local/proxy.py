@@ -876,6 +876,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                     else:
                         # google_cn is down, switch to google_hk
                         common.GAE_PROFILE = 'google_hk'
+                        common.GOOGLE_MODE = 'https'
                         common.GOOGLE_HOSTS = [x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x]
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with hls['setuplock']:
