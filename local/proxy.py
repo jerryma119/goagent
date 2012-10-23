@@ -682,23 +682,6 @@ class Common(object):
 common = Common()
 http   = Http(proxy_uri=common.proxy_uri)
 
-def modify_googlecn_iplist():
-    hosts = ('ditu.google.cn', 'www.google.cn', 'www.g.cn', 'ditu.g.cn')
-    iplist = []
-    for host in hosts:
-        try:
-            iplist += [x[-1][0] for x in socket.getaddrinfo(host, 80)]
-        except socket.error as e:
-            logging.error('socket.getaddrinfo(host=%r, 80) failed:%s', host, e)
-    prefix = re.sub(r'\d+\.\d+$', '', common.GOOGLE_HOSTS[0])
-    iplist = [x for x in iplist if x.startswith(prefix)]
-    if iplist:
-        common.GOOGLE_HOSTS = set(iplist)
-        for appid in common.GAE_APPIDS:
-            fetchhost = '%s.appspot.com' % appid
-            http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
-        logging.info('modify_googlecn_iplist update common.GOOGLE_HOSTS=%s', common.GOOGLE_HOSTS)
-
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
@@ -876,6 +859,23 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
         elif not common.PROXY_ENABLE:
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
+            if common.GAE_PROFILE == 'google_cn':
+                with hls['setuplock']:
+                    hosts = ('ditu.google.cn', 'www.google.cn', 'www.g.cn', 'ditu.g.cn')
+                    iplist = []
+                    for host in hosts:
+                        try:
+                            iplist += [x[-1][0] for x in socket.getaddrinfo(host, 80)]
+                        except socket.error as e:
+                            logging.error('socket.getaddrinfo(host=%r, 80) failed:%s', host, e)
+                    prefix = re.sub(r'\d+\.\d+$', '', common.GOOGLE_HOSTS[0])
+                    iplist = [x for x in iplist if x.startswith(prefix)]
+                    if iplist:
+                        common.GOOGLE_HOSTS = set(iplist)
+                    else:
+                        # google_cn is down, switch to google_hk
+                        common.GAE_PROFILE = 'google_hk'
+                        common.GOOGLE_HOSTS = [x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x]
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with hls['setuplock']:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
@@ -895,8 +895,6 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             for fetchhost in fetchhosts:
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
             logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
-        if common.GAE_PROFILE == 'google_cn':
-            gevent.spawn(modify_googlecn_iplist)
         hls['setup'] = True
 
     if common.USERAGENT_ENABLE:
