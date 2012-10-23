@@ -126,7 +126,7 @@ function post()
     //$status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
     if ($errno && !isset($GLOBALS['header_length'])) {
-        echo 'PHP cURL' . $errno . ': ' .curl_error($ch);
+        echo 'cURL(' . $errno . '): ' .curl_error($ch);
     }
     curl_close($ch);
 }
