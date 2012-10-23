@@ -526,12 +526,6 @@ class Http(object):
                     break
                 left -= len(data)
                 write(data)
-        elif headers.get('Connection', '').lower() == 'close':
-            while 1:
-                data = rfile.read(bufsize)
-                if not data:
-                    break
-                write(data)
         elif headers.get('Transfer-Encoding', '').lower() == 'chunked':
             while 1:
                 line = rfile.readline(bufsize)
@@ -544,6 +538,12 @@ class Http(object):
                     break
                 else:
                     write(rfile.read(count))
+        elif headers.get('Connection', '').lower() == 'close':
+            while 1:
+                data = rfile.read(bufsize)
+                if not data:
+                    break
+                write(data)
         else:
             pass
         if need_return:
@@ -719,6 +719,7 @@ class RangeFetch(object):
     waitsize  = 1024*512
     threads   = 1
     retry     = 8
+    urlfetch  = staticmethod(gae_urlfetch)
 
     def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchservers, password, maxsize=0, bufsize=0, waitsize=0, threads=0):
         self.response_code = response_code
@@ -803,7 +804,7 @@ class RangeFetch(object):
             headers['Connection'] = 'close'
             for i in xrange(self.retry):
                 fetchserver = random.choice(self.fetchservers)
-                app_code, code, response_headers, response_rfile = gae_urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
+                app_code, code, response_headers, response_rfile = self.urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
                 if app_code != 200:
                     logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], app_code)
                     time.sleep(5)
@@ -1065,6 +1066,22 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             if __realsock:
                 __realsock.close()
 
+def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
+    # deflate = lambda x:zlib.compress(x)[2:-4]
+    if payload:
+        if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
+            zpayload = zlib.compress(payload)[2:-4]
+            if len(zpayload) < len(payload):
+                payload = zpayload
+                headers['Content-Encoding'] = 'deflate'
+        headers['Content-Length'] = str(len(payload))
+    skip_headers = http.skip_headers
+    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
+    metadata = zlib.compress(metadata)[2:-4]
+    app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+    app_code, headers, rfile = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
+    return app_code, app_code, headers, rfile
+
 def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
     rfile = sock.makefile('rb', 8192)
     try:
@@ -1124,9 +1141,10 @@ def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()})
         path = 'http://%s%s' % (host, path)
 
     try:
-        request_method, request_headers, request_payload = pack_request(method, path, headers, rfile, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
         try:
-            code, response_headers, response_rfile = http.request(request_method, common.PAAS_FETCHSERVER, data=request_payload or None, headers=request_headers)
+            content_length = int(headers.get('Content-Length', 0))
+            payload = rfile.read(content_length) if content_length else ''
+            app_code, code, response_headers, response_rfile = paas_urlfetch(method, path, headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
         except socket.error as e:
             if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):

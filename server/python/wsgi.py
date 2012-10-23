@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.1.0'
+__version__ = '2.1.1'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -40,24 +40,29 @@ FetchMaxSize = 1024*1024*4
 DeflateMaxSize = 1024*1024*4
 Deadline = 60
 
-def httplib_request(method, url, body=None, headers={}, timeout=None):
-    scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-    HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
-    if params:
-        path += ';' + params
-    if query:
-        path += '?' + query
-    conn = HTTPConnection(netloc, timeout=timeout)
-    conn.request(method, path, body=body, headers=headers)
-    response = conn.getresponse()
-    return response
-
 def paas_application(environ, start_response):
-    try:
-        headers, kwargs = decode_request(environ['HTTP_COOKIE'])
-    except Exception as e:
-        logging.exception("decode_request(environ['HTTP_COOKIE']=%r) failed: %s", environ.get('HTTP_COOKIE'), e)
-        raise
+    # inflate = lambda x:zlib.decompress(x, -15)
+    wsgi_input = environ['wsgi.input']
+    data = wsgi_input.read(2)
+    metadata_length = struct.unpack('!h', data)[0]
+    metadata = wsgi_input.read(metadata_length)
+
+    metadata = zlib.decompress(metadata, -15)
+    headers  = dict(x.split(':', 1) for x in metadata.splitlines() if x)
+    method   = headers.pop('G-Method')
+    url      = headers.pop('G-Url')
+
+    kwargs   = {}
+    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
+
+    headers['Connection'] = 'close'
+
+    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
+    if 'Content-Encoding' in headers:
+        if headers['Content-Encoding'] == 'deflate':
+            payload = zlib.decompress(payload, -15)
+            headers['Content-Length'] = str(len(payload))
+            del headers['Content-Encoding']
 
     if __password__ and __password__ != kwargs.get('password'):
         url = 'https://goa%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
@@ -67,21 +72,22 @@ def paas_application(environ, start_response):
         yield response.read()
         raise StopIteration
 
-    method  = kwargs['method']
-    url     = kwargs['url']
     timeout = Deadline
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
     if method != 'CONNECT':
         try:
-            headers = dict(headers)
-            headers['Connection'] = 'close'
-            data = environ['wsgi.input'] if int(headers.get('Content-Length',0)) else None
-            response = httplib_request(method, url, body=data, headers=headers, timeout=timeout)
-            response_headers = dict(response.getheaders())
-            response_headers['connection'] = 'close'
-            response_headers.pop('transfer-encoding', '')
+            scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+            HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+            if params:
+                path += ';' + params
+            if query:
+                path += '?' + query
+            conn = HTTPConnection(netloc, timeout=timeout)
+            conn.request(method, path, body=payload, headers=headers)
+            response = conn.getresponse()
+            response_headers = dict((k.title(), v) for k, v in response.getheaders())
             start_response('%s OK' % response.status, response_headers.items())
             bufsize = 8192
             while 1:
@@ -247,7 +253,7 @@ def gae_application(environ, start_response):
             yield html.encode('utf8')
         raise StopIteration
 
-    # undeflate = lambda x:zlib.decompress(x, -15)
+    # inflate = lambda x:zlib.decompress(x, -15)
     wsgi_input = environ['wsgi.input']
     data = wsgi_input.read(2)
     metadata_length = struct.unpack('!h', data)[0]

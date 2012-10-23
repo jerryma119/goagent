@@ -3,36 +3,42 @@
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '2.0.8';
+$__version__  = '2.1.1';
 $__password__ = '';
 $__timeout__  = 20;
 
-function encode_request($headers, $kwargs) {
-    $data = '';
-    foreach ($headers as $key => $value) {
-        $data .= "$key: $value\r\n";
-    }
-    foreach ($kwargs as $key => $value) {
-        $data .= "X-Goa-$key: $value\r\n";
-    }
-    return base64_encode(gzcompress($data));
-}
+function decode_request($data) {
+    list($headers_length) = array_values(unpack('n', substr($data, 0, 2)));
+    $headers_data = gzinflate(substr($data, 2, $headers_length));
+    $body = substr($data, 2+intval($headers_length));
 
-function decode_request($request) {
-    $data    = gzuncompress(base64_decode($request));
+    $method  = '';
+    $url     = '';
     $headers = array();
     $kwargs  = array();
-    foreach (explode("\r\n", $data) as $kv) {
+
+    foreach (explode("\n", $headers_data) as $kv) {
         $pair = explode(':', $kv, 2);
         $key  = $pair[0];
         $value = trim($pair[1]);
-        if (substr($key, 0, 6) == 'X-Goa-') {
-            $kwargs[strtolower(substr($key, 6))] = $value;
+        if ($key == 'G-Method') {
+            $method = $value;
+        } else if ($key == 'G-Url') {
+            $url = $value;
+        } else if (substr($key, 0, 2) == 'G-') {
+            $kwargs[strtolower(substr($key, 2))] = $value;
         } else if ($key) {
             $headers[$key] = $value;
         }
     }
-    return array($headers, $kwargs);
+    if (isset($headers['Content-Encoding'])) {
+        if ($headers['Content-Encoding'] == 'deflate') {
+            $body = gzinflate($body);
+            $headers['Content-Length'] = strval(strlen($body));
+            unset($headers['Content-Encoding']);
+        }
+    }
+    return array($method, $url, $headers, $kwargs, $body);
 }
 
 function header_function($ch, $header){
@@ -49,9 +55,7 @@ function write_function($ch, $body){
 
 function post()
 {
-    list($headers, $kwargs) = @decode_request($_SERVER['HTTP_COOKIE']);
-    $method  = $kwargs['method'];
-    $url     = $kwargs['url'];
+    list($method, $url, $headers, $kwargs, $body) = @decode_request(@file_get_contents('php://input'));
 
     $password = $GLOBALS['__password__'];
     if ($password) {
@@ -62,8 +66,6 @@ function post()
         }
     }
 
-
-    $body = @file_get_contents('php://input');
     if ($body) {
         $headers['Content-Length'] = strval(strlen($body));
     }
