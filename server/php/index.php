@@ -3,7 +3,7 @@
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '2.1.1';
+$__version__  = '2.1.2';
 $__password__ = '';
 $__timeout__  = 20;
 
@@ -108,7 +108,7 @@ function post()
             $curl_opt[CURLOPT_POSTFIELDS] = $body;
             break;
         default:
-            echo 'Invalid Method: '. $method;
+            echo 'Invalid Method: ' . var_export($method, true);
             exit(-1);
     }
 
@@ -126,7 +126,7 @@ function post()
     //$status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
     if ($errno && !isset($GLOBALS['header_length'])) {
-        echo $errno . ': ' .curl_error($ch);
+        echo 'PHP cURL' . $errno . ': ' .curl_error($ch);
     }
     curl_close($ch);
 }
