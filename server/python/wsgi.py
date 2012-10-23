@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.1.1'
+__version__ = '2.1.2'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -39,65 +39,6 @@ FetchMax = 2
 FetchMaxSize = 1024*1024*4
 DeflateMaxSize = 1024*1024*4
 Deadline = 60
-
-def paas_application(environ, start_response):
-    # inflate = lambda x:zlib.decompress(x, -15)
-    wsgi_input = environ['wsgi.input']
-    data = wsgi_input.read(2)
-    metadata_length = struct.unpack('!h', data)[0]
-    metadata = wsgi_input.read(metadata_length)
-
-    metadata = zlib.decompress(metadata, -15)
-    headers  = dict(x.split(':', 1) for x in metadata.splitlines() if x)
-    method   = headers.pop('G-Method')
-    url      = headers.pop('G-Url')
-
-    kwargs   = {}
-    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
-
-    headers['Connection'] = 'close'
-
-    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
-    if 'Content-Encoding' in headers:
-        if headers['Content-Encoding'] == 'deflate':
-            payload = zlib.decompress(payload, -15)
-            headers['Content-Length'] = str(len(payload))
-            del headers['Content-Encoding']
-
-    if __password__ and __password__ != kwargs.get('password'):
-        url = 'https://goa%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
-        response = httplib_request('GET', url, timeout=5)
-        status_line = '%s %s' % (response.status, httplib.responses.get(response.status, 'OK'))
-        start_response(status_line, response.getheaders())
-        yield response.read()
-        raise StopIteration
-
-    timeout = Deadline
-
-    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
-
-    if method != 'CONNECT':
-        try:
-            scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-            HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
-            if params:
-                path += ';' + params
-            if query:
-                path += '?' + query
-            conn = HTTPConnection(netloc, timeout=timeout)
-            conn.request(method, path, body=payload, headers=headers)
-            response = conn.getresponse()
-            response_headers = dict((k.title(), v) for k, v in response.getheaders())
-            start_response('%s OK' % response.status, response_headers.items())
-            bufsize = 8192
-            while 1:
-                data = response.read(bufsize)
-                if not data:
-                    response.close()
-                    break
-                yield data
-        except httplib.HTTPException as e:
-            raise
 
 def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, trans=''):
     timecount = timeout
@@ -205,6 +146,89 @@ def socks5_handler(sock, address):
         rfile.close()
         wfile.close()
         sock.close()
+
+def paas_application(environ, start_response):
+    # inflate = lambda x:zlib.decompress(x, -15)
+    wsgi_input = environ['wsgi.input']
+    data = wsgi_input.read(2)
+    metadata_length = struct.unpack('!h', data)[0]
+    metadata = wsgi_input.read(metadata_length)
+
+    metadata = zlib.decompress(metadata, -15)
+    headers  = dict(x.split(':', 1) for x in metadata.splitlines() if x)
+    method   = headers.pop('G-Method')
+    url      = headers.pop('G-Url')
+
+    kwargs   = {}
+    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
+
+    headers['Connection'] = 'close'
+
+    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
+    if 'Content-Encoding' in headers:
+        if headers['Content-Encoding'] == 'deflate':
+            payload = zlib.decompress(payload, -15)
+            headers['Content-Length'] = str(len(payload))
+            del headers['Content-Encoding']
+
+    if __password__ and __password__ != kwargs.get('password'):
+        url = 'https://goa%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
+        response = httplib_request('GET', url, timeout=5)
+        status_line = '%s %s' % (response.status, httplib.responses.get(response.status, 'OK'))
+        start_response(status_line, response.getheaders())
+        yield response.read()
+        raise StopIteration
+
+    timeout = Deadline
+
+    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
+
+    if method != 'CONNECT':
+        try:
+            scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
+            HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+            if params:
+                path += ';' + params
+            if query:
+                path += '?' + query
+            conn = HTTPConnection(netloc, timeout=timeout)
+            conn.request(method, path, body=payload, headers=headers)
+            response = conn.getresponse()
+            response_headers = dict((k.title(), v) for k, v in response.getheaders())
+
+            if response.status in (204, 304):
+                start_response('%s OK' % response.status, response_headers.items())
+                raise StopIteration
+
+            need_gzip = False
+            compressobj = None
+            if 'Content-Encoding' not in response_headers and not headers.get('Content-Type', '').startswith(('video/','audio/', 'image/')) and 'gzip' in headers.get('Accept-Encoding', ''):
+                response_headers['Content-Encoding'] = 'gzip'
+                response_headers.pop('Content-Length', None)
+                compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
+                need_gzip = True
+
+            start_response('%s OK' % response.status, response_headers.items())
+
+            if need_gzip:
+                yield '\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff'
+            bufsize = 8192
+            while 1:
+                data = response.read(bufsize)
+                if not data:
+                    response.close()
+                    break
+                if compressobj:
+                    zdata = compressobj.compress(data)
+                    if zdata:
+                        yield zdata
+                else:
+                    yield data
+            if need_gzip:
+                yield compressobj.flush()
+                yield struct.pack('<LL', zlib.crc32(data)&0xFFFFFFFFL, len(data)&0xFFFFFFFFL)
+        except httplib.HTTPException as e:
+            raise
 
 def gae_error_html(**kwargs):
     GAE_ERROR_TEMPLATE = '''
