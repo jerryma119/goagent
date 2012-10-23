@@ -702,7 +702,7 @@ def modify_googlecn_iplist():
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
-        if len(payload) < 5 * 1024 * 1024:
+        if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
             zpayload = zlib.compress(payload)[2:-4]
             if len(zpayload) < len(payload):
                 payload = zpayload
@@ -895,7 +895,8 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             for fetchhost in fetchhosts:
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
             logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
-        gevent.spawn(modify_googlecn_iplist)
+        if common.GAE_PROFILE == 'google_cn':
+            gevent.spawn(modify_googlecn_iplist)
         hls['setup'] = True
 
     if common.USERAGENT_ENABLE:
