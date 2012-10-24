@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.1.2'
+__version__ = '2.1.3'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -148,10 +148,14 @@ def socks5_handler(sock, address):
         sock.close()
 
 def paas_application(environ, start_response):
+    if environ['REQUEST_METHOD'] == 'GET':
+        start_response('302 Found', [('Location', 'https://www.google.com')])
+        raise StopIteration
+
     # inflate = lambda x:zlib.decompress(x, -15)
     wsgi_input = environ['wsgi.input']
     data = wsgi_input.read(2)
-    metadata_length = struct.unpack('!h', data)[0]
+    metadata_length, = struct.unpack('!h', data)
     metadata = wsgi_input.read(metadata_length)
 
     metadata = zlib.decompress(metadata, -15)
@@ -196,37 +200,24 @@ def paas_application(environ, start_response):
             response = conn.getresponse()
             response_headers = dict((k.title(), v) for k, v in response.getheaders())
 
-            if response.status in (204, 304):
-                start_response('%s OK' % response.status, response_headers.items())
-                raise StopIteration
+            data = 'G-Code:%s\n%s' % (response.status, '\n'.join('%s:%s'%(k,v) for k, v in response_headers.iteritems()))
+            data = base64.b64encode(zlib.compress(data)[2:-4]).rstrip()
 
-            need_gzip = False
-            compressobj = None
-            if 'Content-Encoding' not in response_headers and not headers.get('Content-Type', '').startswith(('video/','audio/', 'image/')) and 'gzip' in headers.get('Accept-Encoding', ''):
-                response_headers['Content-Encoding'] = 'gzip'
-                response_headers.pop('Content-Length', None)
-                compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
-                need_gzip = True
+            start_response_headers = [('Status', data), ('Content-Type', 'image/gif')]
+            if 'Content-Length' in response_headers:
+                start_response_headers.append(('Content-Length', response_headers['Content-Length']))
+            if 'Connection' in response_headers:
+                start_response_headers.append(('Connection', response_headers['Connection']))
 
-            start_response('%s OK' % response.status, response_headers.items())
+            start_response('200 OK', start_response_headers)
 
-            if need_gzip:
-                yield '\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff'
             bufsize = 8192
             while 1:
                 data = response.read(bufsize)
                 if not data:
                     response.close()
                     break
-                if compressobj:
-                    zdata = compressobj.compress(data)
-                    if zdata:
-                        yield zdata
-                else:
-                    yield data
-            if need_gzip:
-                yield compressobj.flush()
-                yield struct.pack('<LL', zlib.crc32(data)&0xFFFFFFFFL, len(data)&0xFFFFFFFFL)
+                yield data
         except httplib.HTTPException as e:
             raise
 
@@ -280,7 +271,7 @@ def gae_application(environ, start_response):
     # inflate = lambda x:zlib.decompress(x, -15)
     wsgi_input = environ['wsgi.input']
     data = wsgi_input.read(2)
-    metadata_length = struct.unpack('!h', data)[0]
+    metadata_length, = struct.unpack('!h', data)
     metadata = wsgi_input.read(metadata_length)
 
     metadata = zlib.decompress(metadata, -15)
