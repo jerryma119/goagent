@@ -875,32 +875,33 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
             if common.GAE_PROFILE == 'google_cn':
                 with hls['setuplock']:
-                    hosts = ('ditu.google.cn', 'www.google.cn', 'www.g.cn', 'ditu.g.cn')
-                    iplist = []
-                    for host in hosts:
-                        try:
-                            iplist += socket.gethostbyname_ex(host)[-1]
-                        except socket.error as e:
-                            logging.error('socket.gethostbyname_ex(host=%r) failed:%s', host, e)
-                    prefix = re.sub(r'\d+\.\d+$', '', common.GOOGLE_HOSTS[0])
-                    iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
-                    if iplist:
-                        common.GOOGLE_HOSTS = set(iplist)
-                    else:
-                        # seems google_cn is down, should switch to google_hk?
-                        need_switch = False
-                        for host in random.sample(list(common.GOOGLE_HOSTS), min(3, len(common.GOOGLE_HOSTS))):
+                    if common.GAE_PROFILE == 'google_cn':
+                        hosts = ('ditu.google.cn', 'www.google.cn', 'www.g.cn', 'ditu.g.cn')
+                        iplist = []
+                        for host in hosts:
                             try:
-                                socket.create_connection((host, 80), timeout=2).close()
-                            except socket.error:
-                                need_switch = True
-                                break
-                        if need_switch:
-                            common.GAE_PROFILE = 'google_hk'
-                            common.GOOGLE_MODE = 'https'
-                            common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-                            common.GOOGLE_HOSTS = [x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x]
-                            common.GOOGLE_WITHGAE = common.CONFIG.get('google_hk', 'withgae').split('|')
+                                iplist += socket.gethostbyname_ex(host)[-1]
+                            except socket.error as e:
+                                logging.error('socket.gethostbyname_ex(host=%r) failed:%s', host, e)
+                        prefix = re.sub(r'\d+\.\d+$', '', common.GOOGLE_HOSTS[0])
+                        iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
+                        if iplist:
+                            common.GOOGLE_HOSTS = set(iplist)
+                        else:
+                            # seems google_cn is down, should switch to google_hk?
+                            need_switch = False
+                            for host in random.sample(list(common.GOOGLE_HOSTS), min(3, len(common.GOOGLE_HOSTS))):
+                                try:
+                                    socket.create_connection((host, 80), timeout=2).close()
+                                except socket.error:
+                                    need_switch = True
+                                    break
+                            if need_switch:
+                                common.GAE_PROFILE = 'google_hk'
+                                common.GOOGLE_MODE = 'https'
+                                common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                                common.GOOGLE_HOSTS = [x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x]
+                                common.GOOGLE_WITHGAE = common.CONFIG.get('google_hk', 'withgae').split('|')
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with hls['setuplock']:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
