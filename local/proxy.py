@@ -543,6 +543,8 @@ class Http(object):
                     break
                 if line == '\r\n':
                     continue
+                if ';' in line:
+                    line, _ = line.split(';', 1)
                 count = int(line , 16)
                 if count == 0:
                     break
@@ -1103,7 +1105,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     sock = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0, return_sock=True)
 
-    response = httplib.HTTPResponse(sock)
+    response = httplib.HTTPResponse(sock, buffering=True)
     response.begin()
     app_code = response.status
     app_headers = response.getheaders()
