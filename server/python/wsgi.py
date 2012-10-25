@@ -198,18 +198,11 @@ def paas_application(environ, start_response):
             conn = HTTPConnection(netloc, timeout=timeout)
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
-            response_headers = dict((k.title(), v) for k, v in response.getheaders())
 
-            data = 'G-Code:%s\n%s' % (response.status, '\n'.join('%s:%s'%(k,v) for k, v in response_headers.iteritems()))
-            data = base64.b64encode(zlib.compress(data)[2:-4]).rstrip()
+            response_headers = zlib.compress('\n'.join('%s:%s'%(k.title(),v) for k, v in response.getheaders() ))[2:-4]
 
-            start_response_headers = [('Status', data), ('Content-Type', 'image/gif')]
-            if 'Content-Length' in response_headers:
-                start_response_headers.append(('Content-Length', response_headers['Content-Length']))
-            if 'Connection' in response_headers:
-                start_response_headers.append(('Connection', response_headers['Connection']))
-
-            start_response('200 OK', start_response_headers)
+            start_response('200 OK', [('Content-Type', 'image/gif')])
+            yield struct.pack('!hh', int(response.status), len(response_headers)) + response_headers
 
             bufsize = 8192
             while 1:
