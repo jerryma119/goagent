@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '1.0'
+__version__ = '1.1'
 
 import sys
 import os
@@ -13,8 +13,11 @@ import time
 import pygtk
 pygtk.require('2.0')
 import gtk
-import appindicator
 
+try:
+    import appindicator
+except ImportError:
+    sys.exit(gtk.MessageDialog (None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, u'\u8bf7\u5b89\u88c5 python-appindicator').run())
 try:
     import vte
 except ImportError:
@@ -63,7 +66,10 @@ class GoAgentAppIndicator:
 
 
 def main():
-    os.chdir(os.path.abspath(os.path.dirname(__file__)))
+    global __file__
+    if os.path.islink(__file__):
+        __file__ = getattr(os, 'readlink', lambda x:x)(__file__)
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     os.system('chmod +x proxy.py')
     v = vte.Terminal ()
     v.connect ("child-exited", lambda term: gtk.main_quit())
