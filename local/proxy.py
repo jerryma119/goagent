@@ -416,14 +416,14 @@ class Http(object):
         logging.debug('Http.create_connection_withproxy connect (%r, %r)', host, port)
         username, password, proxyhost, proxyport = proxy
         try:
-            proxyip = self.dns_resolve(proxyhost)
-            sock = socket.socket(socket.AF_INET if ':' not in proxyip else socket.AF_INET6)
-            sock.connect((proxyip, proxyport))
+            self.dns_resolve(host)
+            sock = socket.create_connection((proxyhost, int(proxyport)))
             hostname = random.sample(self.dns[host] or [host], 1)[0]
-            request_data = 'CONNECT %s:%s\r\n' % (hostname, port)
+            request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
             if username and password:
                 request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
             request_data += '\r\n'
+            print (request_data,)
             sock.sendall(request_data)
             data = ''
             while not data.endswith('\r\n\r\n'):
@@ -549,7 +549,10 @@ class Http(object):
                 if not self.proxy:
                     sock = self.create_connection((host, port), self.timeout)
                 else:
-                    sock = self.create_connection_withproxy((host, port), port, self.timeout, None, proxy=self.proxy)
+                    print self.proxy
+                    sock = self.create_connection_withproxy((host, port), port, self.timeout, proxy=self.proxy)
+                    path = url
+                    crlf = self.crlf = 0
                 if sock:
                     if scheme == 'https':
                         sock = ssl.wrap_socket(sock)
