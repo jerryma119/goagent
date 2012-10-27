@@ -423,7 +423,6 @@ class Http(object):
             if username and password:
                 request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
             request_data += '\r\n'
-            print (request_data,)
             sock.sendall(request_data)
             data = ''
             while not data.endswith('\r\n\r\n'):
@@ -477,7 +476,7 @@ class Http(object):
             keyword = keyword.title()
             value = value.strip()
             headers[keyword] = value
-        return method, path, version, headers
+        return method, path, version.strip(), headers
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None, return_sock=None):
         skip_headers = self.skip_headers
@@ -834,7 +833,7 @@ class RangeFetch(object):
         self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
 
         queues = [gevent.queue.Queue() for _ in range(end+1, length, self.maxsize)]
-        gevent.spawn_later(0.5, self._poolfetch, min(len(queues), self.threads), queues, end, length, self.maxsize)
+        gevent.spawn_later(0.1, self._poolfetch, min(len(queues), self.threads), queues, end, length, self.maxsize)
 
         try:
             left = end-start+1
