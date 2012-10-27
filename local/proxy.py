@@ -582,15 +582,8 @@ class Http(object):
             write = output.write
             need_return = True
         content_length = int(headers.get('Content-Length', content_length))
-        if content_length:
-            left = content_length
-            while left > 0:
-                data = rfile.read(min(left, bufsize))
-                if not data:
-                    break
-                left -= len(data)
-                write(data)
-        elif headers.get('Transfer-Encoding', '').lower() == 'chunked':
+
+        if headers.get('Transfer-Encoding', '').lower() == 'chunked':
             while 1:
                 line = rfile.readline(bufsize)
                 if not line:
@@ -604,6 +597,14 @@ class Http(object):
                     break
                 else:
                     write(rfile.read(count))
+        elif content_length:
+            left = content_length
+            while left > 0:
+                data = rfile.read(min(left, bufsize))
+                if not data:
+                    break
+                left -= len(data)
+                write(data)
         elif headers.get('Connection', '').lower() == 'close':
             while 1:
                 data = rfile.read(bufsize)
