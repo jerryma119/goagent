@@ -145,6 +145,15 @@ except ImportError:
     logging = SimpleLogging()
     del SimpleLogging
 
+try:
+    import ctypes
+except ImportError:
+    ctypes = None
+try:
+    import OpenSSL
+except ImportError:
+    OpenSSL = None
+
 import collections
 import errno
 import time
@@ -163,19 +172,9 @@ import traceback
 import hashlib
 import fnmatch
 import ConfigParser
-import SocketServer
-import thread
 import httplib
 import urllib2
 import threading
-try:
-    import ctypes
-except ImportError:
-    ctypes = None
-try:
-    import OpenSSL
-except ImportError:
-    OpenSSL = None
 
 class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
@@ -395,38 +394,49 @@ class Http(object):
                         if self.window_ack > 10:
                             self.window_ack = 0
                             self.window = window - 1
-                            logging.info('Http.create_connection to (%s, %r) successed, switch window=%r', iplist, port, self.window)
+                            logging.info('Http.create_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
                     socks.remove(sock)
                     #any(self._socket_queue.put(x) for x in socks)
                     if socks:
                         gevent.spawn_later(1, lambda ss:any(x.close() for x in ss), socks)
                     return sock
                 else:
-                    self.window = int(round(1.5 * self.window))
-                    if self.window > self.max_window:
-                        self.window = self.max_window
-                    if self.min_window <= len(iplist) < self.window:
-                        self.window = len(iplist)
-                    self.window_ack = 0
-                    logging.error('Http.create_connection to (%s, %r) failed, switch window=%r', ips, port, self.window)
+                    logging.warning('Http.create_connection to %s, port=%r return None, try again.', ips, port)
             except Exception as e:
-                logging.error('%s', e)
+                logging.exception('%s', e)
+        else:
+            self.window = int(round(1.5 * self.window))
+            if self.window > self.max_window:
+                self.window = self.max_window
+            if self.min_window <= len(iplist) < self.window:
+                self.window = len(iplist)
+            self.window_ack = 0
+            logging.error('Http.create_connection to %s, port=%r failed, switch window=%r', ips, port, self.window)
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         logging.debug('Http.create_connection_withproxy connect (%r, %r)', host, port)
         username, password, proxyhost, proxyport = proxy
         try:
-            self.dns_resolve(host)
+            try:
+                self.dns_resolve(host)
+            except socket.error:
+                pass
             sock = socket.create_connection((proxyhost, int(proxyport)))
-            hostname = random.sample(self.dns[host] or [host], 1)[0]
+            hostname = random.choice(list(self.dns.get(host, [host])))
             request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
             if username and password:
                 request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
             request_data += '\r\n'
             sock.sendall(request_data)
-            data = ''
-            while not data.endswith('\r\n\r\n'):
-                data += sock.recv(1)
+            buf = ''
+            while 1:
+                data = sock.recv(1)
+                if not data:
+                    sock.close()
+                    raise socket.error(10054, 'connection reset by proxy')
+                buf += data
+                if buf.endswith('\r\n\r\n'):
+                    break
             return sock
         except socket.error as e:
             logging.error('Http.create_connection_withproxy error %s', e)
@@ -548,10 +558,9 @@ class Http(object):
                 if not self.proxy:
                     sock = self.create_connection((host, port), self.timeout)
                 else:
-                    print self.proxy
                     sock = self.create_connection_withproxy((host, port), port, self.timeout, proxy=self.proxy)
                     path = url
-                    crlf = self.crlf = 0
+                    #crlf = self.crlf = 0
                 if sock:
                     if scheme == 'https':
                         sock = ssl.wrap_socket(sock)
@@ -656,7 +665,7 @@ class Common(object):
         if self.CONFIG.has_section('socks5'):
             self.SOCKS5_ENABLE           = self.CONFIG.getint('socks5', 'enable')
             self.SOCKS5_LISTEN           = self.CONFIG.get('socks5', 'listen')
-            self.SOCKS5_PASSWORD         = self.CONFIG.get('socks5', 'password') if self.CONFIG.has_option('socks5', 'password') else ''
+            self.SOCKS5_PASSWORD         = self.CONFIG.get('socks5', 'password')
             self.SOCKS5_FETCHSERVER      = self.CONFIG.get('socks5', 'fetchserver')
         else:
             self.SOCKS5_ENABLE           = 0
@@ -922,6 +931,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             return rfile.close()
         raise
 
+    """setup gaeproxy_handler, init domain/iplist map"""
     if 'setup' not in hls:
         http.dns.update(common.HOSTS)
         fetchhosts = ['%s.appspot.com' % x for x in common.GAE_APPIDS]
@@ -985,6 +995,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
 
     remote_addr, remote_port = address
 
+    """do connect, convert fake https socket"""
     __realsock = None
     __realrfile = None
     if method == 'CONNECT':
@@ -998,10 +1009,11 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                     http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
                 remote = http.create_connection((host, port), 8)
             else:
-                remote = socket.create_connection((host, int(port)))
-                remote.send('CONNECT %s:%s\r\n%s\r\n' % (host, port, http_headers))
+                hostip = random.choice(common.GOOGLE_HOSTS)
+                proxy_info = (common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
+                remote = http.create_connection_withproxy((hostip, int(port)), proxy=proxy_info)
             if not remote:
-                logging.error('Connect remote host(%r) failed', host)
+                logging.error('gaeproxy_handler direct connect remote (%r, %r) failed', host, port)
                 return
             sock.send('HTTP/1.1 200 OK\r\n\r\n')
             http.forward_socket(sock, remote)
@@ -1031,6 +1043,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
     if path[0] == '/' and host:
         path = 'http://%s%s' % (host, path)
 
+    """handler routine, need_direct and need_crlf"""
     need_direct = False
     if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
         if host in common.GOOGLE_FORCEHTTPS:
@@ -1038,6 +1051,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             return
         else:
             if host not in http.dns:
+                #http.dns[host] = http.dns.default_factory(http.dns_resolve(host))
                 http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
             need_direct = True
     elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
@@ -1048,6 +1062,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
         need_direct = True
 
     if need_direct:
+        """direct http forward"""
         try:
             content_length = int(headers.get('Content-Length', 0))
             payload = rfile.read(content_length) if content_length else None
@@ -1081,6 +1096,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                 __realsock.shutdown(socket.SHUT_WR)
                 __realsock.close()
     else:
+        """GAE http urlfetch"""
         if 'Range' in headers:
             m = re.search('bytes=(\d+)-', headers['Range'])
             start = int(m.group(1) if m else 0)
@@ -1332,8 +1348,21 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
     remote = socket.create_connection((host, port))
     if scheme == 'https':
         remote = ssl.wrap_socket(remote)
-    remote.sendall('GET /? HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\n\r\n' % host)
+    request_data = 'GET /? HTTP/1.1\r\n'
+    request_data += 'Host: %s\r\n' % host
+    request_data += 'Connection: Upgrade\r\n'
+    if common.SOCKS5_PASSWORD:
+        request_data += 'Cookie: password=%s' % common.SOCKS5_PASSWORD
+    request_data += '\r\n'
+    remote.sendall(request_data)
     transtable = ''.join(chr(x%256) for x in xrange(-128, 128))
+    rfile = remote.makefile('rb', 0)
+    while 1:
+        line = rfile.readline()
+        if not line:
+            break
+        if line == '\r\n':
+            break
     http.forward_socket(sock, remote, trans=transtable)
 
 class Autoproxy2Pac(object):
