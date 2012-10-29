@@ -414,6 +414,7 @@ class Http(object):
             logging.error('Http.create_connection to %s, port=%r failed, switch window=%r', ips, port, self.window)
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
+        assert isinstance(proxy, (list, tuple, ))
         logging.debug('Http.create_connection_withproxy connect (%r, %r)', host, port)
         username, password, proxyhost, proxyport = proxy
         try:
@@ -422,7 +423,7 @@ class Http(object):
             except socket.error:
                 pass
             sock = socket.create_connection((proxyhost, int(proxyport)))
-            hostname = random.choice(list(self.dns.get(host, [host])))
+            hostname = random.choice(list(self.dns.get(host)) or [host])
             request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
             if username and password:
                 request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
