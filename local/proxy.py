@@ -411,7 +411,60 @@ class Http(object):
             if self.min_window <= len(iplist) < self.window:
                 self.window = len(iplist)
             self.window_ack = 0
-            logging.error('Http.create_connection to %s, port=%r failed, switch window=%r', ips, port, self.window)
+            logging.error('Http.create_connection to %s, port=%r failed, switch window=%r', iplist, port, self.window)
+
+    def create_ssl_connection(self, (host, port), timeout=None, source_address=None):
+        sock = self.create_connection((host, port), timeout, source_address)
+        if sock:
+            ssl_sock = ssl.wrap_socket(sock)
+            ssl_sock.sock = sock
+            return ssl_sock
+
+    def create_ssl_connection_aggressive(self, (host, port), timeout=None, source_address=None):
+        def _create_ssl_connection((ip, port), timeout, queue):
+            sock = None
+            ssl_sock = None
+            try:
+                sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
+                sock.settimeout(timeout)
+                sock.connect((ip, port))
+                ssl_sock = ssl.wrap_socket(sock)
+                queue.put((sock, ssl_sock))
+            except socket.error as e:
+                if sock:
+                    sock.close()
+                queue.put((None, None))
+        def _close_ssl_connection(count, queue):
+            for i in xrange(count):
+                sock, ssl_sock = queue.get()
+                if ssl_sock:
+                    ssl_sock.close()
+                if sock:
+                    sock.close()
+        logging.info('Http.create_ssl_connection connect (%r, %r)', host, port)
+        queue = gevent.queue.Queue()
+        iplist = self.dns_resolve(host)
+        for i in xrange(self.max_retry):
+            window = self.window
+            ips = iplist if len(iplist) <= window else random.sample(iplist, int(window))
+            for ip in ips:
+                gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
+            for i in xrange(len(ips)):
+                sock, ssl_sock = queue.get()
+                if sock and ssl_sock:
+                    gevent.spawn(_close_ssl_connection, len(ips)-i-1, queue)
+                    ssl_sock.sock = sock
+                    return ssl_sock
+            else:
+                logging.warning('Http.create_ssl_connection to %s, port=%r return None, try again.', ips, port)
+        else:
+            self.window = int(round(1.5 * self.window))
+            if self.window > self.max_window:
+                self.window = self.max_window
+            if self.min_window <= len(iplist) < self.window:
+                self.window = len(iplist)
+            self.window_ack = 0
+            logging.error('Http.create_ssl_connection to %s, port=%r failed, switch window=%r', iplist, port, self.window)
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (list, tuple, ))
@@ -426,7 +479,7 @@ class Http(object):
             hostname = random.choice(list(self.dns.get(host)) or [host])
             request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
             if username and password:
-                request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
+                request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password)).strip()
             request_data += '\r\n'
             sock.sendall(request_data)
             buf = ''
@@ -555,19 +608,27 @@ class Http(object):
 
         for i in xrange(self.max_retry):
             sock = None
+            ssl_sock = None
             try:
                 if not self.proxy:
-                    sock = self.create_connection((host, port), self.timeout)
+                    if scheme == 'https':
+                        ssl_sock = self.create_ssl_connection((host, port), self.timeout)
+                        sock = ssl_sock.sock
+                        del ssl_sock.sock
+                    else:
+                        sock = self.create_connection((host, port, self.timeout))
                 else:
                     sock = self.create_connection_withproxy((host, port), port, self.timeout, proxy=self.proxy)
                     path = url
                     #crlf = self.crlf = 0
-                if sock:
                     if scheme == 'https':
                         sock = ssl.wrap_socket(sock)
-                    return self._request(sock, method, path, self.protocol_version, headers, payload, bufsize=bufsize, crlf=crlf, return_sock=return_sock)
+                if sock:
+                    return self._request(ssl_sock or sock, method, path, self.protocol_version, headers, payload, bufsize=bufsize, crlf=crlf, return_sock=return_sock)
             except Exception as e:
                 logging.debug('Http.request "%s %s" failed:%s', method, url, e)
+                if ssl_sock:
+                    ssl_sock.close()
                 if sock:
                     sock.close()
                 if i == self.max_retry - 1:
