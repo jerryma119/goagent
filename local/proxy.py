@@ -23,6 +23,7 @@ try:
     import gevent.coros
     import gevent.server
     import gevent.pool
+    import gevent.event
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
     if os.name == 'nt':
@@ -96,6 +97,8 @@ except ImportError:
     gevent.server.StreamServer   = GeventServerStreamServer
     gevent.server.DatagramServer = GeventServerDatagramServer
     gevent.pool.Pool             = GeventPoolPool
+
+    gevent.fake = True
 
     del GeventImport, GeventSpawn, GeventSpawnLater, GeventServerStreamServer, GeventServerDatagramServer, GeventPoolPool
 
@@ -421,19 +424,25 @@ class Http(object):
             return ssl_sock
 
     def create_ssl_connection_aggressive(self, (host, port), timeout=None, source_address=None):
-        def _create_ssl_connection((ip, port), timeout, queue):
+        def _create_ssl_connection((ip, port), timeout, queue, stop_event):
             sock = None
             ssl_sock = None
             try:
-                sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
-                sock.settimeout(timeout)
-                sock.connect((ip, port))
-                ssl_sock = ssl.wrap_socket(sock)
-                queue.put((sock, ssl_sock))
+                if not stop_event.is_set():
+                    sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
+                    sock.settimeout(timeout)
+                    sock.connect((ip, port))
+                if not stop_event.is_set():
+                    ssl_sock = ssl.wrap_socket(sock)
             except socket.error as e:
+                if ssl_sock:
+                    ssl_sock.close()
+                    ssl_sock = None
                 if sock:
                     sock.close()
-                queue.put((None, None))
+                    sock = None
+            finally:
+                queue.put((sock, ssl_sock))
         def _close_ssl_connection(count, queue):
             for i in xrange(count):
                 sock, ssl_sock = queue.get()
@@ -447,11 +456,13 @@ class Http(object):
         for i in xrange(self.max_retry):
             window = self.window
             ips = iplist if len(iplist) <= window else random.sample(iplist, int(window))
+            stop_event = gevent.event.Event()
             for ip in ips:
-                gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
+                gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue, stop_event)
             for i in xrange(len(ips)):
                 sock, ssl_sock = queue.get()
                 if sock and ssl_sock:
+                    stop_event.set()
                     gevent.spawn(_close_ssl_connection, len(ips)-i-1, queue)
                     ssl_sock.sock = sock
                     return ssl_sock
@@ -1609,6 +1620,9 @@ def pre_start():
                 with open(__config__, 'w') as fp:
                     common.CONFIG.set('love', 'timestamp', int(time.time()))
                     common.CONFIG.write(fp)
+    if not hasattr(gevent, 'fake'):
+        #http.create_ssl_connection = http.create_ssl_connection_aggressive
+        pass
 
 def main():
     global __file__
