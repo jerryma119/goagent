@@ -627,7 +627,7 @@ class Http(object):
                         sock = ssl_sock.sock
                         del ssl_sock.sock
                     else:
-                        sock = self.create_connection((host, port, self.timeout))
+                        sock = self.create_connection((host, port), self.timeout)
                 else:
                     sock = self.create_connection_withproxy((host, port), port, self.timeout, proxy=self.proxy)
                     path = url
