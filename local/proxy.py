@@ -466,7 +466,9 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
-            ips = iplist if len(iplist) <= window else random.sample(iplist, int(window))
+            ips = random.sample(iplist, int(window)) if window <= len(iplist) else list(iplist)
+            if i:
+                ips += random.sample(iplist, i)
             queue = gevent.queue.Queue()
             stop_event = gevent.event.Event()
             for ip in ips:
