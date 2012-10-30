@@ -390,7 +390,9 @@ class Http(object):
             try:
                 iplist = self.dns_resolve(host)
                 window = self.window
-                ips = iplist if len(iplist) <= window else random.sample(iplist, int(window))
+                ips = list(iplist) if len(iplist) <= window else random.sample(iplist, int(window))
+                if i:
+                    ips += random.sample(iplist, i)
                 sock  = None
                 socks = []
                 for ip in ips:
@@ -1682,7 +1684,7 @@ def pre_start():
                     common.CONFIG.set('love', 'timestamp', int(time.time()))
                     common.CONFIG.write(fp)
     if getattr(gevent, 'timeout', None):
-        http.create_ssl_connection = http.create_ssl_connection_aggressive
+        #http.create_ssl_connection = http.create_ssl_connection_aggressive
         pass
 
 def main():
