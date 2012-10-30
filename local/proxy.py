@@ -24,6 +24,7 @@ try:
     import gevent.server
     import gevent.pool
     import gevent.event
+    import gevent.timeout
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
     if os.name == 'nt':
@@ -323,7 +324,7 @@ class Http(object):
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations'])
     dns_blacklist = set(['203.98.7.65','159.106.121.75','159.24.3.173','46.82.174.68','78.16.49.15','59.24.3.173','243.185.187.39','243.185.187.30','8.7.198.45','37.61.54.158','93.46.8.89',])
 
-    def __init__(self, min_window=3, max_window=64, max_retry=2, max_timeout=30, proxy_uri=''):
+    def __init__(self, min_window=4, max_window=64, max_retry=2, max_timeout=30, proxy_uri=''):
         self.min_window = min_window
         self.max_window = max_window
         self.max_retry = max_retry
@@ -461,12 +462,12 @@ class Http(object):
                     ssl_sock.close()
                 if sock:
                     sock.close()
-        logging.info('Http.create_ssl_connection connect (%r, %r)', host, port)
-        queue = gevent.queue.Queue()
+        logging.debug('Http.create_ssl_connection_aggressive connect (%r, %r)', host, port)
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
             ips = iplist if len(iplist) <= window else random.sample(iplist, int(window))
+            queue = gevent.queue.Queue()
             stop_event = gevent.event.Event()
             for ip in ips:
                 gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue, stop_event)
@@ -475,10 +476,16 @@ class Http(object):
                 if sock and ssl_sock:
                     stop_event.set()
                     gevent.spawn(_close_ssl_connection, len(ips)-i-1, queue)
+                    if window > self.min_window:
+                        self.window_ack += 1
+                        if self.window_ack > 10:
+                            self.window_ack = 0
+                            self.window = window - 1
+                            logging.info('Http.create_ssl_connection_aggressive to %s, port=%r successed, switch window=%r', ips, port, self.window)
                     ssl_sock.sock = sock
                     return ssl_sock
             else:
-                logging.warning('Http.create_ssl_connection to %s, port=%r return None, try again.', ips, port)
+                logging.warning('Http.create_ssl_connection_aggressive to %s, port=%r return None, try again.', ips, port)
         else:
             self.window = int(round(1.5 * self.window))
             if self.window > self.max_window:
@@ -486,7 +493,7 @@ class Http(object):
             if self.min_window <= len(iplist) < self.window:
                 self.window = len(iplist)
             self.window_ack = 0
-            logging.error('Http.create_ssl_connection to %s, port=%r failed, switch window=%r', iplist, port, self.window)
+            logging.error('Http.create_ssl_connection_aggressive to %s, port=%r failed, switch window=%r', iplist, port, self.window)
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (list, tuple, ))
@@ -873,6 +880,30 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         return app_code, 502, headers, cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
     headers = dict(x.split(':', 1) for x in zlib.decompress(data, -15).splitlines())
     return app_code, code, headers, rfile
+
+def gae_hosts_updater(sleeptime, threads):
+    def check_ssl_ip(ip, peercert_keyword='.google.com'):
+        logging.debug('gae_hosts_updater check_ssl_ip %r', ip)
+        try:
+            with gevent.timeout.Timeout(3):
+                sock = socket.create_connection((ip, 443))
+                ssl_sock = ssl.wrap_socket(sock)
+                peercert = ssl_sock.getpeercert(True)
+                if peercert_keyword in peer_cert:
+                    return ip
+        except gevent.timeout.Timeout as e:
+            pass
+        except Exception as e:
+            pass
+    iplist = sum((socket.gethostbyname_ex(x)[-1] for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|')), [])
+    iprange = random.choice(list(set(x.rsplit('.', 1)[0] for x in iplist)))
+    ips = ['%s.%d' % (iprange, i) for i in xrange(1, 256)]
+    print ips
+    pool = gevent.pool.Pool(threads)
+    greenlets = [pool.spawn(check_ssl_ip, ip, '.google.com') for ip in ips]
+    iplist = [x.get() for x in greenlets if x.get()]
+    print iplist
+
 
 class RangeFetch(object):
     """Range Fetch Class"""
@@ -1648,8 +1679,8 @@ def pre_start():
                 with open(__config__, 'w') as fp:
                     common.CONFIG.set('love', 'timestamp', int(time.time()))
                     common.CONFIG.write(fp)
-    if not hasattr(gevent, 'fake'):
-        #http.create_ssl_connection = http.create_ssl_connection_aggressive
+    if getattr(gevent, 'timeout', None):
+        http.create_ssl_connection = http.create_ssl_connection_aggressive
         pass
 
 def main():
