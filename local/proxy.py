@@ -390,9 +390,7 @@ class Http(object):
             try:
                 iplist = self.dns_resolve(host)
                 window = self.window
-                ips = list(iplist) if len(iplist) <= window else random.sample(iplist, int(window))
-                if i:
-                    ips += random.sample(iplist, i)
+                ips = random.sample(iplist, int(window)+i) if window <= len(iplist) else list(iplist)
                 sock  = None
                 socks = []
                 for ip in ips:
@@ -468,9 +466,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
-            ips = random.sample(iplist, int(window)) if window <= len(iplist) else list(iplist)
-            if i:
-                ips += random.sample(iplist, i)
+            ips = random.sample(iplist, min(len(iplist), int(window)+i))
             queue = gevent.queue.Queue()
             stop_event = gevent.event.Event()
             for ip in ips:
@@ -1091,18 +1087,36 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
                 with hls['setuplock']:
                     if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
-                        google_ipmap = dict((g, [x for x in socket.gethostbyname_ex(g)[-1] if re.match(r'\d+\.\d+\.\d+\.\d+', x)]) for g in common.GOOGLE_HOSTS)
-                        need_resolve_remote = [x for x in google_ipmap if not re.match(r'\d+\.\d+\.\d+\.\d+', x) and len(google_ipmap[x]) <= 1]
-                        try:
-                            for g in need_resolve_remote:
-                                logging.info('resolve remote domian=%r to iplist', g)
-                                google_ipmap[g] = list(http.dns_resolve(g, common.CRLF_DNSSERVER))
-                                logging.info('resolve remote domian=%r to iplist=%s', g, google_ipmap[g])
-                        except socket.error as e:
-                            logging.exception('resolve remote domain=%r failed: %s', need_resolve_remote, e)
+                        google_ipmap = {}
+                        need_resolve_remote = []
+                        for domain in common.GOOGLE_HOSTS:
+                            if not re.match(r'\d+\.\d+\.\d+\.\d+', domain):
+                                try:
+                                    iplist = socket.gethostbyname_ex(domain)[-1]
+                                    if len(iplist) <= 1:
+                                        need_resolve_remote.append(domain)
+                                    else:
+                                        google_ipmap[domain] = iplist
+                                except socket.error:
+                                    need_resolve_remote.append(domain)
+                                    continue
+                            else:
+                                google_ipmap[domain] =[domain]
+                        for dnsserver in ('114.114.114.114', '8.8.8.8'):
+                            for domain in need_resolve_remote:
+                                logging.info('resolve remote domian=%r from dnsserver=%r', domain, dnsserver)
+                                try:
+                                    iplist = Http.dns_remote_resolve(domain, '114.114.114.114', timeout=3)
+                                    if iplist:
+                                        google_ipmap[domain] = iplist
+                                        logging.info('resolve remote domian=%r to iplist=%s', domain, google_ipmap[domain])
+                                except socket.error as e:
+                                    logging.exception('resolve remote domain=%r dnsserver=%r failed: %s', domain, dnsserver, e)
+                            if len(set(sum(google_ipmap.values(), []))) > 16:
+                                break
                         common.GOOGLE_HOSTS = tuple(set(sum(google_ipmap.values(), [])))
                         if len(common.GOOGLE_HOSTS) == 0:
-                            logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
+                            logging.error('resolve %s domian return empty! try remote dns resovle!', common.GAE_PROFILE)
                             sys.exit(-1)
             for fetchhost in fetchhosts:
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
@@ -1683,9 +1697,6 @@ def pre_start():
                 with open(__config__, 'w') as fp:
                     common.CONFIG.set('love', 'timestamp', int(time.time()))
                     common.CONFIG.write(fp)
-    if getattr(gevent, 'timeout', None):
-        #http.create_ssl_connection = http.create_ssl_connection_aggressive
-        pass
 
 def main():
     global __file__
@@ -1696,6 +1707,11 @@ def main():
     CertUtil.check_ca()
     pre_start()
     sys.stdout.write(common.info())
+
+    if getattr(gevent, 'timeout', None):
+        http.create_ssl_connection = http.create_ssl_connection_aggressive # comment me if network works well
+        if http.create_ssl_connection == http.create_ssl_connection_aggressive:
+            logging.info('Enable aggressive create_ssl_connection to connect google_hk')
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
