@@ -387,9 +387,9 @@ class Http(object):
 
     def create_connection(self, (host, port), timeout=None, source_address=None):
         logging.debug('Http.create_connection connect (%r, %r)', host, port)
+        iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             try:
-                iplist = self.dns_resolve(host)
                 window = self.window
                 ips = random.sample(iplist, int(window)+i) if window <= len(iplist) else list(iplist)
                 sock  = None
@@ -1059,7 +1059,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             if common.GAE_PROFILE == 'google_cn':
                 with hls['setuplock']:
                     if common.GAE_PROFILE == 'google_cn':
-                        hosts = ('ditu.google.cn', 'www.google.cn', 'www.g.cn', 'ditu.g.cn')
+                        hosts = ('www.google.cn', 'www.g.cn')
                         iplist = []
                         for host in hosts:
                             try:
@@ -1075,7 +1075,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                             need_switch = False
                             for host in random.sample(list(common.GOOGLE_HOSTS), min(3, len(common.GOOGLE_HOSTS))):
                                 try:
-                                    socket.create_connection((host, 80), timeout=2).close()
+                                    socket.create_connection((host, 443), timeout=2).close()
                                 except socket.error:
                                     need_switch = True
                                     break
