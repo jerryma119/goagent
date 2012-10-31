@@ -1054,7 +1054,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             for fetchhost in fetchhosts:
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
         elif not common.PROXY_ENABLE:
-            logging.info('resolve common.GOOGLE_HOSTS domian=%r to iplist', common.GOOGLE_HOSTS)
+            logging.info('resolve common.GOOGLE_HOSTS domain=%r to iplist', common.GOOGLE_HOSTS)
             if common.GAE_PROFILE == 'google_cn':
                 with hls['setuplock']:
                     if common.GAE_PROFILE == 'google_cn':
@@ -1104,23 +1104,23 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                                 google_ipmap[domain] =[domain]
                         for dnsserver in ('114.114.114.114', '8.8.8.8'):
                             for domain in need_resolve_remote:
-                                logging.info('resolve remote domian=%r from dnsserver=%r', domain, dnsserver)
+                                logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
                                 try:
                                     iplist = Http.dns_remote_resolve(domain, '114.114.114.114', timeout=3)
                                     if iplist:
                                         google_ipmap[domain] = iplist
-                                        logging.info('resolve remote domian=%r to iplist=%s', domain, google_ipmap[domain])
+                                        logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
                                 except socket.error as e:
                                     logging.exception('resolve remote domain=%r dnsserver=%r failed: %s', domain, dnsserver, e)
                             if len(set(sum(google_ipmap.values(), []))) > 16:
                                 break
                         common.GOOGLE_HOSTS = tuple(set(sum(google_ipmap.values(), [])))
                         if len(common.GOOGLE_HOSTS) == 0:
-                            logging.error('resolve %s domian return empty! try remote dns resovle!', common.GAE_PROFILE)
+                            logging.error('resolve %s domain return empty! try remote dns resovle!', common.GAE_PROFILE)
                             sys.exit(-1)
             for fetchhost in fetchhosts:
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
-            logging.info('resolve common.GOOGLE_HOSTS domian to iplist=%r', common.GOOGLE_HOSTS)
+            logging.info('resolve common.GOOGLE_HOSTS domain to iplist=%r', common.GOOGLE_HOSTS)
         hls['setup'] = True
 
     if common.USERAGENT_ENABLE:
@@ -1370,14 +1370,14 @@ def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()})
     if 'setup' not in hls:
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
-            logging.info('resolve common.PAAS_FETCHSERVER domian=%r to iplist', fetchhost)
+            logging.info('resolve common.PAAS_FETCHSERVER domain=%r to iplist', fetchhost)
             with hls['setuplock']:
                 fethhost_iplist = socket.gethostbyname_ex(fetchhost)[-1]
                 if len(fethhost_iplist) == 0:
-                    logging.error('resolve %s domian return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
+                    logging.error('resolve %s domain return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                     sys.exit(-1)
                 http.dns[fetchhost] = set(fethhost_iplist)
-                logging.info('resolve common.PAAS_FETCHSERVER domian to iplist=%r', fethhost_iplist)
+                logging.info('resolve common.PAAS_FETCHSERVER domain to iplist=%r', fethhost_iplist)
         hls['setup'] = True
 
     if common.USERAGENT_ENABLE:
@@ -1456,15 +1456,15 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
     if 'setup' not in hls:
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
-            logging.info('resolve common.SOCKS5_FETCHSERVER domian=%r to iplist', fetchhost)
+            logging.info('resolve common.SOCKS5_FETCHSERVER domain=%r to iplist', fetchhost)
             with hls['setuplock']:
                 fethhost_iplist = socket.gethostbyname_ex(fetchhost)[-1]
                 if len(fethhost_iplist) == 0:
-                    logging.error('resolve %s domian return empty! please use ip list to replace domain list!', fetchhost)
+                    logging.error('resolve %s domain return empty! please use ip list to replace domain list!', fetchhost)
                     sys.exit(-1)
                 hls['dns'] = collections.defaultdict(list)
                 hls['dns'][fetchhost] = list(set(fethhost_iplist))
-                logging.info('resolve common.PAAS_SOCKS5SERVER domian to iplist=%r', fethhost_iplist)
+                logging.info('resolve common.PAAS_SOCKS5SERVER domain to iplist=%r', fethhost_iplist)
         hls['setup'] = True
 
     remote_addr, remote_port = address
