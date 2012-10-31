@@ -9,6 +9,7 @@
 #      Max Lv         <max.c.lv@gmail.com>
 #      AlsoTang       <alsotang@gmail.com>
 #      Yonsm          <YonsmGuo@gmail.com>
+#      Ming Bai       <mbbill@gmail.com>
 
 __version__ = '2.1.5'
 __config__  = 'proxy.ini'
@@ -1106,7 +1107,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                             for domain in need_resolve_remote:
                                 logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
                                 try:
-                                    iplist = Http.dns_remote_resolve(domain, '114.114.114.114', timeout=3)
+                                    iplist = Http.dns_remote_resolve(domain, dnsserver, timeout=3)
                                     if iplist:
                                         google_ipmap[domain] = iplist
                                         logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
