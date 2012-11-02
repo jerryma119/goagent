@@ -409,7 +409,7 @@ class Http(object):
         if poolkey in _pool:
             while _pool[poolkey]:
                 sock, mtime = _pool[poolkey].pop()
-                if time.time() - mtime > 60:
+                if time.time() - mtime > 30:
                     sock.close()
                 else:
                     break
@@ -480,7 +480,7 @@ class Http(object):
         if poolkey in _pool:
             while _pool[poolkey]:
                 ssl_sock = _pool[poolkey].pop()
-                if time.time() - ssl_sock.mtime > 60:
+                if time.time() - ssl_sock.mtime > 30:
                     sock = ssl_sock.sock
                     del ssl_sock.sock
                     ssl_sock.close()
