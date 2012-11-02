@@ -11,7 +11,7 @@
 #      Yonsm          <YonsmGuo@gmail.com>
 #      Ming Bai       <mbbill@gmail.com>
 
-__version__ = '2.1.6'
+__version__ = '2.1.7'
 __config__  = 'proxy.ini'
 
 import sys
@@ -429,24 +429,15 @@ class Http(object):
             self.window_ack = 0
             logging.error('Http.create_connection to %s, port=%r failed, switch window=%r', iplist, port, self.window)
 
-    def create_ssl_connection(self, (host, port), timeout=None, source_address=None):
-        sock = self.create_connection((host, port), timeout, source_address)
-        if sock:
-            ssl_sock = ssl.wrap_socket(sock)
-            ssl_sock.sock = sock
-            return ssl_sock
-
-    def create_ssl_connection_aggressive(self, (host, port), timeout=None, source_address=None):
-        def _create_ssl_connection((ip, port), timeout, queue, stop_event):
+    def create_ssl_connection(self, (host, port), timeout=None, source_address=None, _pool=collections.defaultdict(set)):
+        def _create_ssl_connection((ip, port), timeout, queue):
             sock = None
             ssl_sock = None
             try:
-                if not stop_event.is_set():
-                    sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
-                    sock.settimeout(timeout)
-                    sock.connect((ip, port))
-                if not stop_event.is_set():
-                    ssl_sock = ssl.wrap_socket(sock)
+                sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
+                sock.settimeout(timeout)
+                sock.connect((ip, port))
+                ssl_sock = ssl.wrap_socket(sock)
             except socket.error as e:
                 if ssl_sock:
                     ssl_sock.close()
@@ -456,27 +447,43 @@ class Http(object):
                     sock = None
             finally:
                 queue.put((sock, ssl_sock))
-        def _close_ssl_connection(count, queue):
+        def _close_ssl_connection(peername, count, queue):
             for i in xrange(count):
+                sock = None
                 sock, ssl_sock = queue.get()
                 if ssl_sock:
+                    ssl_sock.sock = sock
+                    ssl_sock.mtime = time.time()
+                    _pool[peername].add(ssl_sock)
+                else:
+                    if sock:
+                        sock.close()
+        logging.debug('Http.create_ssl_connection connect (%r, %r)', host, port)
+        ssl_sock = None
+        if host in _pool:
+            while _pool[host]:
+                ssl_sock = _pool[host].pop()
+                if time.time() - ssl_sock.mtime > 60:
+                    sock = ssl_sock.sock
+                    del ssl.sock
                     ssl_sock.close()
-                if sock:
                     sock.close()
-        logging.debug('Http.create_ssl_connection_aggressive connect (%r, %r)', host, port)
+                else:
+                    break
+            if ssl_sock:
+                logging.debug('Http.create_ssl_connection reuse %s for (%r, %r)', ssl_sock, host, port)
+                return ssl_sock
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
             ips = random.sample(iplist, min(len(iplist), int(window)+i))
             queue = gevent.queue.Queue()
-            stop_event = gevent.event.Event()
             for ip in ips:
-                gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue, stop_event)
+                gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
             for i in xrange(len(ips)):
                 sock, ssl_sock = queue.get()
                 if sock and ssl_sock:
-                    stop_event.set()
-                    gevent.spawn(_close_ssl_connection, len(ips)-i-1, queue)
+                    gevent.spawn(_close_ssl_connection, host, len(ips)-i-1, queue)
                     if window > self.min_window:
                         self.window_ack += 1
                         if self.window_ack > 10:
@@ -484,6 +491,7 @@ class Http(object):
                             self.window = window - 1
                             logging.info('Http.create_ssl_connection_aggressive to %s, port=%r successed, switch window=%r', ips, port, self.window)
                     ssl_sock.sock = sock
+                    ssl_sock.mtime = time.time()
                     return ssl_sock
             else:
                 logging.warning('Http.create_ssl_connection_aggressive to %s, port=%r return None, try again.', ips, port)
@@ -1709,10 +1717,7 @@ def main():
     pre_start()
     sys.stdout.write(common.info())
 
-    if getattr(gevent, 'timeout', None):
-        http.create_ssl_connection = http.create_ssl_connection_aggressive # comment me if network works well
-        if http.create_ssl_connection == http.create_ssl_connection_aggressive:
-            logging.info('Enable aggressive create_ssl_connection to connect google_hk')
+    logging.info('Enable aggressive create_ssl_connection to connect google_hk')
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
