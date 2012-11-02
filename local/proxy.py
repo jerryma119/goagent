@@ -574,7 +574,7 @@ class Http(object):
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None, return_sock=None):
         skip_headers = self.skip_headers
-        request_data = '\r\n' * (self.crlf if crlf is None else crlf)
+        request_data = '\r\n' * (self.crlf if not crlf is None else crlf)
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
         request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
         if self.proxy:
