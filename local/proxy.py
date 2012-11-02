@@ -390,7 +390,8 @@ class Http(object):
             sock = None
             try:
                 sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
-                sock.settimeout(timeout)
+                if isinstance(timeout, (int, long)):
+                    sock.settimeout(timeout)
                 sock.connect((ip, port))
             except socket.error as e:
                 if sock:
@@ -451,9 +452,12 @@ class Http(object):
             ssl_sock = None
             try:
                 sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
-                sock.settimeout(timeout)
+                if isinstance(timeout, (int, long)):
+                    sock.settimeout(timeout)
                 sock.connect((ip, port))
                 ssl_sock = ssl.wrap_socket(sock)
+                ssl_sock.sock = sock
+                ssl_sock.mtime = time.time()
             except socket.error as e:
                 if ssl_sock:
                     ssl_sock.close()
@@ -462,18 +466,13 @@ class Http(object):
                     sock.close()
                     sock = None
             finally:
-                queue.put((sock, ssl_sock))
+                queue.put(ssl_sock)
         def _close_ssl_connection(poolkey, count, queue):
             for i in xrange(count):
                 sock = None
-                sock, ssl_sock = queue.get()
+                ssl_sock = queue.get()
                 if ssl_sock:
-                    ssl_sock.sock = sock
-                    ssl_sock.mtime = time.time()
                     _pool[poolkey].add(ssl_sock)
-                else:
-                    if sock:
-                        sock.close()
         poolkey = _poolkey(host, port) if callable(_poolkey) else _poolkey if _poolkey else '%s:%s' % (host, port)
         logging.debug('Http.create_ssl_connection connect (%r, %r) as poolkey=%r', host, port, poolkey)
         ssl_sock = None
@@ -498,8 +497,8 @@ class Http(object):
             for ip in ips:
                 gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
             for i in xrange(len(ips)):
-                sock, ssl_sock = queue.get()
-                if sock and ssl_sock:
+                ssl_sock = queue.get()
+                if ssl_sock:
                     gevent.spawn(_close_ssl_connection, poolkey, len(ips)-i-1, queue)
                     if window > self.min_window:
                         self.window_ack += 1
@@ -507,7 +506,6 @@ class Http(object):
                             self.window_ack = 0
                             self.window = window - 1
                             logging.info('Http.create_ssl_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
-                    ssl_sock.sock = sock
                     ssl_sock.mtime = time.time()
                     return ssl_sock
             else:
@@ -1167,14 +1165,18 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             if not common.PROXY_ENABLE:
                 if host not in http.dns:
                     http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
-                for i in xrange(8):
-                    try:
-                        remote = http.create_connection((host, port), 8, _poolkey='__google__')
-                        http.forward_socket(sock, remote)
-                        return
-                    except socket.error as e:
-                        if e[0] not in (9,):
-                            logging.error('gaeproxy_handler direct forward remote (%r, %r) failed', host, port)
+                    data = sock.recv(1024)
+                    for i in xrange(8):
+                        try:
+                            remote = http.create_connection((host, port), 8, _poolkey='__google__')
+                            remote.send(data)
+                        except socket.error as e:
+                            if e[0] == 9:
+                                logging.error('gaeproxy_handler direct forward remote (%r, %r) failed', host, port)
+                                continue
+                            else:
+                                raise
+                    http.forward_socket(sock, remote)
             else:
                 hostip = random.choice(common.GOOGLE_HOSTS)
                 proxy_info = (common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
