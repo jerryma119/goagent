@@ -1168,8 +1168,8 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                     data = sock.recv(1024)
                     for i in xrange(8):
                         try:
-                            remote = http.create_connection((host, port), 8, _poolkey='__google__')
-                            remote.send(data)
+                            remote = http.create_connection((host, port), 8)
+                            remote.sendall(data)
                         except socket.error as e:
                             if e[0] == 9:
                                 logging.error('gaeproxy_handler direct forward remote (%r, %r) failed', host, port)
