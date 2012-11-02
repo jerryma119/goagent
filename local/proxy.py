@@ -1166,18 +1166,18 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             if not common.PROXY_ENABLE:
                 if host not in http.dns:
                     http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
-                    data = sock.recv(1024)
-                    for i in xrange(8):
-                        try:
-                            remote = http.create_connection((host, port), 8)
-                            remote.sendall(data)
-                        except socket.error as e:
-                            if e[0] == 9:
-                                logging.error('gaeproxy_handler direct forward remote (%r, %r) failed', host, port)
-                                continue
-                            else:
-                                raise
-                    http.forward_socket(sock, remote)
+                data = sock.recv(1024)
+                for i in xrange(8):
+                    try:
+                        remote = http.create_connection((host, port), 8, _poolkey='__google__')
+                        remote.sendall(data)
+                    except socket.error as e:
+                        if e[0] == 9:
+                            logging.error('gaeproxy_handler direct forward remote (%r, %r) failed', host, port)
+                            continue
+                        else:
+                            raise
+                http.forward_socket(sock, remote)
             else:
                 hostip = random.choice(common.GOOGLE_HOSTS)
                 proxy_info = (common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
