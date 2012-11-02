@@ -1163,19 +1163,26 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             logging.info('%s:%s "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
             http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems())
+            sock.send('HTTP/1.1 200 OK\r\n\r\n')
             if not common.PROXY_ENABLE:
                 if host not in http.dns:
                     http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
-                remote = http.create_connection((host, port), 8, _poolkey='__google__')
+                for i in xrange(8):
+                    try:
+                        remote = http.create_connection((host, port), 8, _poolkey='__google__')
+                        http.forward_socket(sock, remote)
+                        return
+                    except socket.error as e:
+                        if e[0] not in (9,):
+                            logging.error('gaeproxy_handler direct forward remote (%r, %r) failed', host, port)
             else:
                 hostip = random.choice(common.GOOGLE_HOSTS)
                 proxy_info = (common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
                 remote = http.create_connection_withproxy((hostip, int(port)), proxy=proxy_info)
-            if not remote:
-                logging.error('gaeproxy_handler direct connect remote (%r, %r) failed', host, port)
-                return
-            sock.send('HTTP/1.1 200 OK\r\n\r\n')
-            http.forward_socket(sock, remote)
+                if not remote:
+                    logging.error('gaeproxy_handler proxy connect remote (%r, %r) failed', host, port)
+                    return
+                http.forward_socket(sock, remote)
             return
         else:
             keyfile, certfile = CertUtil.get_cert(host)
@@ -1228,7 +1235,6 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             poolkey = None
             if host.endswith(common.GOOGLE_SITES):
                 poolkey = '__google__'
-            print (path, host, poolkey)
             response = http.request(method, path, payload, headers, crlf=common.GAE_CRLF, _poolkey=poolkey)
             if not response:
                 logging.warning('http.request "%s %s") return %r', method, path, response)
