@@ -403,7 +403,8 @@ class Http(object):
             for i in xrange(count):
                 sock = queue.get()
                 if sock:
-                    _pool[poolkey].add((sock, time.time()))
+                    sock.close()
+                    #_pool[poolkey].add((sock, time.time()))
         poolkey = _poolkey(host, port) if callable(_poolkey) else _poolkey if _poolkey else '%s:%s' % (host, port)
         logging.debug('Http.create_connection connect (%r, %r) as poolkey=%r', host, port, poolkey)
         sock = None
