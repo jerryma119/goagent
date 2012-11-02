@@ -11,7 +11,7 @@
 #      Yonsm          <YonsmGuo@gmail.com>
 #      Ming Bai       <mbbill@gmail.com>
 
-__version__ = '2.1.5'
+__version__ = '2.1.6'
 __config__  = 'proxy.ini'
 
 import sys
