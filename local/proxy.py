@@ -465,7 +465,7 @@ class Http(object):
                 ssl_sock = _pool[host].pop()
                 if time.time() - ssl_sock.mtime > 60:
                     sock = ssl_sock.sock
-                    del ssl.sock
+                    del ssl_sock.sock
                     ssl_sock.close()
                     sock.close()
                 else:
