@@ -598,7 +598,13 @@ class Http(object):
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None, return_sock=None):
         skip_headers = self.skip_headers
-        request_data = '\r\n' * (self.crlf if not crlf is None else crlf)
+        need_crlf = http.crlf
+        if crlf:
+            need_crlf = 1
+        if need_crlf:
+            request_data = 'GET / HTTP/1.1\r\n\r\n\r\n'
+        else:
+            request_data = ''
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
         request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
         if self.proxy:
@@ -613,7 +619,7 @@ class Http(object):
                 request_data += payload
                 sock.sendall(request_data)
             elif hasattr(payload, 'read'):
-                wfile.write(request_data)
+                sock.sendall(request_data)
                 while 1:
                     data = payload.read(bufsize)
                     if not data:
@@ -622,14 +628,32 @@ class Http(object):
             else:
                 raise TypeError('http.request(payload) must be a string or buffer, not %r' % type(payload))
 
+        bufsize = 0 if return_sock else 8192
+        rfile = sock.makefile('rb', bufsize)
+
+        if need_crlf:
+            response_line = rfile.readline()
+            version, code, _ = response_line.split(' ', 2)
+            response_headers = {}
+            while 1:
+                line = rfile.readline()
+                if not line or line == '\r\n':
+                    break
+                keyword, _, value = line.partition(':')
+                keyword = keyword.title()
+                response_headers[keyword] = value.strip()
+            unused_content = self.copy_body(rfile, response_headers)
+
         if return_sock:
+            if need_crlf:
+                rfile.bufsize = bufsize
             return sock
 
-        rfile = sock.makefile('rb', 8192)
-
         response_line = rfile.readline(bufsize)
-        if not response_line:
-            raise EOFError('empty line')
+        while response_line == '\r\n':
+            response_line = rfile.readline()
+            if not response_line:
+                raise EOFError('empty line')
         version, code, _ = response_line.split(' ', 2)
         code = int(code)
 
@@ -678,6 +702,8 @@ class Http(object):
                     if scheme == 'https':
                         sock = ssl.wrap_socket(sock)
                 if sock:
+                    if scheme == 'https':
+                        crlf = 0
                     return self._request(ssl_sock or sock, method, path, self.protocol_version, headers, payload, bufsize=bufsize, crlf=crlf, return_sock=return_sock)
             except Exception as e:
                 logging.debug('Http.request "%s %s" failed:%s', method, url, e)
