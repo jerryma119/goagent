@@ -479,7 +479,7 @@ class Http(object):
         poolkey = _poolkey(host, port) if callable(_poolkey) else _poolkey if _poolkey else '%s:%s' % (host, port)
         logging.debug('Http.create_ssl_connection connect (%r, %r) as poolkey=%r', host, port, poolkey)
         ssl_sock = None
-        if poolkey in _pool:
+        if poolkey in _pool and len(_pool[poolkey]) > 4:
             while _pool[poolkey]:
                 ssl_sock = _pool[poolkey].pop()
                 if time.time() - ssl_sock.mtime > 60:
