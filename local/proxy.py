@@ -359,7 +359,7 @@ class Http(object):
                 sock.sendto(data, (dnsserver, 53))
                 for i in xrange(max_wait):
                     data = sock.recv(512)
-                    iplist = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\xC0.\x00\x01\x00\x01.{6}(.{4})', data) if all(ord(x)<=255 for x in s)]
+                    iplist = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\xc0.\x00\x01\x00\x01.{6}(.{4})', data) if all(ord(x)<=255 for x in s)]
                     iplist = [x for x in iplist if x not in blacklist]
                     if iplist:
                         return iplist
@@ -1162,7 +1162,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                                 logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
                                 try:
                                     iplist = Http.dns_remote_resolve(domain, dnsserver, timeout=3)
-                                    if iplist:
+                                    if all(x not in Http.dns_blacklist for x in iplist):
                                         google_ipmap[domain] = iplist
                                         logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
                                 except socket.error as e:
