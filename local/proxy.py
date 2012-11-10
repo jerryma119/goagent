@@ -344,7 +344,7 @@ class Http(object):
                 self.proxy = (None, None) + (re.match('(.+):(\d+)', netloc).group(1,2))
         else:
             self.proxy = ''
-        gevent.spawn(self.__update_window_ipr)
+        #gevent.spawn(self.__update_window_ipr)
 
     @staticmethod
     def dns_remote_resolve(qname, dnsserver, timeout=None, blacklist=set(), max_retry=2, max_wait=2):
@@ -426,8 +426,7 @@ class Http(object):
                 self.window_ipr[ip] = 0
         for i in xrange(self.max_retry):
             window = self.window
-            ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
-            print ips
+            ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()), reverse=True)[:min(len(iplist), int(window)+i)]
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_connection, (ip, port), timeout, queue)
@@ -441,6 +440,9 @@ class Http(object):
                             self.window_ack = 0
                             self.window = window - 1
                             logging.info('Http.create_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
+                    self.window_ipr[sock.getpeername()[0]] += window
+                    if self.window_ipr[sock.getpeername()[0]] > 1000:
+                        self.window_ipr.clear()
                     return sock
             else:
                 logging.warning('Http.create_connection to %s, port=%r return None, try again.', ips, port)
@@ -506,8 +508,7 @@ class Http(object):
                 self.window_ipr[ip] = 0
         for i in xrange(self.max_retry):
             window = self.window
-            ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
-            print ips
+            ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()), reverse=True)[:min(len(iplist), int(window)+i)]
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
@@ -521,6 +522,9 @@ class Http(object):
                             self.window_ack = 0
                             self.window = window - 1
                             logging.info('Http.create_ssl_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
+                    self.window_ipr[ssl_sock.getpeername()[0]] += window
+                    if self.window_ipr[ssl_sock.getpeername()[0]] > 1000:
+                        self.window_ipr.clear()
                     return ssl_sock
             else:
                 logging.warning('Http.create_ssl_connection to %s, port=%r return None, try again.', ips, port)
@@ -578,7 +582,6 @@ class Http(object):
                 logging.exception('__update_window_ipr error:%s', e)
             finally:
                 time.sleep(180)
-
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (list, tuple, ))
