@@ -396,6 +396,7 @@ class Http(object):
                     sock.settimeout(timeout)
                 sock.connect((ip, port))
             except socket.error as e:
+                self.window_ipr[ip] //= 2
                 if sock:
                     sock.close()
                     sock = None
@@ -421,9 +422,6 @@ class Http(object):
                 logging.debug('Http.create_connection reuse %s for (%r, %r) as poolkey=%r', sock, host, port, poolkey)
                 return sock
         iplist = self.dns_resolve(host)
-        for ip in iplist:
-            if ip not in self.window_ipr:
-                self.window_ipr[ip] = 0
         for i in xrange(self.max_retry):
             window = self.window
             ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()), reverse=True)[:min(len(iplist), int(window)+i)]
@@ -470,6 +468,7 @@ class Http(object):
                 ssl_sock.sock = sock
                 ssl_sock.mtime = time.time()
             except socket.error as e:
+                self.window_ipr[ip] //= 2
                 if ssl_sock:
                     ssl_sock.close()
                     ssl_sock = None
@@ -503,9 +502,6 @@ class Http(object):
                 logging.debug('Http.create_ssl_connection reuse %s for (%r, %r) as poolkey=%r', ssl_sock, host, port, poolkey)
                 return ssl_sock
         iplist = self.dns_resolve(host)
-        for ip in iplist:
-            if ip not in self.window_ipr:
-                self.window_ipr[ip] = 0
         for i in xrange(self.max_retry):
             window = self.window
             ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()), reverse=True)[:min(len(iplist), int(window)+i)]
