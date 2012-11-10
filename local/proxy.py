@@ -422,10 +422,12 @@ class Http(object):
                 return sock
         iplist = self.dns_resolve(host)
         for ip in iplist:
-            self.window_ipr[ip] = 0
+            if ip not in self.window_ipr:
+                self.window_ipr[ip] = 0
         for i in xrange(self.max_retry):
             window = self.window
-            ips = sorted(iplist, key=lambda x:(self.window_ipr.get(x), random.random()))[:min(len(iplist), int(window)+i)]
+            ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
+            print ips
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_connection, (ip, port), timeout, queue)
@@ -500,10 +502,12 @@ class Http(object):
                 return ssl_sock
         iplist = self.dns_resolve(host)
         for ip in iplist:
-            self.window_ipr[ip] = 0
+            if ip not in self.window_ipr:
+                self.window_ipr[ip] = 0
         for i in xrange(self.max_retry):
             window = self.window
-            ips = sorted(iplist, key=lambda x:(self.window_ipr.get(x), random.random()))[:min(len(iplist), int(window)+i)]
+            ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
+            print ips
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
