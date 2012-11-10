@@ -11,7 +11,7 @@
 #      Yonsm          <YonsmGuo@gmail.com>
 #      Ming Bai       <mbbill@gmail.com>
 
-__version__ = '2.1.8'
+__version__ = '2.1.9'
 __config__  = 'proxy.ini'
 __bufsize__ = 1024*1024
 
@@ -323,7 +323,7 @@ class Http(object):
     MessageClass = dict
     protocol_version = 'HTTP/1.1'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations'])
-    dns_blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68', '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251', '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104', '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139', '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2', '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43', '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147', '213.169.251.35', '216.221.188.182', '216.234.179.13', '59.24.3.173'])
+    dns_blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68', '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251', '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104', '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139', '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2', '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43', '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147', '213.169.251.35', '216.221.188.182', '216.234.179.13'])
 
     def __init__(self, min_window=4, max_window=64, max_retry=2, max_timeout=30, proxy_uri=''):
         self.min_window = min_window
@@ -332,6 +332,7 @@ class Http(object):
         self.max_timeout = max_timeout
         self.window = min_window
         self.window_ack = 0
+        self.window_ipr = collections.defaultdict(int)
         self.timeout = max_timeout // 2
         self.dns = collections.defaultdict(set)
         self.crlf = 0
@@ -394,6 +395,7 @@ class Http(object):
                     sock.settimeout(timeout)
                 sock.connect((ip, port))
             except socket.error as e:
+                self.window_ipr['%s:%s'%(ip,port)] //= 2
                 if sock:
                     sock.close()
                     sock = None
@@ -411,7 +413,7 @@ class Http(object):
         if poolkey in _pool:
             while _pool[poolkey]:
                 sock, mtime = _pool[poolkey].pop()
-                if time.time() - mtime > 60:
+                if time.time() - mtime > 30:
                     sock.close()
                 else:
                     break
@@ -421,7 +423,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
-            ips = random.sample(iplist, min(len(iplist), int(window)+i))
+            ips = sorted(iplist, key=lambda x:self.window_ipr.get('%s:%s'%(x,port)))[:min(len(iplist), int(window)+i)]
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_connection, (ip, port), timeout, queue)
@@ -435,6 +437,7 @@ class Http(object):
                             self.window_ack = 0
                             self.window = window - 1
                             logging.info('Http.create_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
+                    self.window_ipr['%s:%s' % sock.getpeername()] = min(sys.maxint, window+self.window_ipr['%s:%s' % sock.getpeername()])
                     return sock
             else:
                 logging.warning('Http.create_connection to %s, port=%r return None, try again.', ips, port)
@@ -462,6 +465,7 @@ class Http(object):
                 ssl_sock.sock = sock
                 ssl_sock.mtime = time.time()
             except socket.error as e:
+                self.window_ipr['%s:%s'%(ip,port)] //= 2
                 if ssl_sock:
                     ssl_sock.close()
                     ssl_sock = None
@@ -484,20 +488,20 @@ class Http(object):
                 if len(_pool[poolkey]) < 5 and random.random() < 0.5:
                     break
                 ssl_sock = _pool[poolkey].pop()
-                if time.time() - ssl_sock.mtime > 60:
+                if time.time() - ssl_sock.mtime > 30:
                     sock = ssl_sock.sock
                     del ssl_sock.sock
                     ssl_sock.close()
                     sock.close()
                 else:
                     break
-            if ssl_sock:
+            if ssl_sock and hasattr(ssl_sock, 'sock'):
                 logging.debug('Http.create_ssl_connection reuse %s for (%r, %r) as poolkey=%r', ssl_sock, host, port, poolkey)
                 return ssl_sock
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
-            ips = random.sample(iplist, min(len(iplist), int(window)+i))
+            ips = sorted(iplist, key=lambda x:self.window_ipr.get('%s:%s'%(x,port)))[:min(len(iplist), int(window)+i)]
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
@@ -511,7 +515,7 @@ class Http(object):
                             self.window_ack = 0
                             self.window = window - 1
                             logging.info('Http.create_ssl_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
-                    ssl_sock.mtime = time.time()
+                    self.window_ipr['%s:%s' % ssl_sock.getpeername()] = min(sys.maxint, window+self.window_ipr['%s:%s' % ssl_sock.getpeername()])
                     return ssl_sock
             else:
                 logging.warning('Http.create_ssl_connection to %s, port=%r return None, try again.', ips, port)
@@ -1697,7 +1701,7 @@ class DNSServer(gevent.server.DatagramServer):
     max_retry = 2
     max_cache_size = 2000
     timeout   = 3
-    dns_blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68', '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251', '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104', '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139', '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2', '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43', '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147', '213.169.251.35', '216.221.188.182', '216.234.179.13', '59.24.3.173'])
+    dns_blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68', '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251', '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104', '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139', '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2', '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43', '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147', '213.169.251.35', '216.221.188.182', '216.234.179.13'])
 
     def __init__(self, *args, **kwargs):
         gevent.server.DatagramServer.__init__(self, *args, **kwargs)
