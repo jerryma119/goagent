@@ -439,7 +439,7 @@ class Http(object):
                             self.window = window - 1
                             logging.info('Http.create_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
                     self.window_ipr[sock.getpeername()[0]] += window
-                    if self.window_ipr[sock.getpeername()[0]] > 1000:
+                    if self.window_ipr[sock.getpeername()[0]] > 4000:
                         self.window_ipr.clear()
                     return sock
             else:
@@ -519,7 +519,7 @@ class Http(object):
                             self.window = window - 1
                             logging.info('Http.create_ssl_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
                     self.window_ipr[ssl_sock.getpeername()[0]] += window
-                    if self.window_ipr[ssl_sock.getpeername()[0]] > 1000:
+                    if self.window_ipr[ssl_sock.getpeername()[0]] > 4000:
                         self.window_ipr.clear()
                     return ssl_sock
             else:
