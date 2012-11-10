@@ -531,18 +531,39 @@ class Http(object):
 
     def __update_window_ipr(self):
         max_timeout = 30
-        def update(ip):
+        def update1(ip):
             times = None
             try:
                 start = time.time()
                 socket.create_connection((ip, 443), timeout=max_timeout).close()
                 end = time.time()
-                times = int(end-start)
+                times = end-start
                 logging.info('__update_window_ipr ip=%r times=%r', ip, times)
             except socket.error as e:
                 pass
             if times is not None:
                 self.window_ipr[ip] = max_timeout-times
+        def update2(ip):
+            times = None
+            sock = None
+            ssl_sock = None
+            start = time.time()
+            try:
+                with gevent.timeout.Timeout(max_timeout):
+                    sock = socket.create_connection((ip, 443))
+                    ssl_sock = ssl.wrap_socket(sock)
+                    times = times = time.time() - start
+                logging.info('__update_window_ipr ip=%r times=%r', ip, times)
+            except Exception as e:
+                times = time.time() - start
+            finally:
+                if ssl_sock:
+                    ssl_sock.close()
+                if sock:
+                    sock.close()
+            if times is not None:
+                self.window_ipr[ip] = max_timeout-times
+        update = update2 if hasattr(gevent, 'timeout') else update1
         while 1:
             try:
                 pool = gevent.pool.Pool(10)
