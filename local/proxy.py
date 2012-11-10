@@ -423,7 +423,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
-            ips = sorted(iplist, key=lambda x:self.window_ipr.get('%s:%s'%(x,port)))[:min(len(iplist), int(window)+i)]
+            ips = sorted(iplist, key=lambda x:(self.window_ipr.get('%s:%s'%(x,port)), random.random()))[:min(len(iplist), int(window)+i)]
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_connection, (ip, port), timeout, queue)
@@ -501,7 +501,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
-            ips = sorted(iplist, key=lambda x:self.window_ipr.get('%s:%s'%(x,port)))[:min(len(iplist), int(window)+i)]
+            ips = sorted(iplist, key=lambda x:(self.window_ipr.get('%s:%s'%(x,port)), random.random()))[:min(len(iplist), int(window)+i)]
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
