@@ -330,7 +330,7 @@ class Http(object):
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
-        self.window = min_window
+        self.window = 10
         self.window_ack = 0
         self.window_ipr = collections.defaultdict(int)
         self.timeout = max_timeout // 2
