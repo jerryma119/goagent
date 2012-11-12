@@ -1826,8 +1826,8 @@ def pre_start():
                     common.CONFIG.write(fp)
         if '360safe' in os.popen('tasklist').read().lower():
             lineno = [sys._getframe().f_lineno-1, sys._getframe().f_lineno+2]
-            ctypes.windll.user32.MessageBoxW(None, u'某些安全软件可能和本软件存在冲突.\n可以删除proxy.py第%r行或者暂时退出安全软件来继续运行' % lineno, u'建议', 0)
-            sys.exit(0)
+            #ctypes.windll.user32.MessageBoxW(None, u'某些安全软件可能和本软件存在冲突.\n可以删除proxy.py第%r行或者暂时退出安全软件来继续运行' % lineno, u'建议', 0)
+            #sys.exit(0)
 
 def main():
     global __file__
