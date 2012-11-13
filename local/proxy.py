@@ -398,7 +398,7 @@ class Http(object):
                 sock.connect((ip, port))
                 self.http_ipr[ip] = time.time() - start_time
             except socket.error as e:
-                self.http_ipr[ip] = self.http_ipr.default_factory()+1
+                self.http_ipr[ip] = self.http_ipr.default_factory()+random.random()
                 if sock:
                     sock.close()
                     sock = None
@@ -427,6 +427,7 @@ class Http(object):
         for i in xrange(self.max_retry):
             window = self.window
             ips = sorted(iplist, key=lambda x:(self.http_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
+            print ips
             queue = gevent.queue.Queue()
             start_time = time.time()
             for ip in ips:
@@ -470,7 +471,7 @@ class Http(object):
                 ssl_sock.sock = sock
                 ssl_sock.mtime = time.time()
             except socket.error as e:
-                self.https_ipr[ip] = self.https_ipr.default_factory() + 1
+                self.https_ipr[ip] = self.https_ipr.default_factory()+random.random()
                 if ssl_sock:
                     ssl_sock.close()
                     ssl_sock = None
@@ -507,6 +508,7 @@ class Http(object):
         for i in xrange(self.max_retry):
             window = self.window
             ips = sorted(iplist, key=lambda x:(self.https_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
+            print ips
             queue = gevent.queue.Queue()
             start_time = time.time()
             for ip in ips:
