@@ -332,7 +332,8 @@ class Http(object):
         self.max_timeout = max_timeout
         self.window = 20
         self.window_ack = 0
-        self.window_ipr = collections.defaultdict(lambda:5)
+        self.http_ipr = collections.defaultdict(lambda:5)
+        self.https_ipr = collections.defaultdict(lambda:10)
         self.timeout = max_timeout // 2
         self.dns = collections.defaultdict(set)
         self.crlf = 0
@@ -393,9 +394,11 @@ class Http(object):
                 sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
                 if isinstance(timeout, (int, long)):
                     sock.settimeout(timeout)
+                start_time = time.time()
                 sock.connect((ip, port))
+                self.http_ipr[ip] = time.time() - start_time
             except socket.error as e:
-                self.window_ipr[ip] = 10
+                self.http_ipr[ip] = self.http_ipr.default_factory()+1
                 if sock:
                     sock.close()
                     sock = None
@@ -423,7 +426,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
-            ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
+            ips = sorted(iplist, key=lambda x:(self.http_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
             queue = gevent.queue.Queue()
             start_time = time.time()
             for ip in ips:
@@ -438,7 +441,6 @@ class Http(object):
                             self.window_ack = 0
                             self.window = window - 1
                             logging.info('Http.create_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
-                    self.window_ipr[sock.getpeername()[0]] = time.time() - start_time
                     return sock
             else:
                 logging.warning('Http.create_connection to %s, port=%r return None, try again.', ips, port)
@@ -462,11 +464,13 @@ class Http(object):
                 if isinstance(timeout, (int, long)):
                     sock.settimeout(timeout)
                 ssl_sock = ssl.wrap_socket(sock)
+                start_time = time.time()
                 ssl_sock.connect((ip, port))
+                self.https_ipr[ip] = time.time() - start_time
                 ssl_sock.sock = sock
                 ssl_sock.mtime = time.time()
             except socket.error as e:
-                self.window_ipr[ip] = 10
+                self.https_ipr[ip] = self.https_ipr.default_factory() + 1
                 if ssl_sock:
                     ssl_sock.close()
                     ssl_sock = None
@@ -502,7 +506,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             window = self.window
-            ips = sorted(iplist, key=lambda x:(self.window_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
+            ips = sorted(iplist, key=lambda x:(self.https_ipr[x], random.random()))[:min(len(iplist), int(window)+i)]
             queue = gevent.queue.Queue()
             start_time = time.time()
             for ip in ips:
@@ -517,7 +521,6 @@ class Http(object):
                             self.window_ack = 0
                             self.window = window - 1
                             logging.info('Http.create_ssl_connection to %s, port=%r successed, switch window=%r', ips, port, self.window)
-                    self.window_ipr[ssl_sock.getpeername()[0]] = time.time() - start_time
                     return ssl_sock
             else:
                 logging.warning('Http.create_ssl_connection to %s, port=%r return None, try again.', ips, port)
