@@ -175,7 +175,6 @@ import ssl
 import select
 import traceback
 import hashlib
-import hmac
 import fnmatch
 import ConfigParser
 import httplib
@@ -1537,6 +1536,7 @@ def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()})
             __realsock.close()
 
 def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
+    import hmac
     if 'setup' not in hls:
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
@@ -1581,7 +1581,6 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
             break
         if line == '\r\n':
             break
-        print (line,)
     http.forward_socket(sock, remote, bitmask=bitmask)
 
 class Autoproxy2Pac(object):
