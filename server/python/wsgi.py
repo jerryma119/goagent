@@ -151,8 +151,11 @@ def socks5_handler(sock, address, hls={'hmac':{}}):
         if bitmask is None:
             logging.error('%s:%s Digest(%s) not match', remote_addr, remote_port, need_digest)
             return
+        else:
+            logging.info('%s:%s Digest(%s) return bitmask=%r', remote_addr, remote_port, need_digest, bitmask)
 
         wfile.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n')
+        wfile.flush()
 
         rfile_read  = lambda n:''.join(chr(ord(x)^bitmask) for x in rfile.read(n))
         wfile_write = lambda s:wfile.write(''.join(chr(ord(x)^bitmask) for x in s))
@@ -420,7 +423,7 @@ if __name__ == '__main__':
 
     options = dict(getopt.getopt(sys.argv[1:], 'l:p:a:')[0])
     host = options.get('-l', '0.0.0.0')
-    port = options.get('-p', '23')
+    port = options.get('-p', '80')
     app  = options.get('-a', 'socks5')
 
     if app == 'socks5':
@@ -430,5 +433,3 @@ if __name__ == '__main__':
 
     logging.info('serving %s at http://%s:%s/', app.upper(), server.address[0], server.address[1])
     server.serve_forever()
-
-

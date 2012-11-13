@@ -1552,7 +1552,7 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
         hls['setup'] = True
 
     remote_addr, remote_port = address
-    logging.info('%s:%s "GET %s SOCKS/5" - -' % (remote_addr, remote_port, common.SOCKS5_FETCHSERVER))
+    logging.info('%s:%s "POST %s SOCKS/5" - -' % (remote_addr, remote_port, common.SOCKS5_FETCHSERVER))
     scheme, netloc, path, params, query, fragment = urlparse.urlparse(common.SOCKS5_FETCHSERVER)
     if re.search(r':\d+$', netloc):
         host, _, port = netloc.rpartition(':')
@@ -1568,7 +1568,7 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
     password = common.SOCKS5_PASSWORD.strip()
     bitmask = ord(os.urandom(1))
     digest = hmac.new(password, chr(bitmask)).hexdigest()
-    request_data = 'POST /?%s HTTP/1.1\r\n' % digest
+    request_data = 'PUT /?%s HTTP/1.1\r\n' % digest
     request_data += 'Host: %s\r\n' % host
     request_data += 'Connection: Upgrade\r\n'
     request_data += 'Content-Length: 0\r\n'
@@ -1581,6 +1581,7 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
             break
         if line == '\r\n':
             break
+        print (line,)
     http.forward_socket(sock, remote, bitmask=bitmask)
 
 class Autoproxy2Pac(object):
