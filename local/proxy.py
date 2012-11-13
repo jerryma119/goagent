@@ -175,6 +175,7 @@ import ssl
 import select
 import traceback
 import hashlib
+import hmac
 import fnmatch
 import ConfigParser
 import httplib
@@ -564,7 +565,7 @@ class Http(object):
         except socket.error as e:
             logging.error('Http.create_connection_withproxy error %s', e)
 
-    def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=__bufsize__, maxping=None, maxpong=None, trans=''):
+    def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=__bufsize__, maxping=None, maxpong=None, bitmask=None):
         try:
             timecount = timeout
             while 1:
@@ -577,8 +578,8 @@ class Http(object):
                 if ins:
                     for sock in ins:
                         data = sock.recv(bufsize)
-                        if trans:
-                            data = data.translate(trans)
+                        if bitmask:
+                            data = ''.join(chr(ord(x)^bitmask) for x in data)
                         if data:
                             if sock is local:
                                 remote.sendall(data)
@@ -1564,14 +1565,15 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
     remote = socket.create_connection((host, port))
     if scheme == 'https':
         remote = ssl.wrap_socket(remote)
-    request_data = 'GET /? HTTP/1.1\r\n'
+    password = common.SOCKS5_PASSWORD.strip()
+    bitmask = ord(os.urandom(1))
+    digest = hmac.new(password, chr(bitmask)).hexdigest()
+    request_data = 'POST /?%s HTTP/1.1\r\n' % digest
     request_data += 'Host: %s\r\n' % host
     request_data += 'Connection: Upgrade\r\n'
-    if common.SOCKS5_PASSWORD:
-        request_data += 'Cookie: password=%s' % common.SOCKS5_PASSWORD
+    request_data += 'Content-Length: 0\r\n'
     request_data += '\r\n'
     remote.sendall(request_data)
-    transtable = ''.join(chr(x%256) for x in xrange(-128, 128))
     rfile = remote.makefile('rb', 0)
     while 1:
         line = rfile.readline()
@@ -1579,7 +1581,7 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
             break
         if line == '\r\n':
             break
-    http.forward_socket(sock, remote, trans=transtable)
+    http.forward_socket(sock, remote, bitmask=bitmask)
 
 class Autoproxy2Pac(object):
     """Autoproxy to Pac Class, based on https://github.com/iamamac/autoproxy2pac"""
