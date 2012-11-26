@@ -14,6 +14,7 @@
 __version__ = '2.1.9'
 __config__  = 'proxy.ini'
 __bufsize__ = 1024*1024
+__file__ = os.path.realpath(__file__)
 
 import sys
 import os
