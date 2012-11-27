@@ -10,7 +10,6 @@ import os
 import re
 import time
 
-__file__ = os.path.realpath(__file__)
 def main_macos():
     if os.getuid() != 0:
         print 'please use sudo run this script'
