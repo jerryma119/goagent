@@ -912,36 +912,36 @@ class RangeFetch(object):
             headers['Connection'] = 'close'
             for i in xrange(self.retry):
                 fetchserver = random.choice(self.fetchservers)
-                app_code, code, response_headers, response_rfile = self.urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
-                if app_code != 200:
-                    logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], app_code)
+                response = self.urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
+                if response.app_status != 200:
+                    logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], response.app_status)
                     time.sleep(5)
                     continue
-                if 200 <= code < 300:
+                if 200 <= response.status < 300:
                     break
-                elif 300 <= code < 400:
-                    self.url = response_headers['Location']
+                elif 300 <= response.status < 400:
+                    self.url = response.getheader('Location')
                     logging.info('Range Fetch Redirect(%r)', self.url)
-                    response_rfile.close()
+                    response.close()
                     continue
                 else:
-                    logging.error('Range Fetch %r return %s', self.url, code)
-                    response_rfile.close()
+                    logging.error('Range Fetch %r return %s', self.url, response.status)
+                    response.close()
                     time.sleep(5)
                     continue
 
-            content_range = response_headers.get('Content-Range')
+            content_range = response.getheader('Content-Range')
             if not content_range:
-                logging.error('Range Fetch "%s %s" failed: response_headers=%s', self.method, self.url, response_headers)
+                logging.error('Range Fetch "%s %s" failed: response headers=%s', self.method, self.url, response.msg)
                 return
-            content_length = int(response_headers['Content-Length'])
+            content_length = int(response.getheader('Content-Length',0))
             logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', id(gevent.getcurrent()), content_length, content_range)
 
             left = content_length
             while 1:
-                data = response_rfile.read(min(self.bufsize, left))
+                data = response.read(min(self.bufsize, left))
                 if not data:
-                    response_rfile.close()
+                    response.close()
                     queue.put(StopIteration)
                     break
                 else:
