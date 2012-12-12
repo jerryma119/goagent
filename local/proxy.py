@@ -10,7 +10,7 @@
 #      AlsoTang       <alsotang@gmail.com>
 #      Yonsm          <YonsmGuo@gmail.com>
 #      Ming Bai       <mbbill@gmail.com>
-#      binyuj         <yubinlove1991@gmail.com>
+#      Bin Yu         <yubinlove1991@gmail.com>
 
 __version__ = '2.1.10dev'
 __config__  = 'proxy.ini'
