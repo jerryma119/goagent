@@ -548,8 +548,8 @@ class Http(object):
         if crlf:
             need_crlf = 1
         if need_crlf:
-            request_data = 'GET /%s HTTP/1.1\r\n\r\n' % random.randint(1, sys.maxint)
-            request_data += '\r' * random.randint(1,10) + '\r\n' + '\r' * random.randint(1,10)
+            #request_data = 'GET /%s HTTP/1.1\r\n\r\n' % random.randint(1, sys.maxint)
+            request_data = '\r' * random.randint(1,10) + '\r\n' + '\r' * random.randint(1,10)
         else:
             request_data = ''
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
@@ -575,47 +575,12 @@ class Http(object):
             else:
                 raise TypeError('http.request(payload) must be a string or buffer, not %r' % type(payload))
 
-        bufsize = 0 if return_sock else __bufsize__
-        rfile = sock.makefile('rb', bufsize)
-
-        if need_crlf:
-            response_line = rfile.readline()
-            version, code, _ = response_line.split(' ', 2)
-            response_headers = {}
-            while 1:
-                line = rfile.readline()
-                if not line or line == '\r\n':
-                    break
-                keyword, _, value = line.partition(':')
-                keyword = keyword.title()
-                response_headers[keyword] = value.strip()
-            unused_content = self.copy_body(rfile, response_headers)
-
         if return_sock:
-            if need_crlf:
-                rfile.bufsize = bufsize
             return sock
 
-        response_line = rfile.readline(bufsize)
-        while response_line == '\r\n':
-            response_line = rfile.readline()
-            if not response_line:
-                raise EOFError('empty line')
-        version, code, _ = response_line.split(' ', 2)
-        code = int(code)
-
-        headers = {}
-        content_length = 0
-        connection = ''
-        transfer_encoding = ''
-        while 1:
-            line = rfile.readline(bufsize)
-            if not line or line == '\r\n':
-                break
-            keyword, _, value = line.partition(':')
-            keyword = keyword.title()
-            headers[keyword] = value.strip()
-        return code, headers, rfile
+        response = httplib.HTTPResponse(sock, buffering=True)
+        response.begin()
+        return response
 
     def request(self, method, url, payload=None, headers={}, fullurl=False, bufsize=__bufsize__, crlf=None, return_sock=None):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
@@ -662,59 +627,6 @@ class Http(object):
                     raise
                 else:
                     continue
-
-    def copy_response(self, code, headers, write=None):
-        need_return = False
-        if write is None:
-            output = cStringIO.StringIO()
-            write = output.write
-            need_return = True
-        if 'Set-Cookie' in headers:
-            headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', headers['Set-Cookie'])
-        write('HTTP/1.1 %s\r\n%s\r\n' % (code, ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k != 'Transfer-Encoding')))
-        if need_return:
-            return output.getvalue()
-
-    def copy_body(self, rfile, headers, content_length=0, bufsize=__bufsize__, write=None):
-        need_return = False
-        if write is None:
-            output = cStringIO.StringIO()
-            write = output.write
-            need_return = True
-        content_length = int(headers.get('Content-Length', content_length))
-
-        if headers.get('Transfer-Encoding', '').lower() == 'chunked':
-            while 1:
-                line = rfile.readline(bufsize)
-                if not line:
-                    break
-                if line == '\r\n':
-                    continue
-                if ';' in line:
-                    line, _ = line.split(';', 1)
-                count = int(line , 16)
-                if count == 0:
-                    break
-                else:
-                    write(rfile.read(count))
-        elif content_length:
-            left = content_length
-            while left > 0:
-                data = rfile.read(min(left, bufsize))
-                if not data:
-                    break
-                left -= len(data)
-                write(data)
-        elif headers.get('Connection', '').lower() == 'close':
-            while 1:
-                data = rfile.read(bufsize)
-                if not data:
-                    break
-                write(data)
-        else:
-            pass
-        if need_return:
-            return output.getvalue()
 
 class Common(object):
     """Global Config Object"""
@@ -863,21 +775,26 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
-    app_code, headers, rfile = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)}, crlf=common.GAE_CRLF)
-    if app_code != 200:
-        if app_code in (400, 405):
+    response = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)}, crlf=common.GAE_CRLF)
+    response.app_status = response.status
+    if response.status != 200:
+        if response.status in (400, 405):
             # filter by some firewall
             common.GAE_CRLF = 0
-        return app_code, app_code, headers, rfile
-    data = rfile.read(4)
+        return response
+    data = response.read(4)
     if len(data) < 4:
-        return app_code, 502, headers, cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
-    code, headers_length = struct.unpack('!hh', data)
-    data = rfile.read(headers_length)
+        response.status = 502
+        response.fp = cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
+        return response
+    response.status, headers_length = struct.unpack('!hh', data)
+    data = response.read(headers_length)
     if len(data) < headers_length:
-        return app_code, 502, headers, cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
-    headers = dict(x.split(':', 1) for x in zlib.decompress(data, -15).splitlines())
-    return app_code, code, headers, rfile
+        response.status = 502
+        response.fp = cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
+        return response
+    response.msg = httplib.HTTPMessage(cStringIO.StringIO(zlib.decompress(data, -15)))
+    return response
 
 def gae_hosts_updater(sleeptime, threads):
     def check_ssl_ip(ip, peercert_keyword='.google.com'):
@@ -951,7 +868,7 @@ class RangeFetch(object):
                 response_headers['Content-Length'] = str(length-start)
 
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
-        self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.iteritems())))
+        self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.items())))
 
         queues = [gevent.queue.Queue() for _ in range(end+1, length, self.maxsize)]
         gevent.spawn_later(0.1, self._poolfetch, min(len(queues), self.threads), queues, end, length, self.maxsize)
@@ -1211,14 +1128,13 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             if not response:
                 logging.warning('http.request "%s %s") return %r', method, path, response)
                 return
-            response_code, response_headers, response_rfile = response
-            if response_code in (400, 405):
+            if response.status in (400, 405):
                 common.GAE_CRLF = 0
-            logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, response_code, response_headers.get('Content-Length', '-')))
+            logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, response.status, response.msg.get('Content-Length', '-')))
             wfile = sock.makefile('wb', 0)
-            http.copy_response(response_code, response_headers, write=wfile.write)
-            http.copy_body(response_rfile, response_headers, write=wfile.write)
-            response_rfile.close()
+            wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
+            wfile.write(response.read())
+            response.close()
         except socket.error as e:
             if e[0] not in (10053, errno.EPIPE):
                 raise
@@ -1256,7 +1172,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             try:
                 content_length = int(headers.get('Content-Length', 0))
                 payload = rfile.read(content_length) if content_length else ''
-                app_code, code, response_headers, response_rfile = gae_urlfetch(method, path, headers, payload, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD)
+                response = gae_urlfetch(method, path, headers, payload, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD)
             except (EOFError, socket.error) as e:
                 if e[0] in (11004, 10051, 10054, 10060, 'timed out', 'empty line'):
                     # connection reset or timeout, switch to https
@@ -1269,36 +1185,44 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                     raise
 
             # gateway error, switch to https mode
-            if app_code in (400, 504) or (app_code==502 and common.GAE_PROFILE=='google_cn'):
+            if response.app_status in (400, 504) or (response.app_status==502 and common.GAE_PROFILE=='google_cn'):
                 common.GOOGLE_MODE = 'https'
                 common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
             # appid over qouta, switch to next appid
-            if app_code == 503:
+            if response.app_status == 503:
                 common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
                 common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                 http.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
             # bad request, disable CRLF injection
-            if app_code in (400, 405):
+            if response.app_status in (400, 405):
                 http.crlf = 0
 
             wfile = sock.makefile('wb', 0)
 
-            if app_code != 200:
-                logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
-                http.copy_response(app_code, response_headers, write=wfile.write)
-                http.copy_body(response_rfile, response_headers, write=wfile.write)
-                response_rfile.close()
+            if response.app_status != 200:
+                logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, response.status))
+                wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
+                wfile.write(response.read())
+                response.close()
                 return
 
-            logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, code, response_headers.get('Content-Length', '-')))
+            logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, response.status, response.getheader('Content-Length', '-')))
 
-            if code == 206:
+            if response.status == 206:
                 fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
-                rangefetch = RangeFetch(sock, code, response_headers, response_rfile, method, path, headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
+                rangefetch = RangeFetch(sock, response.status, response.msg, response, method, path, headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
-            http.copy_response(code, response_headers, write=wfile.write)
-            http.copy_body(response_rfile, response_headers, write=wfile.write)
-            response_rfile.close()
+
+            if 'Set-Cookie' in response.msg:
+                response.msg['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.msg['Set-Cookie'])
+            wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
+
+            while 1:
+                data = response.read(8192)
+                if not data:
+                    break
+                wfile.write(data)
+            response.close()
         except socket.error as e:
             # Connection closed before proxy return
             if e[0] not in (10053, errno.EPIPE):
@@ -1328,30 +1252,24 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
 
     response = httplib.HTTPResponse(sock, buffering=True)
     response.begin()
-    app_code = response.status
-    app_headers = response.getheaders()
+    response.app_status = response.status
+
     if app_code != 200:
-        return app_code, app_code, response.getheaders(), response
+        return response
 
     data = response.read(4)
     if len(data) < 4:
-        return app_code, 502, headers, cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
-    code, headers_length = struct.unpack('!hh', data)
+        response.status = 502
+        response.fp = cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
+        return response
+    response.status, headers_length = struct.unpack('!hh', data)
     data = response.read(headers_length)
     if len(data) < headers_length:
-        return app_code, 502, headers, cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
-    headers = dict(x.split(':', 1) for x in zlib.decompress(data, -15).splitlines())
-
-    if 'transfer-encoding' in app_headers:
-        headers['Transfer-Encoding'] = app_headers['transfer-encoding']
-        headers.pop('Content-Length', None)
-    if 'connection' in app_headers:
-        headers['Connection'] = app_headers['connection']
-    if 'set-cookie' in app_headers:
-        headers['Set-Cookie'] = app_headers['set-cookie']
-
-    headers.pop('Transfer-Encoding', None)
-    return app_code, code, headers, response
+        response.status = 502
+        response.fp = cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
+        return response
+    response.msg = httplib.HTTPMessage(cStringIO.StringIO(zlib.decompress(data, -15)))
+    return response
 
 def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -1366,8 +1284,8 @@ def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
-    app_code, headers, rfile = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
-    return app_code, app_code, headers, rfile
+    response = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
+    return response
 
 def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
     rfile = sock.makefile('rb', __bufsize__)
@@ -1434,8 +1352,8 @@ def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()})
             urlfetch = paas_urlfetch
             if common.PAAS_ISPHP or common.PAAS_FETCHSERVER.endswith('.php'):
                 urlfetch = php_urlfetch
-            app_code, code, response_headers, response_rfile = urlfetch(method, path, headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
-            logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, code))
+            response = urlfetch(method, path, headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
+            logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, response.status))
         except socket.error as e:
             if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
                 raise
@@ -1443,13 +1361,20 @@ def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()})
             logging.exception('error: %s', e)
             raise
 
-        if app_code in (400, 405):
+        if response.app_status in (400, 405):
             http.crlf = 0
 
         wfile = sock.makefile('wb', 0)
-        http.copy_response(code, response_headers, write=wfile.write)
-        http.copy_body(response_rfile, response_headers, write=wfile.write)
-        response_rfile.close()
+        if 'Set-Cookie' in response.msg:
+            response.msg['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.msg['Set-Cookie'])
+        wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
+
+        while 1:
+            data = response.read(8192)
+            if not data:
+                break
+            wfile.write(data)
+        response.close()
 
     except socket.error as e:
         # Connection closed before proxy return
