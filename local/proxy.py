@@ -1558,7 +1558,7 @@ def pacserver_handler(sock, address, hls={}):
         wfile.close()
     sock.close()
 
-class DNSServer(gevent.server.DatagramServer):
+class DNSServer(getattr(gevent.server, 'DatagramServer', gevent.server.StreamServer)):
     """DNS Proxy over TCP to avoid DNS poisoning"""
     remote_addresses = [('8.8.8.8', 53)]
     max_wait = 1
