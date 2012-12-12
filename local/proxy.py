@@ -1060,7 +1060,8 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                     try:
                         remote = http.create_connection((host, port), 8)
                         if remote is None:
-                            raise socket.error('http.create_connection((host, port), 8)')
+                            logging.error('http.create_connection((host=%r, port=%r), 8)', host, port)
+                            continue
                         remote.sendall(data)
                     except socket.error as e:
                         if e[0] == 9:
