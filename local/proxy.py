@@ -523,8 +523,10 @@ class Http(object):
             if e[0] not in (10053, 10054, 10057, errno.EPIPE):
                 raise
         finally:
-            local.close()
-            remote.close()
+            if local:
+                local.close()
+            if remote:
+                remote.close()
 
     def parse_request(self, rfile, bufsize=__bufsize__):
         line = rfile.readline(bufsize)
