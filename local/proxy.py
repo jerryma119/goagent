@@ -331,7 +331,8 @@ class Http(object):
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
-        self.address_time = {}
+        self.connection_time = {}
+        self.ssl_connection_time = {}
         self.max_timeout = max_timeout
         self.dns = collections.defaultdict(set)
         self.crlf = 0
@@ -393,9 +394,9 @@ class Http(object):
                 sock.settimeout(timeout or self.max_timeout)
                 start_time = time.time()
                 sock.connect((ip, port))
-                self.address_time['%s:%s'%(host,port)] = time.time() - start_time
+                self.connection_time['%s:%s'%(host,port)] = time.time() - start_time
             except socket.error as e:
-                self.address_time['%s:%s'%(host,port)] = self.max_timeout+random.random()
+                self.connection_time['%s:%s'%(host,port)] = self.max_timeout+random.random()
                 if sock:
                     sock.close()
                     sock = None
@@ -407,7 +408,7 @@ class Http(object):
         sock = None
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
-            ips = heapq.nsmallest(self.max_window, iplist, key=lambda x:self.address_time.get('%s:%s'%(x,port),0))
+            ips = heapq.nsmallest(self.max_window, iplist, key=lambda x:self.connection_time.get('%s:%s'%(x,port),0))
             print ips
             queue = gevent.queue.Queue()
             start_time = time.time()
@@ -433,10 +434,10 @@ class Http(object):
                 ssl_sock = ssl.wrap_socket(sock)
                 start_time = time.time()
                 ssl_sock.connect((ip, port))
-                self.address_time['%s:%s'%(ip,port)] = time.time() - start_time
+                self.ssl_connection_time['%s:%s'%(ip,port)] = time.time() - start_time
                 ssl_sock.sock = sock
             except socket.error as e:
-                self.address_time['%s:%s'%(ip,port)] = self.max_timeout + random.random()
+                self.ssl_connection_time['%s:%s'%(ip,port)] = self.max_timeout + random.random()
                 if ssl_sock:
                     ssl_sock.close()
                     ssl_sock = None
@@ -452,7 +453,7 @@ class Http(object):
         ssl_sock = None
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
-            ips = heapq.nsmallest(self.max_window, iplist, key=lambda x:self.address_time.get('%s:%s'%(x,port),0))
+            ips = heapq.nsmallest(self.max_window, iplist, key=lambda x:self.ssl_connection_time.get('%s:%s'%(x,port),0))
             print ips
             queue = gevent.queue.Queue()
             start_time = time.time()
