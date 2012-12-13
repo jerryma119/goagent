@@ -551,8 +551,8 @@ class Http(object):
         if crlf:
             need_crlf = 1
         if need_crlf:
-            #request_data = 'GET /%s HTTP/1.1\r\n\r\n' % random.randint(1, sys.maxint)
-            request_data = '\r' * random.randint(1,10) + '\r\n' + '\r' * random.randint(1,10)
+            request_data = 'GET /%s HTTP/1.1\r\n\r\n' % random.randint(1, sys.maxint)
+            request_data += '\r\r\r\n\r\n'
         else:
             request_data = ''
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
@@ -577,6 +577,15 @@ class Http(object):
                     sock.sendall(data)
             else:
                 raise TypeError('http.request(payload) must be a string or buffer, not %r' % type(payload))
+
+        if need_crlf:
+            rfile = sock.makefile('rb', 1)
+            while 1:
+                line = rfile.readline(bufsize)
+                if not line:
+                    break
+                if line == '\r\n':
+                    break
 
         if return_sock:
             return sock
@@ -1072,7 +1081,8 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                             continue
                         else:
                             raise
-                http.forward_socket(sock, remote)
+                if hasattr(remote, 'fileno'):
+                    http.forward_socket(sock, remote)
             else:
                 hostip = random.choice(common.GOOGLE_HOSTS)
                 proxy_info = (common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
