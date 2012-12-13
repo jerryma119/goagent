@@ -591,7 +591,10 @@ class Http(object):
             return sock
 
         response = httplib.HTTPResponse(sock, buffering=True)
-        response.begin()
+        try:
+            response.begin()
+        except httplib.BadStatusLine:
+            response = None
         return response
 
     def request(self, method, url, payload=None, headers={}, fullurl=False, bufsize=__bufsize__, crlf=None, return_sock=None):
@@ -659,6 +662,7 @@ class Common(object):
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
         self.GAE_CRLF             = self.CONFIG.getint('gae', 'crlf')
+        self.GAE_WINDOW           = self.CONFIG.getint('gae', 'window') if self.CONFIG.has_option('gae', 'window') else 4
 
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
@@ -772,7 +776,7 @@ class Common(object):
         return info
 
 common = Common()
-http   = Http(proxy_uri=common.proxy_uri)
+http   = Http(max_window=common.GAE_WINDOW, proxy_uri=common.proxy_uri)
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -1185,6 +1189,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             except StopIteration:
                 pass
         try:
+            response = None
             try:
                 content_length = int(headers.get('Content-Length', 0))
                 payload = rfile.read(content_length) if content_length else ''
@@ -1199,6 +1204,9 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                 else:
                     raise
+
+            if response is None:
+                return
 
             # gateway error, switch to https mode
             if response.app_status in (400, 504) or (response.app_status==502 and common.GAE_PROFILE=='google_cn'):
