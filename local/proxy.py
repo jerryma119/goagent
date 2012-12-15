@@ -1282,7 +1282,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     response.begin()
     response.app_status = response.status
 
-    if app_code != 200:
+    if response.app_status != 200:
         return response
 
     data = response.read(4)
