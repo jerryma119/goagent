@@ -1313,6 +1313,7 @@ def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     response = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
+    response.app_status = response.status
     return response
 
 def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
