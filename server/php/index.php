@@ -3,27 +3,42 @@
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '1.10.0';
+$__version__  = '2.1.3';
 $__password__ = '';
 $__timeout__  = 20;
 
-function encode_data($dic) {
-    $a = array();
-    foreach ($dic as $key => $value) {
-        if ($value) {
-            $a[] = $key. '=' . bin2hex($value);
+function decode_request($data) {
+    list($headers_length) = array_values(unpack('n', substr($data, 0, 2)));
+    $headers_data = gzinflate(substr($data, 2, $headers_length));
+    $body = substr($data, 2+intval($headers_length));
+
+    $method  = '';
+    $url     = '';
+    $headers = array();
+    $kwargs  = array();
+
+    foreach (explode("\n", $headers_data) as $kv) {
+        $pair = explode(':', $kv, 2);
+        $key  = $pair[0];
+        $value = trim($pair[1]);
+        if ($key == 'G-Method') {
+            $method = $value;
+        } else if ($key == 'G-Url') {
+            $url = $value;
+        } else if (substr($key, 0, 2) == 'G-') {
+            $kwargs[strtolower(substr($key, 2))] = $value;
+        } else if ($key) {
+            $headers[$key] = $value;
         }
     }
-    return join('&', $a);
-}
-
-function decode_data($qs) {
-    $dic = array();
-    foreach (explode('&', $qs) as $kv) {
-        $pair = explode('=', $kv, 2);
-        $dic[$pair[0]] = $pair[1] ? pack('H*', $pair[1]) : '';
+    if (isset($headers['Content-Encoding'])) {
+        if ($headers['Content-Encoding'] == 'deflate') {
+            $body = gzinflate($body);
+            $headers['Content-Length'] = strval(strlen($body));
+            unset($headers['Content-Encoding']);
+        }
     }
-    return $dic;
+    return array($method, $url, $headers, $kwargs, $body);
 }
 
 function header_function($ch, $header){
@@ -40,34 +55,23 @@ function write_function($ch, $body){
 
 function post()
 {
-    $request = @decode_data(@gzuncompress(base64_decode($_SERVER['HTTP_COOKIE'])));
-    $method  = $request['method'];
-    $url     = $request['url'];
+    list($method, $url, $headers, $kwargs, $body) = @decode_request(@file_get_contents('php://input'));
 
-    $headers = array();
-    foreach (explode("\r\n", $request['headers']) as $line) {
-        $pair = explode(':', $line, 2);
-        if (count($pair) == 2) {
-            $headers[trim(strtolower($pair[0]))] = trim($pair[1]);
+    $password = $GLOBALS['__password__'];
+    if ($password) {
+        if (!isset($kwargs['password']) || $password != $kwargs['password']) {
+            header("HTTP/1.0 403 Forbidden");
+            echo '403 Forbidden';
+            exit(-1);
         }
     }
-    $headers['connection'] = 'close';
-    $body = @gzuncompress(@file_get_contents('php://input'));
-    $timeout = $GLOBALS['__timeout__'];
-
-    $response_headers = array();
 
     if ($body) {
-        $headers['content-length'] = strval(strlen($body));
+        $headers['Content-Length'] = strval(strlen($body));
     }
-    $headers['connection'] = 'close';
+    $headers['Connection'] = 'close';
 
-    $header_string = '';
-    foreach ($headers as $key => $value) {
-        if ($key) {
-            $header_string .= join('-', array_map('ucfirst', explode('-', $key))).': '.$value."\r\n";
-        }
-    }
+    $timeout = $GLOBALS['__timeout__'];
 
     $curl_opt = array();
 
@@ -104,7 +108,7 @@ function post()
             $curl_opt[CURLOPT_POSTFIELDS] = $body;
             break;
         default:
-            echo 'Invalid Method: '. $method;
+            echo 'Invalid Method: ' . var_export($method, true);
             exit(-1);
     }
 
@@ -122,13 +126,13 @@ function post()
     //$status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
     if ($errno && !isset($GLOBALS['header_length'])) {
-        echo $errno . ': ' .curl_error($ch);
+        echo 'cURL(' . $errno . '): ' .curl_error($ch);
     }
     curl_close($ch);
 }
 
 function get() {
-    header('Location: http://www.google.com/');
+    header('Location: https://www.google.com/');
 }
 
 function main() {
