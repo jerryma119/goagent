@@ -1298,6 +1298,8 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.fp = cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
         return response
     response.msg = httplib.HTTPMessage(cStringIO.StringIO(zlib.decompress(data, -15)))
+    if 'transfer-encoding' in response.msg:
+        del response.msg['transfer-encoding']
     return response
 
 def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
