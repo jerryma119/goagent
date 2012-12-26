@@ -1645,7 +1645,7 @@ def main():
     pre_start()
     sys.stdout.write(common.info())
 
-    logging.info('Enable aggressive create_ssl_connection to connect google_hk')
+    #logging.info('Enable aggressive create_ssl_connection to connect google_hk')
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
