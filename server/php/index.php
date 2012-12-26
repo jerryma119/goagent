@@ -82,10 +82,8 @@ function header_function($ch, $header) {
         header('X-Status: ' . $status);
     } elseif (substr($header, 0, 17) == 'Transfer-Encoding') {
         // skip transfer-encoding
-    } elseif (substr($header, 0, 8) == 'Location') {
-        header('X-'. $header);
     } else {
-        header($header);
+        header($header, false, 200);
     }
     return strlen($header);
 }

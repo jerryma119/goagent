@@ -1281,11 +1281,6 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if 'x-status' in response.msg:
         response.status = int(response.msg['x-status'])
         del response.msg['x-status']
-    if 'x-location' in response.msg:
-        response.msg['Location'] = response.msg['x-location']
-        del response.msg['x-location']
-    if 'transfer-encoding' in response.msg:
-        del response.msg['transfer-encoding']
     return response
 
 def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
