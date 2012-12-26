@@ -80,6 +80,8 @@ function header_function($ch, $header) {
         $status = strval($tokens[1]);
         $GLOBALS['__status__'] == $status;
         header('Status: ' . $status);
+    } elseif (substr($header, 0, 17) == 'Transfer-Encoding') {
+        // skip transfer-encoding
     } else {
         header($header);
     }
