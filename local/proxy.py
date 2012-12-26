@@ -1278,9 +1278,12 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     response = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
     response.app_status = response.status
-    if 'status' in response.msg:
-        response.status = int(response.msg['status'])
-        del response.msg['status']
+    if 'x-status' in response.msg:
+        response.status = int(response.msg['x-status'])
+        del response.msg['x-status']
+    if 'x-location' in response.msg:
+        response.msg['Location'] = response.msg['x-location']
+        del response.msg['x-location']
     if 'transfer-encoding' in response.msg:
         del response.msg['transfer-encoding']
     return response

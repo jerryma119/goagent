@@ -76,12 +76,14 @@ ERROR_STRING;
 
 function header_function($ch, $header) {
     if (substr($header, 0, 5) == 'HTTP/') {
-        $tokens = explode(' ', $header);
-        $status = strval($tokens[1]);
+        $terms = explode(' ', $header);
+        $status = intval($terms[1]);
         $GLOBALS['__status__'] == $status;
-        header('Status: ' . $status);
+        header('X-Status: ' . $status);
     } elseif (substr($header, 0, 17) == 'Transfer-Encoding') {
         // skip transfer-encoding
+    } elseif (substr($header, 0, 8) == 'Location') {
+        header('X-'. $header);
     } else {
         header($header);
     }
