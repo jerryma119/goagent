@@ -41,6 +41,39 @@ function decode_request($data) {
     return array($method, $url, $headers, $kwargs, $body);
 }
 
+function error_html($errno, $error, $description) {
+    $error = <<<ERROR_STRING
+<html><head>
+<meta http-equiv="content-type" content="text/html;charset=utf-8">
+<title>${errno} ${error}</title>
+<style><!--
+body {font-family: arial,sans-serif}
+div.nav {margin-top: 1ex}
+div.nav A {font-size: 10pt; font-family: arial,sans-serif}
+span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
+div.nav A,span.big {font-size: 12pt; color: #0000cc}
+div.nav A {font-size: 10pt; color: black}
+A.l:link {color: #6f6f6f}
+A.u:link {color: green}
+//--></style>
+
+</head>
+<body text=#000000 bgcolor=#ffffff>
+<table border=0 cellpadding=2 cellspacing=0 width=100%>
+<tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
+<tr><td>&nbsp;</td></tr></table>
+<blockquote>
+<H1>${error}</H1>
+${description}
+
+<p>
+</blockquote>
+<table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
+</body></html>
+ERROR_STRING;
+    return $error;
+}
+
 function header_function($ch, $header) {
     if (substr($header, 0, 5) == 'HTTP/') {
         $tokens = explode(' ', $header);
@@ -130,7 +163,7 @@ function post()
     $ret = curl_exec($ch);
     $errno = curl_errno($ch);
     if ($errno && !isset($GLOBALS['__status__'])) {
-        echo 'cURL(' . $errno . '): ' .curl_error($ch);
+        echo error_html('cURL('.$errno .')', $method.' '.$url, 'cURL('.$errno .'): '. curl_error($ch));
     }
     curl_close($ch);
 }
