@@ -3,7 +3,7 @@
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '2.1.3';
+$__version__  = '2.1.11';
 $__password__ = '';
 $__timeout__  = 20;
 
@@ -41,15 +41,20 @@ function decode_request($data) {
     return array($method, $url, $headers, $kwargs, $body);
 }
 
-function header_function($ch, $header){
-    header($header);
-    $GLOBALS['header_length'] += 1;
+function header_function($ch, $header) {
+    if (substr($header, 0, 5) == 'HTTP/') {
+        $tokens = explode(' ', $header);
+        $status = strval($tokens[1]);
+        $GLOBALS['__status__'] == $status;
+        header('Status: ' . $status);
+    } else {
+        header($header);
+    }
     return strlen($header);
 }
 
-function write_function($ch, $body){
+function write_function($ch, $body) {
     echo $body;
-    $GLOBALS['body_length'] += 1;
     return strlen($body);
 }
 
@@ -123,9 +128,8 @@ function post()
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
     $ret = curl_exec($ch);
-    //$status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
-    if ($errno && !isset($GLOBALS['header_length'])) {
+    if ($errno && !isset($GLOBALS['__status__'])) {
         echo 'cURL(' . $errno . '): ' .curl_error($ch);
     }
     curl_close($ch);
