@@ -256,7 +256,8 @@ def paas_application(environ, start_response):
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
 
-            headers = [('Status', str(response.status))] + response.msg.items()
+            headers = [('Status', str(response.status))]
+            headers += [(k, v) for k, v in response.msg.items() if k != 'transfer-encoding']
             start_response('200 OK', headers)
 
             bufsize = 8192
