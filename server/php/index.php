@@ -3,7 +3,7 @@
 // Contributor:
 //      Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '2.1.3';
+$__version__  = '2.1.11';
 $__password__ = '';
 $__timeout__  = 20;
 
@@ -41,15 +41,55 @@ function decode_request($data) {
     return array($method, $url, $headers, $kwargs, $body);
 }
 
-function header_function($ch, $header){
-    header($header);
-    $GLOBALS['header_length'] += 1;
+function error_html($errno, $error, $description) {
+    $error = <<<ERROR_STRING
+<html><head>
+<meta http-equiv="content-type" content="text/html;charset=utf-8">
+<title>${errno} ${error}</title>
+<style><!--
+body {font-family: arial,sans-serif}
+div.nav {margin-top: 1ex}
+div.nav A {font-size: 10pt; font-family: arial,sans-serif}
+span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
+div.nav A,span.big {font-size: 12pt; color: #0000cc}
+div.nav A {font-size: 10pt; color: black}
+A.l:link {color: #6f6f6f}
+A.u:link {color: green}
+//--></style>
+
+</head>
+<body text=#000000 bgcolor=#ffffff>
+<table border=0 cellpadding=2 cellspacing=0 width=100%>
+<tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
+<tr><td>&nbsp;</td></tr></table>
+<blockquote>
+<H1>${error}</H1>
+${description}
+
+<p>
+</blockquote>
+<table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
+</body></html>
+ERROR_STRING;
+    return $error;
+}
+
+function header_function($ch, $header) {
+    if (substr($header, 0, 5) == 'HTTP/') {
+        $terms = explode(' ', $header);
+        $status = intval($terms[1]);
+        $GLOBALS['__status__'] == $status;
+        header('X-Status: ' . $status);
+    } elseif (substr($header, 0, 17) == 'Transfer-Encoding') {
+        // skip transfer-encoding
+    } else {
+        header($header, false, 200);
+    }
     return strlen($header);
 }
 
-function write_function($ch, $body){
+function write_function($ch, $body) {
     echo $body;
-    $GLOBALS['body_length'] += 1;
     return strlen($body);
 }
 
@@ -123,10 +163,9 @@ function post()
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
     $ret = curl_exec($ch);
-    //$status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $errno = curl_errno($ch);
-    if ($errno && !isset($GLOBALS['header_length'])) {
-        echo 'cURL(' . $errno . '): ' .curl_error($ch);
+    if ($errno && !isset($GLOBALS['__status__'])) {
+        echo error_html('cURL('.$errno .')', $method.' '.$url, 'cURL('.$errno .'): '. curl_error($ch));
     }
     curl_close($ch);
 }

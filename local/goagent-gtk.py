@@ -77,7 +77,10 @@ def main():
     window = gtk.Window()
     window.add(v)
     window.connect('delete-event', lambda window, event: gtk.main_quit())
-    window.show_all()
+    from proxy import Common
+    common = Common()
+    if common.LISTEN_VISIBLE:
+        window.show_all()
     indicator = GoAgentAppIndicator(window)
     gtk.main()
 

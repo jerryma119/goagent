@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.1.3'
+__version__ = '2.1.11'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -256,42 +256,17 @@ def paas_application(environ, start_response):
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
 
-            need_deflate = True
-            if response.getheader('Content-Encoding') or response.getheader('Content-Type', '').startswith(('video/', 'audio/', 'image/')) or 'deflate' not in headers.get('Accept-Encoding', ''):
-                need_deflate = False
-
-            if need_deflate:
-                response.msg['Content-Encoding'] = 'deflate'
-                if 'Content-Length' in response.msg:
-                    del response.msg['Content-Length']
-            response_headers = '\n'.join('%s:%s'%(k.title(),v) for k, v in response.getheaders())
-            response_headers = zlib.compress(response_headers)[2:-4]
-
-            start_response('200 OK', [('Content-Type', 'image/gif')])
-            yield struct.pack('!hh', int(response.status), len(response_headers)) + response_headers
+            headers = [('X-Status', str(response.status))]
+            headers += [(k, v) for k, v in response.msg.items() if k != 'transfer-encoding']
+            start_response('200 OK', headers)
 
             bufsize = 8192
-            if need_deflate:
-                compressobj = zlib.compressobj()
-                is_leadbyte = True
-                while 1:
-                    data = response.read(bufsize)
-                    if not data:
-                        break
-                    zdata = compressobj.compress(data)
-                    if zdata:
-                        if is_leadbyte:
-                            zdata = zdata[2:]
-                            is_leadbyte = False
-                        yield zdata
-                yield compressobj.flush()[:-4]
-            else:
-                while 1:
-                    data = response.read(bufsize)
-                    if not data:
-                        response.close()
-                        break
-                    yield data
+            while 1:
+                data = response.read(bufsize)
+                if not data:
+                    response.close()
+                    break
+                yield data
         except httplib.HTTPException as e:
             raise
 

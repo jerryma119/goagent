@@ -12,7 +12,7 @@
 #      Ming Bai       <mbbill@gmail.com>
 #      Bin Yu         <yubinlove1991@gmail.com>
 
-__version__ = '2.1.10dev'
+__version__ = '2.1.11'
 __config__  = 'proxy.ini'
 __bufsize__ = 1024*1024
 
@@ -31,7 +31,7 @@ try:
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
     if os.name == 'nt':
-        sys.stderr.write('WARNING: python-gevent not installed. `http://code.google.com/p/gevent/downloads/list`\n')
+        sys.stderr.write('WARNING: python-gevent not installed. `https://github.com/SiteSupport/gevent/downloads`\n')
     else:
         sys.stderr.write('WARNING: python-gevent not installed. `curl -k -L http://git.io/I9B7RQ|sh`\n')
     import Queue
@@ -670,7 +670,6 @@ class Common(object):
 
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
-        self.PAAS_ISPHP            = self.CONFIG.getint('paas', 'isphp')
         self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
         self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
 
@@ -1277,44 +1276,11 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
-    sock = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0, return_sock=True)
-
-    response = httplib.HTTPResponse(sock, buffering=True)
-    response.begin()
-    response.app_status = response.status
-
-    if response.app_status != 200:
-        return response
-
-    data = response.read(4)
-    if len(data) < 4:
-        response.status = 502
-        response.fp = cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
-        return response
-    response.status, headers_length = struct.unpack('!hh', data)
-    data = response.read(headers_length)
-    if len(data) < headers_length:
-        response.status = 502
-        response.fp = cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
-        return response
-    response.msg = httplib.HTTPMessage(cStringIO.StringIO(zlib.decompress(data, -15)))
-    return response
-
-def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
-    # deflate = lambda x:zlib.compress(x)[2:-4]
-    if payload:
-        if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
-            zpayload = zlib.compress(payload)[2:-4]
-            if len(zpayload) < len(payload):
-                payload = zpayload
-                headers['Content-Encoding'] = 'deflate'
-        headers['Content-Length'] = str(len(payload))
-    skip_headers = http.skip_headers
-    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
-    metadata = zlib.compress(metadata)[2:-4]
-    app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     response = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
     response.app_status = response.status
+    if 'x-status' in response.msg:
+        response.status = int(response.msg['x-status'])
+        del response.msg['x-status']
     return response
 
 def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
@@ -1379,10 +1345,7 @@ def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()})
         try:
             content_length = int(headers.get('Content-Length', 0))
             payload = rfile.read(content_length) if content_length else ''
-            urlfetch = paas_urlfetch
-            if common.PAAS_ISPHP or common.PAAS_FETCHSERVER.endswith('.php'):
-                urlfetch = php_urlfetch
-            response = urlfetch(method, path, headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
+            response = paas_urlfetch(method, path, headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
             logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, response.status))
         except socket.error as e:
             if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
@@ -1680,7 +1643,7 @@ def main():
     pre_start()
     sys.stdout.write(common.info())
 
-    logging.info('Enable aggressive create_ssl_connection to connect google_hk')
+    #logging.info('Enable aggressive create_ssl_connection to connect google_hk')
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
