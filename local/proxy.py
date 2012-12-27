@@ -409,7 +409,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             ips = heapq.nsmallest(self.max_window, iplist, key=lambda x:self.connection_time.get('%s:%s'%(x,port),0))
-            print ips
+            # print ips
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_connection, (ip, port), timeout, queue)
@@ -459,7 +459,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         for i in xrange(self.max_retry):
             ips = heapq.nsmallest(self.max_window, iplist, key=lambda x:self.ssl_connection_time.get('%s:%s'%(x,port),0))
-            print ips
+            # print ips
             queue = gevent.queue.Queue()
             start_time = time.time()
             for ip in ips:
@@ -666,7 +666,6 @@ class Common(object):
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
         self.GAE_CRLF             = self.CONFIG.getint('gae', 'crlf')
-        self.GAE_WINDOW           = self.CONFIG.getint('gae', 'window') if self.CONFIG.has_option('gae', 'window') else 4
 
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
@@ -715,6 +714,7 @@ class Common(object):
             self.proxy_uri = ''
 
         self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
+        self.GOOGLE_WINDOW        = self.CONFIG.getint(self.GAE_PROFILE, 'window') if self.CONFIG.has_option(self.GAE_PROFILE, 'window') else 4
         self.GOOGLE_HOSTS         = tuple(x for x in self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|') if x)
         self.GOOGLE_SITES         = tuple(x for x in self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|') if x)
         self.GOOGLE_FORCEHTTPS    = tuple('http://'+x for x in self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|') if x)
@@ -779,7 +779,7 @@ class Common(object):
         return info
 
 common = Common()
-http   = Http(max_window=common.GAE_WINDOW, proxy_uri=common.proxy_uri)
+http   = Http(max_window=common.GOOGLE_WINDOW, proxy_uri=common.proxy_uri)
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -814,29 +814,6 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         return response
     response.msg = httplib.HTTPMessage(cStringIO.StringIO(zlib.decompress(data, -15)))
     return response
-
-def gae_hosts_updater(sleeptime, threads):
-    def check_ssl_ip(ip, peercert_keyword='.google.com'):
-        logging.debug('gae_hosts_updater check_ssl_ip %r', ip)
-        try:
-            with gevent.timeout.Timeout(3):
-                sock = socket.create_connection((ip, 443))
-                ssl_sock = ssl.wrap_socket(sock, ssl_version=ssl.PROTOCOL_TLSv1)
-                peercert = ssl_sock.getpeercert(True)
-                if peercert_keyword in peer_cert:
-                    return ip
-        except gevent.timeout.Timeout as e:
-            pass
-        except Exception as e:
-            pass
-    iplist = sum((socket.gethostbyname_ex(x)[-1] for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|')), [])
-    iprange = random.choice(list(set(x.rsplit('.', 1)[0] for x in iplist)))
-    ips = ['%s.%d' % (iprange, i) for i in xrange(1, 256)]
-    print ips
-    pool = gevent.pool.Pool(threads)
-    greenlets = [pool.spawn(check_ssl_ip, ip, '.google.com') for ip in ips]
-    iplist = [x.get() for x in greenlets if x.get()]
-    print iplist
 
 class RangeFetch(object):
     """Range Fetch Class"""
