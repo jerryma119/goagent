@@ -165,7 +165,7 @@ function post()
     $ret = curl_exec($ch);
     $errno = curl_errno($ch);
     if ($errno && !isset($GLOBALS['__status__'])) {
-        echo error_html('cURL('.$errno .')', $method.' '.$url, 'cURL('.$errno .'): '. curl_error($ch));
+        echo error_html("cURL($errno)", "PHP Urlfetch Error: $method", curl_error($ch));
     }
     curl_close($ch);
 }
