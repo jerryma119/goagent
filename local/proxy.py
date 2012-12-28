@@ -409,7 +409,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         window = int(round(self.max_window/2.0))
         for i in xrange(self.max_retry):
-            ips = heapq.nsmallest(window, iplist, key=lambda x:self.connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, window)
+            ips = heapq.nsmallest(window, iplist, key=lambda x:self.connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
             # print ips
             queue = gevent.queue.Queue()
             for ip in ips:
@@ -460,7 +460,7 @@ class Http(object):
         iplist = self.dns_resolve(host)
         window = int(round(self.max_window/2.0))
         for i in xrange(self.max_retry):
-            ips = heapq.nsmallest(window, iplist, key=lambda x:self.ssl_connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, window)
+            ips = heapq.nsmallest(window, iplist, key=lambda x:self.ssl_connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
             # print ips
             queue = gevent.queue.Queue()
             start_time = time.time()
