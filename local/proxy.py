@@ -488,15 +488,11 @@ class Http(object):
                 request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password)).strip()
             request_data += '\r\n'
             sock.sendall(request_data)
-            buf = ''
-            while 1:
-                data = sock.recv(1)
-                if not data:
-                    sock.close()
-                    raise socket.error(10054, 'connection reset by proxy')
-                buf += data
-                if buf.endswith('\r\n\r\n'):
-                    break
+            response = httplib.HTTPResponse(sock, buffering=False)
+            response.begin()
+            if response.status >= 400:
+                logging.error('Http.create_connection_withproxy return http error code %s', response.status)
+                sock = None
             return sock
         except socket.error as e:
             logging.error('Http.create_connection_withproxy error %s', e)
@@ -627,7 +623,7 @@ class Http(object):
                     else:
                         sock = self.create_connection((host, port), self.max_timeout)
                 else:
-                    sock = self.create_connection_withproxy((host, port), port, self.timeout, proxy=self.proxy)
+                    sock = self.create_connection_withproxy((host, port), port, self.max_timeout, proxy=self.proxy)
                     path = url
                     #crlf = self.crlf = 0
                     if scheme == 'https':
