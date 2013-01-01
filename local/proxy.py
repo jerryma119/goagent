@@ -168,7 +168,6 @@ import struct
 import re
 import zlib
 import random
-import httplib
 import base64
 import urlparse
 import socket
