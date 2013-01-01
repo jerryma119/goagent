@@ -306,7 +306,16 @@ class CertUtil(object):
         elif sys.platform == 'darwin':
             cmd = 'sudo security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % certfile
         elif sys.platform.startswith('linux'):
-            cmd = 'sudo cp "%s" /usr/local/share/ca-certificates/goagent.crt && sudo update-ca-certificates' % certfile
+            certname = os.path.basename(certfile)
+            if OpenSSL:
+                try:
+                    with open(certfile, 'rb') as fp:
+                        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
+                        commonname = (v for k,v in x509.get_subject().get_components() if k=='O').next()
+                        certname = '-'.join(commonname.split()) + '.crt'
+                except Exception as e:
+                    pass
+            cmd = 'sudo cp "%s" /usr/local/share/ca-certificates/%s && sudo update-ca-certificates' % (certfile, certname)
         else:
             cmd = ''
         return os.system(cmd)
