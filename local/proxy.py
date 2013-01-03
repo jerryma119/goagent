@@ -15,6 +15,7 @@
 __version__ = '2.1.11'
 __config__  = 'proxy.ini'
 __bufsize__ = 1024*1024
+__ispy27__ = __import__('sys').version[:3] == '2.7'
 
 import sys
 import os
@@ -512,7 +513,7 @@ class Http(object):
                 request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password)).strip()
             request_data += '\r\n'
             sock.sendall(request_data)
-            response = httplib.HTTPResponse(sock, buffering=False)
+            response = httplib.HTTPResponse(sock)
             response.begin()
             if response.status >= 400:
                 logging.error('Http.create_connection_withproxy return http error code %s', response.status)
@@ -613,7 +614,7 @@ class Http(object):
 
         if need_crlf:
             try:
-                response = httplib.HTTPResponse(sock, buffering=False)
+                response = httplib.HTTPResponse(sock)
                 response.begin()
                 response.read()
             except Exception:
@@ -623,7 +624,7 @@ class Http(object):
         if return_sock:
             return sock
 
-        response = httplib.HTTPResponse(sock, buffering=True)
+        response = httplib.HTTPResponse(sock, buffering=True) if __ispy27__ else httplib.HTTPResponse(sock)
         try:
             response.begin()
         except httplib.BadStatusLine:
