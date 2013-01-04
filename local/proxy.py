@@ -311,14 +311,15 @@ class CertUtil(object):
                 try:
                     with open(certfile, 'rb') as fp:
                         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
-                        commonname = (v for k,v in x509.get_subject().get_components() if k[0]=='O').next()
-                        certname = '-'.join(commonname.lower().split()) + '.crt'
+                        commonname = (v for k,v in x509.get_subject().get_components() if k=='O').next()
+                        certname = commonname + '.crt'
                 except Exception as e:
                     pass
-            certpath = "/usr/local/share/ca-certificates/%s" % certname
-            if os.path.exists(certpath):
+            pemfile = "/etc/ssl/certs/%s.pem" % os.path.splitext(certname)[0]
+            new_certfile = "/usr/local/share/ca-certificates/%s" % certname
+            if os.path.exists(pemfile):
                 return 0
-            cmd = 'cp "%s" "%s" && update-ca-certificates' % (certfile, certpath)
+            cmd = 'cp "%s" "%s" && update-ca-certificates' % (certfile, new_certfile)
         else:
             cmd = ''
         return os.system(cmd)
