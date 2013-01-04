@@ -304,18 +304,21 @@ class CertUtil(object):
         elif sys.platform == 'cygwin':
             cmd = 'cmd /c "pushd %s && certmgr.exe -add %s -c -s -r localMachine Root"' % (dirname, basename)
         elif sys.platform == 'darwin':
-            cmd = 'sudo security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % certfile
+            cmd = 'security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % certfile
         elif sys.platform.startswith('linux'):
             certname = os.path.basename(certfile)
             if OpenSSL:
                 try:
                     with open(certfile, 'rb') as fp:
                         x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
-                        commonname = (v for k,v in x509.get_subject().get_components() if k=='O').next()
-                        certname = '-'.join(commonname.split()) + '.crt'
+                        commonname = (v for k,v in x509.get_subject().get_components() if k[0]=='O').next()
+                        certname = '-'.join(commonname.lower().split()) + '.crt'
                 except Exception as e:
                     pass
-            cmd = 'sudo cp "%s" /usr/local/share/ca-certificates/%s && sudo update-ca-certificates' % (certfile, certname)
+            certpath = "/usr/local/share/ca-certificates/%s" % certname
+            if os.path.exists(certpath):
+                return 0
+            cmd = 'cp "%s" "%s" && update-ca-certificates' % (certfile, certpath)
         else:
             cmd = ''
         return os.system(cmd)
@@ -333,8 +336,8 @@ class CertUtil(object):
             [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
             CertUtil.dump_ca('CA.key', 'CA.crt')
         #Check CA imported
-        if os.name =='nt' and CertUtil.import_ca(capath) != 0:
-            logging.warning('GoAgent install trusted root CA certificate failed, Please run goagent by administrator/root.')
+        if CertUtil.import_ca(capath) != 0:
+            logging.warning('GoAgent install certificate failed, Please run goagent by administrator/root.')
         #Check Certs Dir
         certdir = os.path.join(os.path.dirname(__file__), 'certs')
         if not os.path.exists(certdir):
