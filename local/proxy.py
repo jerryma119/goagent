@@ -299,29 +299,27 @@ class CertUtil(object):
     @staticmethod
     def import_ca(certfile):
         dirname, basename = os.path.split(certfile)
+        commonname = os.path.splitext(certfile)[0]
+        if OpenSSL:
+            try:
+                with open(certfile, 'rb') as fp:
+                    x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
+                    commonname = (v for k,v in x509.get_subject().get_components() if k=='O').next()
+            except Exception as e:
+                pass
+
+        cmd = ''
         if sys.platform.startswith('win'):
             cmd = 'cd /d "%s" && certmgr.exe -add %s -c -s -r localMachine Root >NUL' % (dirname, basename)
         elif sys.platform == 'cygwin':
             cmd = 'cmd /c "pushd %s && certmgr.exe -add %s -c -s -r localMachine Root"' % (dirname, basename)
         elif sys.platform == 'darwin':
-            cmd = 'security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % certfile
+            cmd = 'security find-certificate -a -c "%s" || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, certfile)
         elif sys.platform.startswith('linux'):
-            certname = os.path.basename(certfile)
-            if OpenSSL:
-                try:
-                    with open(certfile, 'rb') as fp:
-                        x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
-                        commonname = (v for k,v in x509.get_subject().get_components() if k=='O').next()
-                        certname = commonname + '.crt'
-                except Exception as e:
-                    pass
-            pemfile = "/etc/ssl/certs/%s.pem" % os.path.splitext(certname)[0]
-            new_certfile = "/usr/local/share/ca-certificates/%s" % certname
-            if os.path.exists(pemfile):
-                return 0
-            cmd = 'cp "%s" "%s" && update-ca-certificates' % (certfile, new_certfile)
-        else:
-            cmd = ''
+            pemfile = "/etc/ssl/certs/%s.pem" % commonname
+            new_certfile = "/usr/local/share/ca-certificates/%s.crt" % commonname
+            if not os.path.exists(pemfile):
+                cmd = 'cp "%s" "%s" && update-ca-certificates' % (certfile, new_certfile)
         return os.system(cmd)
 
     @staticmethod
