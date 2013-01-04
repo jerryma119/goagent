@@ -336,7 +336,7 @@ class CertUtil(object):
             CertUtil.dump_ca('CA.key', 'CA.crt')
         #Check CA imported
         if CertUtil.import_ca(capath) != 0:
-            logging.warning('GoAgent install certificate failed, Please run goagent by administrator/root.')
+            logging.warning('GoAgent install certificate failed, Please run proxy.py by administrator/root/sudo')
         #Check Certs Dir
         certdir = os.path.join(os.path.dirname(__file__), 'certs')
         if not os.path.exists(certdir):
