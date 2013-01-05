@@ -314,7 +314,7 @@ class CertUtil(object):
         elif sys.platform == 'cygwin':
             cmd = 'cmd /c "pushd %s && certmgr.exe -add %s -c -s -r localMachine Root"' % (dirname, basename)
         elif sys.platform == 'darwin':
-            cmd = 'security find-certificate -a -c "%s" || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, certfile)
+            cmd = 'security find-certificate -a -c "%s" | grep "%s" || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, commonname, certfile)
         elif sys.platform.startswith('linux'):
             pemfile = "/etc/ssl/certs/%s.pem" % commonname
             new_certfile = "/usr/local/share/ca-certificates/%s.crt" % commonname
