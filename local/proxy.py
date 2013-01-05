@@ -1620,9 +1620,6 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', gevent.server.StreamSer
                     break
 
 def pre_start():
-    if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
-        logging.critical('please edit %s to add your appid to [gae] !', __config__)
-        sys.exit(-1)
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
@@ -1650,6 +1647,9 @@ def pre_start():
             lineno = [sys._getframe().f_lineno-1, sys._getframe().f_lineno+2]
             #ctypes.windll.user32.MessageBoxW(None, u'某些安全软件可能和本软件存在冲突.\n可以删除proxy.py第%r行或者暂时退出安全软件来继续运行' % lineno, u'建议', 0)
             #sys.exit(0)
+    if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
+        logging.critical('please edit %s to add your appid to [gae] !', __config__)
+        sys.exit(-1)
 
 def main():
     global __file__
