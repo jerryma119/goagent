@@ -1693,3 +1693,7 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        if ctypes and os.name == 'nt':
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
+        raise
