@@ -1008,7 +1008,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                                 logging.error('socket.gethostbyname_ex(host=%r) failed:%s', host, e)
                         prefix = re.sub(r'\d+\.\d+$', '', common.GOOGLE_HOSTS[0])
                         iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
-                        if iplist:
+                        if iplist and len(iplist) > len(hosts):
                             common.GOOGLE_HOSTS = set(iplist)
                         else:
                             # seems google_cn is down, should switch to google_hk?
