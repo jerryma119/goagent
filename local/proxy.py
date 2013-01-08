@@ -310,7 +310,7 @@ class CertUtil(object):
 
         cmd = ''
         if sys.platform.startswith('win'):
-            cmd = 'cd /d "%s" && certmgr.exe -add %s -c -s -r localMachine Root >NUL' % (dirname, basename)
+            cmd = 'cd /d "%s" && .\certmgr.exe -add %s -c -s -r localMachine Root >NUL' % (dirname, basename)
         elif sys.platform == 'cygwin':
             cmd = 'cmd /c "pushd %s && certmgr.exe -add %s -c -s -r localMachine Root"' % (dirname, basename)
         elif sys.platform == 'darwin':
@@ -509,7 +509,7 @@ class Http(object):
             except socket.error:
                 pass
             sock = socket.create_connection((proxyhost, int(proxyport)))
-            hostname = random.choice(list(self.dns.get(host)) or [host])
+            hostname = random.choice(list(self.dns.get(host)) or [host if not host.endswith('.appspot.com') else 'www.google.com'])
             request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
             if username and password:
                 request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password)).strip()
