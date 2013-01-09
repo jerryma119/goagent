@@ -350,7 +350,7 @@ class Http(object):
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations'])
     dns_blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68', '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251', '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104', '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139', '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2', '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43', '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147', '213.169.251.35', '216.221.188.182', '216.234.179.13'])
 
-    def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy_uri=''):
+    def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy=''):
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
@@ -359,14 +359,7 @@ class Http(object):
         self.max_timeout = max_timeout
         self.dns = collections.defaultdict(set)
         self.crlf = 0
-        if proxy_uri:
-            scheme, netloc = urlparse.urlparse(proxy_uri)[:2]
-            if '@' in netloc:
-                self.proxy = re.search(r'([^:]+):([^@]+)@(.+):(\d+)', netloc).group(1,2,3,4)
-            else:
-                self.proxy = (None, None) + (re.match('(.+):(\d+)', netloc).group(1,2))
-        else:
-            self.proxy = ''
+        self.proxy = proxy
 
     @staticmethod
     def dns_remote_resolve(qname, dnsserver, timeout=None, blacklist=set(), max_retry=2, max_wait=2):
@@ -500,14 +493,15 @@ class Http(object):
                 logging.warning('Http.create_ssl_connection to %s, port=%r return None, try again.', ips, port)
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
-        assert isinstance(proxy, (list, tuple, ))
+        assert isinstance(proxy, (str, unicode))
         logging.debug('Http.create_connection_withproxy connect (%r, %r)', host, port)
-        username, password, proxyhost, proxyport = proxy
+        scheme, username, password, address = urllib2._parse_proxy(proxy or self.proxy)
         try:
             try:
                 self.dns_resolve(host)
             except socket.error:
                 pass
+            proxyhost, _, proxyport = address.rpartition(':')
             sock = socket.create_connection((proxyhost, int(proxyport)))
             hostname = random.choice(list(self.dns.get(host)) or [host if not host.endswith('.appspot.com') else 'www.google.com'])
             request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
@@ -594,8 +588,9 @@ class Http(object):
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
         request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
         if self.proxy:
-            username, password, _, _ = self.proxy
-            request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
+            _, username, password, _ = urllib2._parse_proxy(self.proxy)
+            if username and password:
+                request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
         request_data += '\r\n'
 
         if not payload:
@@ -731,18 +726,30 @@ class Common(object):
             self.PAC_ENABLE           = 0
 
         self.PROXY_ENABLE         = self.CONFIG.getint('proxy', 'enable')
+        self.PROXY_AUTODETECT     = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
         self.PROXY_HOST           = self.CONFIG.get('proxy', 'host')
         self.PROXY_PORT           = self.CONFIG.getint('proxy', 'port')
         self.PROXY_USERNAME       = self.CONFIG.get('proxy', 'username')
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
 
+        if not self.PROXY_ENABLE and self.PROXY_AUTODETECT:
+            try:
+                proxies = (x for x in urllib2.build_opener().handlers if isinstance(x, urllib2.ProxyHandler)).next().proxies
+                proxy = proxies.get('https') or proxies.get('http') or ''
+                if self.LISTEN_IP not in proxy:
+                    scheme, username, password, address = urllib2._parse_proxy(proxy)
+                    proxyhost, _, proxyport = address.rpartition(':')
+                    self.PROXY_ENABLE   = 1
+                    self.PROXY_USERNAME = username
+                    self.PROXY_PASSWROD = password
+                    self.PROXY_HOST     = proxyhost
+                    self.PROXY_PORT     = int(proxyport)
+            except StopIteration:
+                pass
         if self.PROXY_ENABLE:
-            if self.PROXY_USERNAME:
-                self.proxy_uri = 'http://%s:%s@%s:%d' % (self.PROXY_USERNAME, self.PROXY_PASSWROD, self.PROXY_HOST, self.PROXY_PORT)
-            else:
-                self.proxy_uri = 'http://%s:%s' % (self.PROXY_HOST, self.PROXY_PORT)
+            self.proxy = 'https://%s:%s@%s:%d' % (self.PROXY_USERNAME or '' , self.PROXY_PASSWROD or '', self.PROXY_HOST, self.PROXY_PORT)
         else:
-            self.proxy_uri = ''
+            self.proxy = ''
 
         self.GOOGLE_MODE          = self.CONFIG.get(self.GAE_PROFILE, 'mode')
         self.GOOGLE_WINDOW        = self.CONFIG.getint(self.GAE_PROFILE, 'window') if self.CONFIG.has_option(self.GAE_PROFILE, 'window') else 4
@@ -810,7 +817,7 @@ class Common(object):
         return info
 
 common = Common()
-http   = Http(max_window=common.GOOGLE_WINDOW, proxy_uri=common.proxy_uri)
+http   = Http(max_window=common.GOOGLE_WINDOW, proxy=common.proxy)
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -991,7 +998,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
     if 'setup' not in hls:
         http.dns.update(common.HOSTS)
         fetchhosts = ['%s.appspot.com' % x for x in common.GAE_APPIDS]
-        if common.GAE_PROFILE == 'google_ipv6':
+        if common.GAE_PROFILE == 'google_ipv6' or common.PROXY_ENABLE:
             for fetchhost in fetchhosts:
                 http.dns[fetchhost] = http.dns.default_factory(common.GOOGLE_HOSTS)
         elif not common.PROXY_ENABLE:
@@ -1105,8 +1112,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                     http.forward_socket(sock, remote, pongcallback=None)
             else:
                 hostip = random.choice(common.GOOGLE_HOSTS)
-                proxy_info = (common.PROXY_USERNAME, common.PROXY_PASSWROD, common.PROXY_HOST, common.PROXY_PORT)
-                remote = http.create_connection_withproxy((hostip, int(port)), proxy=proxy_info)
+                remote = http.create_connection_withproxy((hostip, int(port)), proxy=common.proxy)
                 if not remote:
                     logging.error('gaeproxy_handler proxy connect remote (%r, %r) failed', host, port)
                     return
