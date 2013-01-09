@@ -426,7 +426,8 @@ class Http(object):
         window = (self.max_window+1)//2
         for i in xrange(self.max_retry):
             window += i
-            ips = heapq.nsmallest(window, iplist, key=lambda x:self.connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
+            connection_time = self.ssl_connection_time if port == 443 else self.connection_time
+            ips = heapq.nsmallest(window, iplist, key=lambda x:connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
             # print ips
             queue = gevent.queue.Queue()
             for ip in ips:
@@ -832,7 +833,8 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
-    response = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)}, crlf=common.GAE_CRLF)
+    need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
+    response = http.request('POST', fetchserver, gae_payload, {'Content-Length':len(gae_payload)}, crlf=need_crlf)
     response.app_status = response.status
     if response.status != 200:
         if response.status in (400, 405):
@@ -1106,9 +1108,9 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                         else:
                             raise
                 if hasattr(remote, 'fileno'):
-                    start_handshake = time.time()
-                    remote_addr = '%s:%d' % remote.getpeername()[:2]
-                    pongcallback=lambda:http.connection_time.__setitem__(remote_addr,http.connection_time.get(remote_addr,0)+time.time()-start_handshake)
+                    # start_handshake = time.time()
+                    # remote_addr = '%s:%d' % remote.getpeername()[:2]
+                    # pongcallback=lambda:http.connection_time.__setitem__(remote_addr,http.connection_time.get(remote_addr,0)+time.time()-start_handshake)
                     http.forward_socket(sock, remote, pongcallback=None)
             else:
                 hostip = random.choice(common.GOOGLE_HOSTS)
