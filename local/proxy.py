@@ -1006,7 +1006,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                                 iplist += socket.gethostbyname_ex(host)[-1]
                             except socket.error as e:
                                 logging.error('socket.gethostbyname_ex(host=%r) failed:%s', host, e)
-                        prefix = re.sub(r'\d+\.\d+$', '', common.GOOGLE_HOSTS[0])
+                        prefix = re.sub(r'\d+\.\d+$', '', random.sample(common.GOOGLE_HOSTS, 1)[0])
                         iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
                         if iplist and len(iplist) > len(hosts):
                             common.GOOGLE_HOSTS = set(iplist)
