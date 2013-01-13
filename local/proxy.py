@@ -106,61 +106,6 @@ except ImportError:
 
     del GeventImport, GeventSpawn, GeventSpawnLater, GeventServerStreamServer, GeventServerDatagramServer, GeventPoolPool
 
-try:
-    import logging
-except ImportError:
-    class SimpleLogging(object):
-        CRITICAL = 50
-        FATAL = CRITICAL
-        ERROR = 40
-        WARNING = 30
-        WARN = WARNING
-        INFO = 20
-        DEBUG = 10
-        NOTSET = 0
-        def __init__(self, *args, **kwargs):
-            self.level = SimpleLogging.INFO
-            if self.level > SimpleLogging.DEBUG:
-                self.debug = self.dummy
-            self.__write = sys.stdout.write
-        @classmethod
-        def getLogger(cls, *args, **kwargs):
-            return cls(*args, **kwargs)
-        def basicConfig(self, *args, **kwargs):
-            self.level = kwargs.get('level', SimpleLogging.INFO)
-            if self.level > SimpleLogging.DEBUG:
-                self.debug = self.dummy
-        def log(self, level, fmt, *args, **kwargs):
-            self.__write('%s - - [%s] %s\n' % (level, time.ctime()[4:-5], fmt%args))
-        def dummy(self, *args, **kwargs):
-            pass
-        def debug(self, fmt, *args, **kwargs):
-            self.log('DEBUG', fmt, *args, **kwargs)
-        def info(self, fmt, *args, **kwargs):
-            self.log('INFO', fmt, *args)
-        def warning(self, fmt, *args, **kwargs):
-            self.log('WARNING', fmt, *args, **kwargs)
-        def warn(self, fmt, *args, **kwargs):
-            self.log('WARNING', fmt, *args, **kwargs)
-        def error(self, fmt, *args, **kwargs):
-            self.log('ERROR', fmt, *args, **kwargs)
-        def exception(self, fmt, *args, **kwargs):
-            self.log('ERROR', fmt, *args, **kwargs)
-            traceback.print_exc(file=sys.stderr)
-        def critical(self, fmt, *args, **kwargs):
-            self.log('CRITICAL', fmt, *args, **kwargs)
-    logging = SimpleLogging()
-    del SimpleLogging
-
-try:
-    import ctypes
-except ImportError:
-    ctypes = None
-try:
-    import OpenSSL
-except ImportError:
-    OpenSSL = None
-
 import collections
 import errno
 import time
@@ -182,6 +127,73 @@ import httplib
 import urllib2
 import heapq
 import threading
+try:
+    import ctypes
+except ImportError:
+    ctypes = None
+try:
+    import OpenSSL
+except ImportError:
+    OpenSSL = None
+
+class Logging(type(sys)):
+    CRITICAL = 50
+    FATAL = CRITICAL
+    ERROR = 40
+    WARNING = 30
+    WARN = WARNING
+    INFO = 20
+    DEBUG = 10
+    NOTSET = 0
+    def __init__(self, *args, **kwargs):
+        self.level = self.__class__.INFO
+        if self.level > self.__class__.DEBUG:
+            self.debug = self.dummy
+        self.__write = sys.stdout.write
+        if os.name == 'nt':
+            self.warn = self.warning = self.warning_nt
+            self.error = self.error_nt
+    @classmethod
+    def getLogger(cls, *args, **kwargs):
+        return cls(*args, **kwargs)
+    def basicConfig(self, *args, **kwargs):
+        self.level = kwargs.get('level', self.__class__.INFO)
+        if self.level > self.__class__.DEBUG:
+            self.debug = self.dummy
+    def log(self, level, fmt, *args, **kwargs):
+        self.__write('%s - - [%s] %s\n' % (level, time.ctime()[4:-5], fmt%args))
+    def dummy(self, *args, **kwargs):
+        pass
+    def debug(self, fmt, *args, **kwargs):
+        self.log('DEBUG', fmt, *args, **kwargs)
+    def info(self, fmt, *args, **kwargs):
+        self.log('INFO', fmt, *args)
+    def warning(self, fmt, *args, **kwargs):
+        self.log('WARNING', fmt, *args, **kwargs)
+    def warn(self, fmt, *args, **kwargs):
+        self.log('WARNING', fmt, *args, **kwargs)
+    def error(self, fmt, *args, **kwargs):
+        self.log('ERROR', fmt, *args, **kwargs)
+    def exception(self, fmt, *args, **kwargs):
+        self.log('ERROR', fmt, *args, **kwargs)
+        traceback.print_exc(file=sys.stderr)
+    def critical(self, fmt, *args, **kwargs):
+        self.log('CRITICAL', fmt, *args, **kwargs)
+    def warning_nt(self, fmt, *args, **kwargs):
+        if ctypes:
+            ctypes.windll.kernel32.SetConsoleTextAttribute(ctypes.windll.kernel32.GetStdHandle(-11), 0x06)
+            self.log('WARNING', fmt, *args, **kwargs)
+            ctypes.windll.kernel32.SetConsoleTextAttribute(ctypes.windll.kernel32.GetStdHandle(-11), 0x07)
+        else:
+            self.log('WARNING', fmt, *args, **kwargs)
+    def error_nt(self, fmt, *args, **kwargs):
+        if ctypes:
+            ctypes.windll.kernel32.SetConsoleTextAttribute(ctypes.windll.kernel32.GetStdHandle(-11), 0x04)
+            self.log('ERROR', fmt, *args, **kwargs)
+            ctypes.windll.kernel32.SetConsoleTextAttribute(ctypes.windll.kernel32.GetStdHandle(-11), 0x07)
+        else:
+            self.log('ERROR', fmt, *args, **kwargs)
+logging = sys.modules['logging'] = Logging('logging')
 
 class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
@@ -1175,7 +1187,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                 return
             if response.status in (400, 405):
                 common.GAE_CRLF = 0
-            logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, response.status, response.msg.get('Content-Length', '-')))
+            logging.info('%s:%s "%s %s HTTP/1.1" %s %s', remote_addr, remote_port, method, path, response.status, response.msg.get('Content-Length', '-'))
             wfile = sock.makefile('wb', 0)
             wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
             wfile.write(response.read())
@@ -1256,7 +1268,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
                 response.close()
                 return
 
-            logging.info('%s:%s "%s %s HTTP/1.1" %s %s' % (remote_addr, remote_port, method, path, response.status, response.getheader('Content-Length', '-')))
+            logging.info('%s:%s "%s %s HTTP/1.1" %s %s', remote_addr, remote_port, method, path, response.status, response.getheader('Content-Length', '-'))
 
             if response.status == 206:
                 fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
