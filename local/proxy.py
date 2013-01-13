@@ -15,7 +15,6 @@
 __version__ = '2.1.11'
 __config__  = 'proxy.ini'
 __bufsize__ = 1024*1024
-__ispy27__ = __import__('sys').version[:3] == '2.7'
 
 import sys
 import os
@@ -653,7 +652,7 @@ class Http(object):
         if return_sock:
             return sock
 
-        response = httplib.HTTPResponse(sock, buffering=True) if __ispy27__ else httplib.HTTPResponse(sock)
+        response = httplib.HTTPResponse(sock, buffering=True) if sys.hexversion > 0x02070000 else httplib.HTTPResponse(sock)
         try:
             response.begin()
         except httplib.BadStatusLine:
