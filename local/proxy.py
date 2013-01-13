@@ -153,6 +153,11 @@ class Logging(type(sys)):
         if os.name == 'nt':
             self.warn = self.warning = self.warning_nt
             self.error = self.error_nt
+        elif os.name == 'posix':
+            self.warn = self.warning = self.warning_posix
+            self.error = self.error_posix
+        else:
+            pass
     @classmethod
     def getLogger(cls, *args, **kwargs):
         return cls(*args, **kwargs)
@@ -191,6 +196,20 @@ class Logging(type(sys)):
             ctypes.windll.kernel32.SetConsoleTextAttribute(ctypes.windll.kernel32.GetStdHandle(-11), 0x04)
             self.log('ERROR', fmt, *args, **kwargs)
             ctypes.windll.kernel32.SetConsoleTextAttribute(ctypes.windll.kernel32.GetStdHandle(-11), 0x07)
+        else:
+            self.log('ERROR', fmt, *args, **kwargs)
+    def warning_posix(self, fmt, *args, **kwargs):
+        if True:
+            self.__write('\033[33m')
+            self.log('WARNING', fmt, *args, **kwargs)
+            self.__write('\033[0m')
+        else:
+            self.log('WARNING', fmt, *args, **kwargs)
+    def error_posix(self, fmt, *args, **kwargs):
+        if True:
+            self.__write('\033[31m')
+            self.log('ERROR', fmt, *args, **kwargs)
+            self.__write('\033[0m')
         else:
             self.log('ERROR', fmt, *args, **kwargs)
 logging = sys.modules['logging'] = Logging('logging')
