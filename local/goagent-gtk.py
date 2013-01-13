@@ -73,6 +73,7 @@ def get_config():
 
 def main():
     global __file__
+    __file__ = os.path.abspath(__file__)
     if os.path.islink(__file__):
         __file__ = getattr(os, 'readlink', lambda x:x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
