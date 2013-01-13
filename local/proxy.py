@@ -1099,7 +1099,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
         host, _, port = path.rpartition(':')
         port = int(port)
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            logging.info('%s:%s "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
+            logging.info('%s:%s "%s %s:%d HTTP/1.1" - -', remote_addr, remote_port, method, host, port)
             http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems())
             sock.send('HTTP/1.1 200 OK\r\n\r\n')
             if not common.PROXY_ENABLE:
@@ -1135,7 +1135,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
         else:
             """deploy fake cert to client"""
             keyfile, certfile = CertUtil.get_cert(host)
-            logging.info('%s:%s "%s %s:%d HTTP/1.1" - -' % (remote_addr, remote_port, method, host, port))
+            logging.info('%s:%s "%s %s:%d HTTP/1.1" - -', remote_addr, remote_port, method, host, port)
             sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
             __realsock = sock
             __realrfile = rfile
@@ -1262,7 +1262,7 @@ def gaeproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
             wfile = sock.makefile('wb', 0)
 
             if response.app_status != 200:
-                logging.info('%s:%s "%s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, response.status))
+                logging.info('%s:%s "%s %s HTTP/1.1" %s -', remote_addr, remote_port, method, path, response.status)
                 wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
                 wfile.write(response.read())
                 response.close()
@@ -1383,7 +1383,7 @@ def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()})
             content_length = int(headers.get('Content-Length', 0))
             payload = rfile.read(content_length) if content_length else ''
             response = paas_urlfetch(method, path, headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
-            logging.info('%s:%s "PAAS %s %s HTTP/1.1" %s -' % (remote_addr, remote_port, method, path, response.status))
+            logging.info('%s:%s "PAAS %s %s HTTP/1.1" %s -', remote_addr, remote_port, method, path, response.status)
         except socket.error as e:
             if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
                 raise
@@ -1435,7 +1435,7 @@ def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()
         hls['setup'] = True
 
     remote_addr, remote_port = address
-    logging.info('%s:%s "POST %s SOCKS/5" - -' % (remote_addr, remote_port, common.SOCKS5_FETCHSERVER))
+    logging.info('%s:%s "POST %s SOCKS/5" - -', remote_addr, remote_port, common.SOCKS5_FETCHSERVER)
     scheme, netloc, path, params, query, fragment = urlparse.urlparse(common.SOCKS5_FETCHSERVER)
     if re.search(r':\d+$', netloc):
         host, _, port = netloc.rpartition(':')
@@ -1576,12 +1576,12 @@ def pacserver_handler(sock, address, hls={}):
     if path != '/'+common.PAC_FILE or not os.path.isfile(filename):
         wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
         wfile.close()
-        logging.info('%s:%s "%s %s HTTP/1.1" 404 -' % (remote_addr, remote_port, method, path))
+        logging.info('%s:%s "%s %s HTTP/1.1" 404 -', remote_addr, remote_port, method, path)
         return
     with open(filename, 'rb') as fp:
         data = fp.read()
         wfile.write('HTTP/1.1 200\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nConnection: close\r\n\r\n')
-        logging.info('%s:%s "%s %s HTTP/1.1" 200 -' % (remote_addr, remote_port, method, path))
+        logging.info('%s:%s "%s %s HTTP/1.1" 200 -', remote_addr, remote_port, method, path)
         wfile.write(data)
         wfile.close()
     sock.close()
