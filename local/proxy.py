@@ -1036,7 +1036,7 @@ class GAEProxyHandler(object):
             raise
 
         if common.USERAGENT_ENABLE:
-            headers['User-Agent'] = common.USERAGENT_STRING
+            self.headers['User-Agent'] = common.USERAGENT_STRING
         self.remote_addr, self.remote_port = address
         self.__realsock = self.__realrfile = None
 
@@ -1152,7 +1152,7 @@ class GAEProxyHandler(object):
         need_direct = False
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if self.path.startswith(common.GOOGLE_FORCEHTTPS) or self.path.rstrip('/') == 'http://www.google.com':
-                sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % path.replace('http://', 'https://'))
+                self.sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % self.path.replace('http://', 'https://'))
                 return
             else:
                 if host not in http.dns:
