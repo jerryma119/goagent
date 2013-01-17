@@ -1020,8 +1020,9 @@ class RangeFetch(object):
 
 class GAEProxyHandler(object):
 
-    bufsize = __bufsize__
-    firstrun = True
+    urlfetch      = staticmethod(gae_urlfetch)
+    bufsize       = __bufsize__
+    firstrun      = True
     firstrun_lock = gevent.coros.Semaphore()
 
     def __init__(self, sock, address):
@@ -1152,8 +1153,8 @@ class GAEProxyHandler(object):
                 return
             else:
                 if host not in http.dns:
-                    http.dns[host] = http.dns.default_factory(http.dns_resolve(host))
-                    #http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
+                    #http.dns[host] = http.dns.default_factory(http.dns_resolve(host))
+                    http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
                 need_direct = True
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in http.dns:
@@ -1281,12 +1282,12 @@ class GAEProxyHandler(object):
             try:
                 content_length = int(self.headers.get('Content-Length', 0))
                 payload = self.rfile.read(content_length) if content_length else ''
-                response = gae_urlfetch(self.method, self.path, self.headers, payload, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD)
+                response = self.urlfetch(self.method, self.path, self.headers, payload, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD)
             except (EOFError, socket.error) as e:
                 if e[0] in (11004, 10051, 10054, 10060, 'timed out', 'empty line'):
                     # connection reset or timeout, switch to https
                     if e[0] == 10054:
-                        logging.error('gae_urlfetch %r failed:%s, perhaps should use mode=https', self.path, e)
+                        logging.error('handle_method_forward %r failed:%s, perhaps should use mode=https', self.path, e)
                     else:
                         common.GOOGLE_MODE = 'https'
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
@@ -1367,103 +1368,60 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         del response['status']
     return response
 
-def paasproxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
-    rfile = sock.makefile('rb', __bufsize__)
-    try:
-        method, path, version, headers = http.parse_request(rfile)
-    except (EOFError, socket.error) as e:
-        if e[0] in ('empty line', 10053, errno.EPIPE):
-            return rfile.close()
-        raise
+class PAASProxyHandler(GAEProxyHandler):
 
-    if 'setup' not in hls:
+    urlfetch = staticmethod(paas_urlfetch)
+
+    def first_run(self):
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
             logging.info('resolve common.PAAS_FETCHSERVER domain=%r to iplist', fetchhost)
-            with hls['setuplock']:
-                fethhost_iplist = socket.gethostbyname_ex(fetchhost)[-1]
-                if len(fethhost_iplist) == 0:
-                    logging.error('resolve %s domain return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
-                    sys.exit(-1)
-                http.dns[fetchhost] = set(fethhost_iplist)
-                logging.info('resolve common.PAAS_FETCHSERVER domain to iplist=%r', fethhost_iplist)
-        hls['setup'] = True
+            fethhost_iplist = socket.gethostbyname_ex(fetchhost)[-1]
+            if len(fethhost_iplist) == 0:
+                logging.error('resolve %s domain return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
+                sys.exit(-1)
+            http.dns[fetchhost] = set(fethhost_iplist)
+            logging.info('resolve common.PAAS_FETCHSERVER domain to iplist=%r', fethhost_iplist)
 
-    if common.USERAGENT_ENABLE:
-        headers['User-Agent'] = common.USERAGENT_STRING
+    def handle_connect(self):
+        return GAEProxyHandler.handle_connect_forward(self)
 
-    remote_addr, remote_port = address
-
-    __realsock = None
-    __realrfile = None
-    if method == 'CONNECT':
-        host, _, port = path.rpartition(':')
-        port = int(port)
-        keyfile, certfile = CertUtil.get_cert(host)
-        logging.info('%s:%s "%s:%d HTTP/1.1" - -' % (address[0], address[1], host, port))
-        sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
-        __realsock = sock
-        __realrfile = rfile
+    def handle_method(self):
         try:
-            sock = ssl.wrap_socket(__realsock, certfile=certfile, keyfile=keyfile, server_side=True)
-        except Exception as e:
-            logging.exception('ssl.wrap_socket(__realsock=%r) failed: %s', __realsock, e)
-            __realrfile.close()
-            __realsock.close()
-            return
-        rfile = sock.makefile('rb', __bufsize__)
-        try:
-            method, path, version, headers = http.parse_request(rfile)
-        except (EOFError, socket.error) as e:
-            if e[0] in ('empty line', 10053, errno.EPIPE):
-                return rfile.close()
-            raise
-        if path[0] == '/' and host:
-            path = 'https://%s%s' % (headers['Host'], path)
-
-    host = headers.get('Host', '')
-    if path[0] == '/' and host:
-        path = 'http://%s%s' % (host, path)
-
-    try:
-        try:
-            content_length = int(headers.get('Content-Length', 0))
-            payload = rfile.read(content_length) if content_length else ''
-            response = paas_urlfetch(method, path, headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
-            logging.info('%s:%s "PAAS %s %s HTTP/1.1" %s -', remote_addr, remote_port, method, path, response.status)
-        except socket.error as e:
-            if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+                payload = self.rfile.read(content_length) if content_length else ''
+                response = self.urlfetch(self.method, self.path, self.headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
+                logging.info('%s:%s "PAAS %s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
+            except socket.error as e:
+                if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
+                    raise
+            except Exception as e:
+                logging.exception('error: %s', e)
                 raise
-        except Exception as e:
-            logging.exception('error: %s', e)
-            raise
 
-        if response.app_status in (400, 405):
-            http.crlf = 0
+            if response.app_status in (400, 405):
+                http.crlf = 0
 
-        wfile = sock.makefile('wb', 0)
-        if 'Set-Cookie' in response.msg:
-            response.msg['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.msg['Set-Cookie'])
-        wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
+            wfile = self.sock.makefile('wb', 0)
+            if 'Set-Cookie' in response.msg:
+                response.msg['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.msg['Set-Cookie'])
+            wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
 
-        while 1:
-            data = response.read(8192)
-            if not data:
-                break
-            wfile.write(data)
-        response.close()
+            while 1:
+                data = response.read(8192)
+                if not data:
+                    break
+                wfile.write(data)
+            response.close()
 
-    except socket.error as e:
-        # Connection closed before proxy return
-        if e[0] not in (10053, errno.EPIPE):
-            raise
-    finally:
-        rfile.close()
-        sock.close()
-        if __realrfile:
-            __realrfile.close()
-        if __realsock:
-            __realsock.close()
+        except socket.error as e:
+            # Connection closed before proxy return
+            if e[0] not in (10053, errno.EPIPE):
+                raise
+
+    def finish(self):
+        any(x and x.close() for x in (self.rfile, self.sock))
 
 def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
     import hmac
@@ -1734,7 +1692,7 @@ def main():
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
-        server = gevent.server.StreamServer((host, int(port)), paasproxy_handler)
+        server = gevent.server.StreamServer((host, int(port)), PAASProxyHandler)
         gevent.spawn(server.serve_forever)
 
     if common.SOCKS5_ENABLE:
