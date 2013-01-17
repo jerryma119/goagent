@@ -1020,10 +1020,10 @@ class RangeFetch(object):
 
 class GAEProxyHandler(object):
 
-    urlfetch      = staticmethod(gae_urlfetch)
     bufsize       = __bufsize__
     firstrun      = True
     firstrun_lock = gevent.coros.Semaphore()
+    urlfetch      = staticmethod(gae_urlfetch)
 
     def __init__(self, sock, address):
         self.sock = sock
@@ -1370,7 +1370,9 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
 
 class PAASProxyHandler(GAEProxyHandler):
 
-    urlfetch = staticmethod(paas_urlfetch)
+    firstrun      = True
+    firstrun_lock = gevent.coros.Semaphore()
+    urlfetch      = staticmethod(paas_urlfetch)
 
     def first_run(self):
         if not common.PROXY_ENABLE:
@@ -1419,9 +1421,6 @@ class PAASProxyHandler(GAEProxyHandler):
             # Connection closed before proxy return
             if e[0] not in (10053, errno.EPIPE):
                 raise
-
-    def finish(self):
-        any(x and x.close() for x in (self.rfile, self.sock))
 
 def socks5proxy_handler(sock, address, hls={'setuplock':gevent.coros.Semaphore()}):
     import hmac
@@ -1569,27 +1568,38 @@ def pacserver_handler(sock, address, hls={}):
             return rfile.close()
         raise
 
-    filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
-    if 'mtime' not in hls:
-        hls['mtime'] = os.path.getmtime(filename)
-    if time.time() - hls['mtime'] > 60*60*12:
-        hls['mtime'] = time.time()
-        gevent.spawn_later(1, Autoproxy2Pac.update_filename, filename, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), True)
 
-    remote_addr, remote_port = address
-    wfile = sock.makefile('wb', 0)
-    if path != '/'+common.PAC_FILE or not os.path.isfile(filename):
-        wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
-        wfile.close()
-        logging.info('%s:%s "%s %s HTTP/1.1" 404 -', remote_addr, remote_port, method, path)
-        return
-    with open(filename, 'rb') as fp:
-        data = fp.read()
-        wfile.write('HTTP/1.1 200\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nConnection: close\r\n\r\n')
-        logging.info('%s:%s "%s %s HTTP/1.1" 200 -', remote_addr, remote_port, method, path)
-        wfile.write(data)
-        wfile.close()
     sock.close()
+
+class PACServerHandler(GAEProxyHandler):
+
+    firstrun      = True
+    firstrun_lock = gevent.coros.Semaphore()
+
+    def first_run(self):
+        self.__class__.filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
+        self.__class__.atime = os.path.getatime(self.filename)
+
+    def handle_get(self):
+        if time.time() - self.atime > 60*60*12:
+            self.__class__.atime = time.time()
+            gevent.spawn_later(1, Autoproxy2Pac.update_filename, self.filename, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), True)
+
+        wfile = self.sock.makefile('wb', 0)
+        if self.path != '/'+common.PAC_FILE or not os.path.isfile(self.filename):
+            wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
+            wfile.close()
+            logging.info('%s:%s "%s %s HTTP/1.1" 404 -', self.remote_addr, self.remote_port, self.method, self.path)
+            return
+        with open(self.filename, 'rb') as fp:
+            data = fp.read()
+            wfile.write('HTTP/1.1 200\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n')
+            logging.info('%s:%s "%s %s HTTP/1.1" 200 %s', self.remote_addr, self.remote_port, self.method, self.path, fp.tell())
+            wfile.write(data)
+            wfile.close()
+
+    def handle_method(self):
+        self.sock.sendall('HTTP/1.1 400 Bad Request\r\n\r\n')
 
 class DNSServer(getattr(gevent.server, 'DatagramServer', gevent.server.StreamServer)):
     """DNS Proxy over TCP to avoid DNS poisoning"""
@@ -1701,7 +1711,7 @@ def main():
         gevent.spawn(server.serve_forever)
 
     if common.PAC_ENABLE:
-        server = gevent.server.StreamServer((common.PAC_IP, common.PAC_PORT), pacserver_handler)
+        server = gevent.server.StreamServer((common.PAC_IP, common.PAC_PORT), PACServerHandler)
         gevent.spawn(server.serve_forever)
 
     if common.DNS_ENABLE:
