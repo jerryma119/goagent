@@ -1174,14 +1174,17 @@ class GAEProxyHandler(object):
         port = int(port)
         keyfile, certfile = CertUtil.get_cert(host)
         logging.info('%s:%s "%s %s:%d HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, host, port)
+        self.__realsock = None
+        self.__realrfile = None
         self.sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
+        try:
+            ssl_sock = ssl.wrap_socket(self.sock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
+        except Exception as e:
+            logging.error('ssl.wrap_socket(self.sock=%r) failed: %s', self.sock, e)
+            return
         self.__realsock = self.sock
         self.__realrfile = self.rfile
-        try:
-            self.sock = ssl.wrap_socket(self.__realsock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
-        except Exception as e:
-            logging.exception('ssl.wrap_socket(__realsock=%r) failed: %s', self.__realsock, e)
-            self.sock = ssl.wrap_socket(__realsock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
+        self.sock = ssl_sock
         self.rfile = self.sock.makefile('rb', __bufsize__)
         try:
             self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
@@ -1194,9 +1197,11 @@ class GAEProxyHandler(object):
         try:
             self.handle_method()
         finally:
-            self.__realsock.shutdown(socket.SHUT_WR)
-            self.__realrfile.close()
-            self.__realsock.close()
+            if self.__realsock:
+                self.__realsock.shutdown(socket.SHUT_WR)
+                self.__realsock.close()
+            if self.__realrfile:
+                self.__realrfile.close()
 
     def handle_connect_direct(self):
         host, _, port = self.path.rpartition(':')
@@ -1343,7 +1348,14 @@ class GAEProxyHandler(object):
                 raise
 
     def finish(self):
-        any(x and x.close() for x in (self.rfile, self.sock))
+        try:
+            self.rfile.close()
+        except:
+            pass
+        try:
+            self.sock.close()
+        except:
+            pass
 
 def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
