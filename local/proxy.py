@@ -718,7 +718,7 @@ class Common(object):
         self.LISTEN_VISIBLE       = self.CONFIG.getint('listen', 'visible')
         self.LISTEN_DEBUGINFO     = self.CONFIG.getint('listen', 'debuginfo') if self.CONFIG.has_option('listen', 'debuginfo') else 0
 
-        self.GAE_APPIDS           = re.findall('[\w\-]+', self.CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
+        self.GAE_APPIDS           = re.findall('[\w\-\.]+', self.CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
         self.GAE_PASSWORD         = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
