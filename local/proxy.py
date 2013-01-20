@@ -1101,9 +1101,8 @@ class GAEProxyHandler(object):
             self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
             getattr(self, 'handle_%s' % self.method.lower(), self.handle_method)()
         except socket.error as e:
-            if e[0] in (10053, errno.EPIPE):
-                pass
-            raise
+            if e[0] not in (10053, errno.EPIPE):
+                raise
 
     def handle_method(self):
         host = self.headers.get('Host', '')
@@ -1309,14 +1308,12 @@ class GAEProxyHandler(object):
         self.rfile = self.sock.makefile('rb', __bufsize__)
         try:
             self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
-        except socket.error as e:
-            if e[0] in (10053, 10060, errno.EPIPE):
-                pass
-            raise
-        if self.path[0] == '/' and host:
-            self.path = 'https://%s%s' % (self.headers['Host'], self.path)
-        try:
+            if self.path[0] == '/' and host:
+                self.path = 'https://%s%s' % (self.headers['Host'], self.path)
             self.handle_method()
+        except socket.error as e:
+            if e[0] not in (10053, 10060, errno.EPIPE):
+                raise
         finally:
             if self.__realsock:
                 self.__realsock.shutdown(socket.SHUT_WR)
