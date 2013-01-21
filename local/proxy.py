@@ -1577,7 +1577,7 @@ class PACServerHandler(GAEProxyHandler):
 
 class DNSServer(getattr(gevent.server, 'DatagramServer', gevent.server.StreamServer)):
     """DNS Proxy over TCP to avoid DNS poisoning"""
-    remote_addresses = [('8.8.8.8', 53)]
+    remote_addresses = [('8.8.8.8', 53), ('8.8.4.4', 53)]
     max_wait = 1
     max_retry = 2
     max_cache_size = 2000
