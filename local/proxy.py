@@ -1549,10 +1549,12 @@ class PACServerHandler(GAEProxyHandler):
 
     firstrun      = True
     firstrun_lock = gevent.coros.Semaphore()
+    atime         = 0
+    filename      = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
 
     def first_run(self):
-        self.__class__.filename = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
-        self.__class__.atime = os.path.getatime(self.filename)
+        if not self.__class__.atime:
+            self.__class__.atime = os.path.getatime(self.filename)
 
     def handle_get(self):
         if time.time() - self.atime > 60*60*12:
