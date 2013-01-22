@@ -64,22 +64,31 @@ class GoAgentAppIndicator:
     def quit(self, widget, data=None):
         gtk.main_quit()
 
+def get_config():
+    import ConfigParser
+    ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
+    config = ConfigParser.ConfigParser()
+    config.read('proxy.ini')
+    return config
 
 def main():
     global __file__
+    __file__ = os.path.abspath(__file__)
     if os.path.islink(__file__):
         __file__ = getattr(os, 'readlink', lambda x:x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    os.system('chmod +x proxy.py')
-    v = vte.Terminal ()
+    command = ['python', 'proxy.py']
+    v = vte.Terminal()
     v.connect ("child-exited", lambda term: gtk.main_quit())
-    v.fork_command('./proxy.py')
+    v.fork_command(command[0], command, os.getcwd())
     window = gtk.Window()
     window.add(v)
     window.connect('delete-event', lambda window, event: gtk.main_quit())
-    window.show_all()
+    config = get_config()
+    if config.getint('listen', 'visible'):
+        window.show_all()
     indicator = GoAgentAppIndicator(window)
     gtk.main()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

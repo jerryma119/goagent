@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.1.3'
+__version__ = '2.1.11'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -20,6 +20,7 @@ import urlparse
 import base64
 import cStringIO
 import hashlib
+import hmac
 import errno
 try:
     from google.appengine.api import urlfetch
@@ -76,7 +77,7 @@ A.u:link {color: green}
         template = template.replace('{{%s}}' % keyword, value)
     return template
 
-def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, trans=''):
+def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, idlecall=None, bitmask=None):
     timecount = timeout
     try:
         while 1:
@@ -89,8 +90,8 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
             if ins:
                 for sock in ins:
                     data = sock.recv(bufsize)
-                    if trans:
-                        data = data.translate(trans)
+                    if bitmask:
+                        data = ''.join(chr(ord(x)^bitmask) for x in data)
                     if data:
                         if sock is local:
                             remote.sendall(data)
@@ -115,7 +116,9 @@ def socket_forward(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
         if idlecall:
             idlecall()
 
-def socks5_handler(sock, address):
+def socks5_handler(sock, address, hls={'hmac':{}}):
+    if not hls['hmac']:
+        hls['hmac'] = dict((hmac.new(__password__, chr(x)).hexdigest(),x) for x in xrange(256))
     bufsize = 8192
     rfile = sock.makefile('rb', bufsize)
     wfile = sock.makefile('wb', 0)
@@ -139,12 +142,23 @@ def socks5_handler(sock, address):
         if headers.get('Connection', '').lower() != 'upgrade':
             logging.error('%s:%s Connection(%s) != "upgrade"', remote_addr, remote_port, headers.get('Connection'))
             return
+        m = re.search('([0-9a-f]{32})', path)
+        if not m:
+            logging.error('%s:%s Path(%s) not valid', remote_addr, remote_port, path)
+            return
+        need_digest = m.group(1)
+        bitmask = hls['hmac'].get(need_digest)
+        if bitmask is None:
+            logging.error('%s:%s Digest(%s) not match', remote_addr, remote_port, need_digest)
+            return
+        else:
+            logging.info('%s:%s Digest(%s) return bitmask=%r', remote_addr, remote_port, need_digest, bitmask)
 
-        #wfile.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n')
+        wfile.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n')
+        wfile.flush()
 
-        transtable = ''.join(chr(x%256) for x in xrange(-128, 128))
-        rfile_read  = lambda x:rfile.read(x).translate(transtable)
-        wfile_write = lambda x:wfile.write(x.translate(transtable))
+        rfile_read  = lambda n:''.join(chr(ord(x)^bitmask) for x in rfile.read(n))
+        wfile_write = lambda s:wfile.write(''.join(chr(ord(x)^bitmask) for x in s))
 
         rfile_read(ord(rfile_read(2)[-1]))
         wfile_write(b'\x05\x00');
@@ -174,7 +188,7 @@ def socks5_handler(sock, address):
         # 3. Transfering
         if reply[1] == '\x00':  # Success
             if mode == 1:    # 1. Tcp connect
-                socket_forward(sock, remote, trans=transtable)
+                socket_forward(sock, remote, bitmask=bitmask)
     except socket.error as e:
         if e[0] not in (10053, errno.EPIPE, 'empty line'):
             raise
@@ -242,42 +256,17 @@ def paas_application(environ, start_response):
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
 
-            need_deflate = True
-            if response.getheader('Content-Encoding') or response.getheader('Content-Type', '').startswith(('video/', 'audio/', 'image/')) or 'deflate' not in headers.get('Accept-Encoding', ''):
-                need_deflate = False
-
-            if need_deflate:
-                response.msg['Content-Encoding'] = 'deflate'
-                if 'Content-Length' in response.msg:
-                    del response.msg['Content-Length']
-            response_headers = '\n'.join('%s:%s'%(k.title(),v) for k, v in response.getheaders())
-            response_headers = zlib.compress(response_headers)[2:-4]
-
-            start_response('200 OK', [('Content-Type', 'image/gif')])
-            yield struct.pack('!hh', int(response.status), len(response_headers)) + response_headers
+            headers = [('X-Status', str(response.status))]
+            headers += [(k, v) for k, v in response.msg.items() if k != 'transfer-encoding']
+            start_response('200 OK', headers)
 
             bufsize = 8192
-            if need_deflate:
-                compressobj = zlib.compressobj()
-                is_leadbyte = True
-                while 1:
-                    data = response.read(bufsize)
-                    if not data:
-                        break
-                    zdata = compressobj.compress(data)
-                    if zdata:
-                        if is_leadbyte:
-                            zdata = zdata[2:]
-                            is_leadbyte = False
-                        yield zdata
-                yield compressobj.flush()[:-4]
-            else:
-                while 1:
-                    data = response.read(bufsize)
-                    if not data:
-                        response.close()
-                        break
-                    yield data
+            while 1:
+                data = response.read(bufsize)
+                if not data:
+                    response.close()
+                    break
+                yield data
         except httplib.HTTPException as e:
             raise
 
@@ -409,7 +398,7 @@ if __name__ == '__main__':
 
     options = dict(getopt.getopt(sys.argv[1:], 'l:p:a:')[0])
     host = options.get('-l', '0.0.0.0')
-    port = options.get('-p', '23')
+    port = options.get('-p', '80')
     app  = options.get('-a', 'socks5')
 
     if app == 'socks5':
@@ -419,5 +408,3 @@ if __name__ == '__main__':
 
     logging.info('serving %s at http://%s:%s/', app.upper(), server.address[0], server.address[1])
     server.serve_forever()
-
-
