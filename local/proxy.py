@@ -1035,7 +1035,9 @@ class GAEProxyHandler(object):
                 iplist = []
                 for host in hosts:
                     try:
-                        iplist += socket.gethostbyname_ex(host)[-1]
+                        ips = socket.gethostbyname_ex(host)[-1]
+                        if len(ips) > 1:
+                            iplist += ips
                     except socket.error as e:
                         logging.error('socket.gethostbyname_ex(host=%r) failed:%s', host, e)
                 prefix = re.sub(r'\d+\.\d+$', '', random.sample(common.GOOGLE_HOSTS, 1)[0])
