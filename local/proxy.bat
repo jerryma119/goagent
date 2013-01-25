@@ -1,5 +1,5 @@
 (
-	@set GEVENT_RESOLVER=ares
+	@set GEVENT_RESOLVER=block
 ) && (
 	@set GEVENT_MONKEY_PATCH=1
 ) && (
