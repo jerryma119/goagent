@@ -159,6 +159,10 @@ class Logging(type(sys)):
             self.__set_error_color = lambda:__write('\033[31m')
             self.__set_warning_color = lambda:__write('\033[33m')
             self.__reset_color = lambda:__write('\033[0m')
+        else:
+            self.__set_error_color = lambda:None
+            self.__set_warning_color = lambda:None
+            self.__reset_color = lambda:None
     @classmethod
     def getLogger(cls, *args, **kwargs):
         return cls(*args, **kwargs)
