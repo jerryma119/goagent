@@ -1657,10 +1657,18 @@ def pre_start():
                 with open(__config__, 'w') as fp:
                     common.CONFIG.set('love', 'timestamp', int(time.time()))
                     common.CONFIG.write(fp)
-        if '360safe' in os.popen('tasklist').read().lower():
-            lineno = [sys._getframe().f_lineno-1, sys._getframe().f_lineno+2]
-            #ctypes.windll.user32.MessageBoxW(None, u'某些安全软件可能和本软件存在冲突.\n可以删除proxy.py第%r行或者暂时退出安全软件来继续运行' % lineno, u'建议', 0)
-            #sys.exit(0)
+
+        blacklist = {
+                        '360safe' : False, # http://s.weibo.com/weibo/goagent%2520360%2520%25E5%258D%25B8%25E8%25BD%25BD
+                        'QQProtect' : True, # http://s.weibo.com/weibo/goagent%2520qqprotect
+                    }
+        tasklist = os.popen('tasklist').read().lower()
+        for software, need_check in blacklist.items():
+            if need_check and software.lower() in tasklist:
+                lineno = [sys._getframe().f_lineno-1, sys._getframe().f_lineno+2]
+                error = u'某些安全软件(如 %s)可能和本软件存在冲突.\n可以删除proxy.py第%r行或者暂时退出安全软件来继续运行' % (software, lineno)
+                ctypes.windll.user32.MessageBoxW(None, error, u'建议', 0)
+                #sys.exit(0)
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', __config__)
         sys.exit(-1)
