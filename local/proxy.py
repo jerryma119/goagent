@@ -19,6 +19,8 @@ __bufsize__ = 1024*1024
 import sys
 import os
 
+sys.path.append('python27.zip')
+
 try:
     import gevent
     import gevent.queue
@@ -1666,8 +1668,8 @@ def pre_start():
         for software, need_check in blacklist.items():
             if need_check and software.lower() in tasklist:
                 lineno = [sys._getframe().f_lineno-1, sys._getframe().f_lineno+2]
-                error = u'某些安全软件(如 %s)可能和本软件存在冲突.\n可以删除proxy.py第%r行或者暂时退出安全软件来继续运行' % (software, lineno)
-                ctypes.windll.user32.MessageBoxW(None, error, u'建议', 0)
+                error = u'某些安全软件(如 %s)可能和本软件存在冲突.\n建议暂时退出此安全软件来继续运行GoAgent' % (software, lineno)
+                ctypes.windll.user32.MessageBoxW(None, error, u'GoAgent 建议', 0)
                 #sys.exit(0)
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', __config__)
