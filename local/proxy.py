@@ -475,7 +475,15 @@ class Http(object):
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32*1024)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 sock.settimeout(timeout or self.max_timeout)
-                ssl_sock = ssl.wrap_socket(sock)
+                if not common.GAE_VALIDATE:
+                    ssl_sock = ssl.wrap_socket(sock)
+                else:
+                    ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs='cacerts.txt')
+                    # cert = ssl_sock.getpeercert()
+                    # commonname = (v for ((k,v),) in cert['subject'] if k=='commonName').next()
+                    # need_validate = 'google' if host.endswith('.appspot.com') or host.endswith(common.GOOGLE_SITES) else host.split('.')[1][:6]
+                    # if need_validate not in commonname:
+                    #     raise ssl.SSLError("Host name '%s' doesn't match certificate host '%s'" % (host, commonname))
                 start_time = time.time()
                 ssl_sock.connect((ip, port))
                 self.ssl_connection_time['%s:%s'%(ip,port)] = time.time() - start_time
@@ -713,6 +721,7 @@ class Common(object):
         self.GAE_PATH             = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE          = self.CONFIG.get('gae', 'profile')
         self.GAE_CRLF             = self.CONFIG.getint('gae', 'crlf')
+        self.GAE_VALIDATE         = self.CONFIG.getint('gae', 'validate')
 
         self.PAC_ENABLE           = self.CONFIG.getint('pac','enable')
         self.PAC_IP               = self.CONFIG.get('pac','ip')
@@ -1689,8 +1698,6 @@ def main():
     CertUtil.check_ca()
     pre_start()
     sys.stdout.write(common.info())
-
-    #logging.info('Enable aggressive create_ssl_connection to connect google_hk')
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
