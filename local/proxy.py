@@ -150,14 +150,15 @@ class Logging(type(sys)):
         self.level = self.__class__.INFO
         if self.level > self.__class__.DEBUG:
             self.debug = self.dummy
-        self.__write = __write = sys.stdout.write
-        if os.name == 'nt':
+        self.__write = __write = sys.stderr.write
+        self.isatty = getattr(sys.stderr, 'isatty', lambda:False)()
+        if self.isatty and os.name == 'nt':
             SetConsoleTextAttribute = ctypes.windll.kernel32.SetConsoleTextAttribute
             GetStdHandle = ctypes.windll.kernel32.GetStdHandle
             self.__set_error_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x04)
             self.__set_warning_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x06)
             self.__reset_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x07)
-        elif os.name == 'posix':
+        elif self.isatty and os.name == 'posix':
             self.__set_error_color = lambda:__write('\033[31m')
             self.__set_warning_color = lambda:__write('\033[33m')
             self.__reset_color = lambda:__write('\033[0m')
