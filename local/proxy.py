@@ -1272,7 +1272,7 @@ class GAEProxyHandler(object):
             data = self.sock.recv(1024)
             for i in xrange(4):
                 try:
-                    remote = http.create_connection((host, port), 6)
+                    remote = http.create_connection((host, port), 5)
                     if remote is None:
                         logging.error('http.create_connection((host=%r, port=%r), 6) timeout', host, port)
                         continue
