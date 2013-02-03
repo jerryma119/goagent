@@ -1560,8 +1560,9 @@ class PACServerHandler(GAEProxyHandler):
     filename      = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
 
     def first_run(self):
-        default= '%s:%s'%(common.PROXY_HOST, common.PROXY_PORT) if common.PROXY_ENABLE else 'DIRECT'
-        gevent.spawn_later(1, Autoproxy2Pac.update_filename, self.filename, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), default)
+        if time.time() - os.path.getmtime(self.filename) > 12 * 60 * 60:
+            default= '%s:%s'%(common.PROXY_HOST, common.PROXY_PORT) if common.PROXY_ENABLE else 'DIRECT'
+            gevent.spawn_later(1, Autoproxy2Pac.update_filename, self.filename, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), default)
         return True
 
     def handle_get(self):
