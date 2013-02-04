@@ -1136,7 +1136,13 @@ class GAEProxyHandler(object):
         """rules match algorithm, need_forward= True or False"""
         need_forward = False
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
-            if self.path.startswith(common.GOOGLE_FORCEHTTPS) or self.path.rstrip('/') == 'http://www.google.com':
+            if self.path.startswith(('http://www.google.com/url', 'http://www.google.com.hk/url', 'https://www.google.com/url', 'https://www.google.com.hk/url')):
+                urls = urlparse.parse_qs(urlparse.urlparse(self.path).query).get('url')
+                if urls:
+                    logging.debug('google search redirect to %s', urls[0])
+                    self.sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % urls[0])
+                    return
+            elif self.path.startswith(common.GOOGLE_FORCEHTTPS):
                 self.sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % self.path.replace('http://', 'https://'))
                 return
             else:
