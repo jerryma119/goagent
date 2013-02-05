@@ -429,40 +429,34 @@ class Http(object):
                 start_time = time.time()
                 sock.connect((ip, port))
                 self.connection_time['%s:%s'%(ip,port)] = time.time() - start_time
+                queue.put(sock)
             except socket.error as e:
+                queue.put(e)
                 self.connection_time['%s:%s'%(ip,port)] = self.max_timeout+random.random()
                 if sock:
                     sock.close()
-                    sock = None
-            finally:
-                queue.put(sock)
         def _close_connection(count, queue):
             for i in xrange(count):
-                sock = queue.get()
-        sock = None
+                queue.get()
+        result = None
         iplist = self.dns_resolve(host)
         window = (self.max_window+1)//2
         for i in xrange(self.max_retry):
             window += i
             connection_time = self.ssl_connection_time if port == 443 else self.connection_time
             ips = heapq.nsmallest(window, iplist, key=lambda x:connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
-            # print ips
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_connection, (ip, port), timeout, queue)
             for i in xrange(len(ips)):
-                sock = queue.get()
-                if sock:
+                result = queue.get()
+                if not isinstance(result, socket.error):
                     gevent.spawn(_close_connection, len(ips)-i-1, queue)
+                    return result
                 else:
-                    logging.warning('Http.create_connection return None, reset timeout for %s', ips)
-                    for ip in ips:
-                        self.connection_time['%s:%s'%(ip,port)] = self.max_timeout + random.random()
-                return sock
-            else:
-                logging.warning('Http.create_connection to %s, port=%r return None, try again.', ips, port)
-            for ip in ips:
-                self.connection_time['%s:%s'%(ip,port)] = self.max_timeout + random.random()
+                    logging.warning('Http.create_connection to %s, port=%r return %r, try again.', ips, port, result)
+            if result and isinstance(result, socket.error):
+                raise result
 
     def create_ssl_connection(self, (host, port), timeout=None, source_address=None):
         def _create_ssl_connection((ip, port), timeout, queue):
@@ -486,7 +480,9 @@ class Http(object):
                 ssl_sock.connect((ip, port))
                 self.ssl_connection_time['%s:%s'%(ip,port)] = time.time() - start_time
                 ssl_sock.sock = sock
+                queue.put(ssl_sock)
             except socket.error as e:
+                queue.put(e)
                 self.ssl_connection_time['%s:%s'%(ip,port)] = self.max_timeout + random.random()
                 if ssl_sock:
                     ssl_sock.close()
@@ -494,30 +490,27 @@ class Http(object):
                 if sock:
                     sock.close()
                     sock = None
-            finally:
-                queue.put(ssl_sock)
         def _close_ssl_connection(count, queue):
             for i in xrange(count):
-                sock = None
-                ssl_sock = queue.get()
-        ssl_sock = None
+                queue.get()
+        result = None
         iplist = self.dns_resolve(host)
         window = (self.max_window+1)//2
         for i in xrange(self.max_retry):
             window += i
             ips = heapq.nsmallest(window, iplist, key=lambda x:self.ssl_connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
-            # print ips
             queue = gevent.queue.Queue()
-            start_time = time.time()
             for ip in ips:
                 gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
             for i in xrange(len(ips)):
-                ssl_sock = queue.get()
-                if ssl_sock:
+                result = queue.get()
+                if not isinstance(result, socket.error):
                     gevent.spawn(_close_ssl_connection, len(ips)-i-1, queue)
-                    return ssl_sock
-            else:
-                logging.warning('Http.create_ssl_connection to %s, port=%r return None, try again.', ips, port)
+                    return result
+                else:
+                    logging.warning('Http.create_ssl_connection to %s, port=%r return %r, try again.', ips, port, result)
+            if result and isinstance(result, socket.error):
+                raise result
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (str, unicode))
@@ -1040,34 +1033,34 @@ class GAEProxyHandler(object):
 
     def _error_html(self, errno, error, description=''):
         ERROR_TEMPLATE = '''
-    <html><head>
-    <meta http-equiv="content-type" content="text/html;charset=utf-8">
-    <title>{{errno}} {{error}}</title>
-    <style><!--
-    body {font-family: arial,sans-serif}
-    div.nav {margin-top: 1ex}
-    div.nav A {font-size: 10pt; font-family: arial,sans-serif}
-    span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
-    div.nav A,span.big {font-size: 12pt; color: #0000cc}
-    div.nav A {font-size: 10pt; color: black}
-    A.l:link {color: #6f6f6f}
-    A.u:link {color: green}
-    //--></style>
+        <html><head>
+        <meta http-equiv="content-type" content="text/html;charset=utf-8">
+        <title>{{errno}} {{error}}</title>
+        <style><!--
+        body {font-family: arial,sans-serif}
+        div.nav {margin-top: 1ex}
+        div.nav A {font-size: 10pt; font-family: arial,sans-serif}
+        span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
+        div.nav A,span.big {font-size: 12pt; color: #0000cc}
+        div.nav A {font-size: 10pt; color: black}
+        A.l:link {color: #6f6f6f}
+        A.u:link {color: green}
+        //--></style>
 
-    </head>
-    <body text=#000000 bgcolor=#ffffff>
-    <table border=0 cellpadding=2 cellspacing=0 width=100%>
-    <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
-    <tr><td>&nbsp;</td></tr></table>
-    <blockquote>
-    <H1>{{error}}</H1>
-    {{description}}
+        </head>
+        <body text=#000000 bgcolor=#ffffff>
+        <table border=0 cellpadding=2 cellspacing=0 width=100%>
+        <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
+        <tr><td>&nbsp;</td></tr></table>
+        <blockquote>
+        <H1>{{error}}</H1>
+        {{description}}
 
-    <p>
-    </blockquote>
-    <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
-    </body></html>
-    '''
+        <p>
+        </blockquote>
+        <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
+        </body></html>
+        '''
         kwargs = dict(errno=errno, error=error, description=description)
         template = ERROR_TEMPLATE
         for keyword, value in kwargs.items():
