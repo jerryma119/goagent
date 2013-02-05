@@ -1633,17 +1633,23 @@ class PACServerHandler(GAEProxyHandler):
 
     def handle_get(self):
         wfile = self.sock.makefile('wb', 0)
-        if self.path != '/'+common.PAC_FILE or not os.path.isfile(self.filename):
+        if self.path == '/'+common.PAC_FILE and os.path.isfile(self.filename):
+            self.send_file(wfile, self.filename,'application/x-ns-proxy-autoconfig')
+        elif self.path == '/CA.crt' and os.path.isfile(self.filename):
+            self.send_file(wfile, self.filename, 'application/octet-stream')
+        else:
             wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
             wfile.close()
             logging.info('%s:%s "%s %s HTTP/1.1" 404 -', self.remote_addr, self.remote_port, self.method, self.path)
-            return
-        with open(self.filename, 'rb') as fp:
+        
+    
+    def send_file(self, wfile, filename, mimetype):
+        with open(filename, 'rb') as fp:
             data = fp.read()
-            wfile.write('HTTP/1.1 200\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n')
-            logging.info('%s:%s "%s %s HTTP/1.1" 200 %s', self.remote_addr, self.remote_port, self.method, self.path, fp.tell())
+            wfile.write('HTTP/1.1 200\r\nContent-Type: %s\r\nConnection: close\r\n\r\n' % (mimetype))
             wfile.write(data)
             wfile.close()
+            logging.info('%s:%s "%s %s HTTP/1.1" 200 -', self.remote_addr, self.remote_port, self.method, self.path)
 
     def handle_method(self):
         self.sock.sendall('HTTP/1.1 400 Bad Request\r\n\r\n')
