@@ -1068,7 +1068,6 @@ class GAEProxyHandler(object):
         return template
 
     def _update_google_iplist(self):
-        common.GOOGLE_HOSTS = tuple(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
         if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
             google_ipmap = {}
             need_resolve_remote = []
