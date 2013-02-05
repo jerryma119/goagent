@@ -1729,7 +1729,7 @@ def pre_start():
         for software, need_check in blacklist.items():
             if need_check and software.lower() in tasklist:
                 lineno = [sys._getframe().f_lineno-1, sys._getframe().f_lineno+2]
-                error = u'某些安全软件(如 %s)可能和本软件存在冲突.\n建议暂时退出此安全软件来继续运行GoAgent' % software
+                error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % software
                 ctypes.windll.user32.MessageBoxW(None, error, u'GoAgent 建议', 0)
                 #sys.exit(0)
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
