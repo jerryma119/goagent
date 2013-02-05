@@ -18,8 +18,9 @@ __bufsize__ = 1024*1024
 
 import sys
 import os
+import glob
 
-sys.path.append('python27.zip')
+sys.path += glob.glob('python*.zip')
 
 try:
     import gevent
@@ -32,10 +33,7 @@ try:
     import gevent.timeout
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
-    if os.name == 'nt':
-        sys.stderr.write('WARNING: python-gevent not installed. `https://github.com/SiteSupport/gevent/downloads`\n')
-    else:
-        sys.stderr.write('WARNING: python-gevent not installed. `curl -k -L http://git.io/I9B7RQ|sh`\n')
+    sys.stderr.write('WARNING: python-gevent not installed. `https://github.com/SiteSupport/gevent/downloads`\n')
     import Queue
     import thread
     import threading
@@ -112,22 +110,22 @@ import errno
 import time
 import cStringIO
 import struct
-import re
 import zlib
+import heapq
+import re
+import traceback
 import random
 import base64
-import urlparse
+import hashlib
+import fnmatch
+import threading
 import socket
 import ssl
 import select
-import traceback
-import hashlib
-import fnmatch
-import ConfigParser
 import httplib
 import urllib2
-import heapq
-import threading
+import urlparse
+import ConfigParser
 try:
     import ctypes
 except ImportError:
@@ -152,20 +150,20 @@ class Logging(type(sys)):
             self.debug = self.dummy
         self.__write = __write = sys.stderr.write
         self.isatty = getattr(sys.stderr, 'isatty', lambda:False)()
-        if self.isatty and os.name == 'nt':
-            SetConsoleTextAttribute = ctypes.windll.kernel32.SetConsoleTextAttribute
-            GetStdHandle = ctypes.windll.kernel32.GetStdHandle
-            self.__set_error_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x04)
-            self.__set_warning_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x06)
-            self.__reset_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x07)
-        elif self.isatty and os.name == 'posix':
-            self.__set_error_color = lambda:__write('\033[31m')
-            self.__set_warning_color = lambda:__write('\033[33m')
-            self.__reset_color = lambda:__write('\033[0m')
-        else:
-            self.__set_error_color = lambda:None
-            self.__set_warning_color = lambda:None
-            self.__reset_color = lambda:None
+        self.__set_error_color = lambda:None
+        self.__set_warning_color = lambda:None
+        self.__reset_color = lambda:None
+        if self.isatty:
+            if os.name == 'nt':
+                SetConsoleTextAttribute = ctypes.windll.kernel32.SetConsoleTextAttribute
+                GetStdHandle = ctypes.windll.kernel32.GetStdHandle
+                self.__set_error_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x04)
+                self.__set_warning_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x06)
+                self.__reset_color = lambda:SetConsoleTextAttribute(GetStdHandle(-11), 0x07)
+            elif os.name == 'posix':
+                self.__set_error_color = lambda:__write('\033[31m')
+                self.__set_warning_color = lambda:__write('\033[33m')
+                self.__reset_color = lambda:__write('\033[0m')
     @classmethod
     def getLogger(cls, *args, **kwargs):
         return cls(*args, **kwargs)
@@ -1245,15 +1243,13 @@ class GAEProxyHandler(object):
             except StopIteration:
                 pass
         try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            if content_length:
+            payload = None
+            if 'Content-Length' in self.headers:
                 try:
-                    payload = self.rfile.read(content_length) if content_length else ''
+                    payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
                 except (EOFError, socket.error) as e:
-                    logging.error('handle_method_urlfetch read payloadfailed:%s', e)
+                    logging.error('handle_method_urlfetch read payload failed:%s', e)
                     return
-            else:
-                payload = ''
             response = None
             errors = []
             for i in xrange(common.FETCHMAX_LOCAL):
@@ -1269,7 +1265,7 @@ class GAEProxyHandler(object):
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
 
             if response is None:
-                error_html = self._error_html('502', 'urlfetch failed', str(errors))
+                error_html = self._error_html('502', 'Local URLFetch failed', str(errors))
                 self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + error_html)
                 return
 
@@ -1641,8 +1637,8 @@ class PACServerHandler(GAEProxyHandler):
             wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
             wfile.close()
             logging.info('%s:%s "%s %s HTTP/1.1" 404 -', self.remote_addr, self.remote_port, self.method, self.path)
-        
-    
+
+
     def send_file(self, wfile, filename, mimetype):
         with open(filename, 'rb') as fp:
             data = fp.read()
