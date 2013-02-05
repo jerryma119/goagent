@@ -677,8 +677,11 @@ class Http(object):
                 if not self.proxy:
                     if scheme == 'https':
                         ssl_sock = self.create_ssl_connection((host, port), self.max_timeout)
-                        sock = ssl_sock.sock
-                        del ssl_sock.sock
+                        if ssl_sock:
+                            sock = ssl_sock.sock
+                            del ssl_sock.sock
+                        else:
+                            raise socket.error('timed out', 'create_ssl_connection(%r,%r)' % (host, port))
                     else:
                         sock = self.create_connection((host, port), self.max_timeout)
                 else:
@@ -775,7 +778,7 @@ class Common(object):
         self.AUTORANGE_BUFSIZE    = self.CONFIG.getint('autorange', 'bufsize')
         self.AUTORANGE_THREADS    = self.CONFIG.getint('autorange', 'threads')
 
-        self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
+        self.FETCHMAX_LOCAL       = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 2
         self.FETCHMAX_SERVER      = self.CONFIG.get('fetchmax', 'server')
 
         if self.CONFIG.has_section('crlf'):
@@ -1037,6 +1040,42 @@ class GAEProxyHandler(object):
         finally:
             self.finish()
 
+    def _error_html(self, errno, error, description=''):
+        ERROR_TEMPLATE = '''
+    <html><head>
+    <meta http-equiv="content-type" content="text/html;charset=utf-8">
+    <title>{{errno}} {{error}}</title>
+    <style><!--
+    body {font-family: arial,sans-serif}
+    div.nav {margin-top: 1ex}
+    div.nav A {font-size: 10pt; font-family: arial,sans-serif}
+    span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
+    div.nav A,span.big {font-size: 12pt; color: #0000cc}
+    div.nav A {font-size: 10pt; color: black}
+    A.l:link {color: #6f6f6f}
+    A.u:link {color: green}
+    //--></style>
+
+    </head>
+    <body text=#000000 bgcolor=#ffffff>
+    <table border=0 cellpadding=2 cellspacing=0 width=100%>
+    <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
+    <tr><td>&nbsp;</td></tr></table>
+    <blockquote>
+    <H1>{{error}}</H1>
+    {{description}}
+
+    <p>
+    </blockquote>
+    <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
+    </body></html>
+    '''
+        kwargs = dict(errno=errno, error=error, description=description)
+        template = ERROR_TEMPLATE
+        for keyword, value in kwargs.items():
+            template = template.replace('{{%s}}' % keyword, value)
+        return template
+
     def _update_google_iplist(self):
         common.GOOGLE_HOSTS = tuple(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
         if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
@@ -1110,7 +1149,7 @@ class GAEProxyHandler(object):
                         common.GAE_PROFILE = 'google_hk'
                         common.GOOGLE_MODE = 'https'
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-                        common.GOOGLE_WINDOW = common.CONFIG.getint('google_hk', 'window')
+                        http.max_window = common.GOOGLE_WINDOW = common.CONFIG.getint('google_hk', 'window')
                         common.GOOGLE_HOSTS = tuple(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
                         common.GOOGLE_WITHGAE = set(common.CONFIG.get('google_hk', 'withgae').split('|'))
             self._update_google_iplist()
@@ -1206,23 +1245,32 @@ class GAEProxyHandler(object):
             except StopIteration:
                 pass
         try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length:
+                try:
+                    payload = self.rfile.read(content_length) if content_length else ''
+                except (EOFError, socket.error) as e:
+                    logging.error('handle_method_urlfetch read payloadfailed:%s', e)
+                    return
+            else:
+                payload = ''
             response = None
-            try:
-                content_length = int(self.headers.get('Content-Length', 0))
-                payload = self.rfile.read(content_length) if content_length else ''
-                response = self.urlfetch(self.method, self.path, self.headers, payload, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD)
-            except (EOFError, socket.error) as e:
-                if e[0] in (11004, 10051, 10054, 10060, 'timed out'):
-                    # connection reset or timeout, switch to https
-                    if e[0] == 10054:
-                        logging.error('handle_method_forward %r failed:%s, perhaps should use mode=https', self.path, e)
-                    else:
+            errors = []
+            for i in xrange(common.FETCHMAX_LOCAL):
+                try:
+                    response = self.urlfetch(self.method, self.path, self.headers, payload, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD)
+                    if response:
+                        break
+                except Exception as e:
+                    errors.append(e)
+                    if e[0] in (11004, 10051, 10054, 10060, 'timed out'):
+                        # connection reset or timeout, switch to https
                         common.GOOGLE_MODE = 'https'
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-                else:
-                    raise
 
             if response is None:
+                error_html = self._error_html('502', 'urlfetch failed', str(errors))
+                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + error_html)
                 return
 
             # gateway error, switch to https mode
