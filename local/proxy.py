@@ -20,7 +20,7 @@ import sys
 import os
 import glob
 
-sys.path += glob.glob('python*.zip')
+sys.path += glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'python*.zip'))
 
 try:
     import gevent
