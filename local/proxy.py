@@ -1725,11 +1725,12 @@ def pre_start():
                         '360safe' : False, # http://s.weibo.com/weibo/goagent%2520360%2520%25E5%258D%25B8%25E8%25BD%25BD
                         'QQProtect' : False, # http://s.weibo.com/weibo/goagent%2520qqprotect
                     }
-        tasklist = os.popen('tasklist').read().lower()
-        for software, need_check in blacklist.items():
-            if need_check and software.lower() in tasklist:
-                lineno = [sys._getframe().f_lineno-1, sys._getframe().f_lineno+2]
-                error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % software
+        softwares = [k for k,v in blacklist.items() if v]
+        if softwares:
+            tasklist = os.popen('tasklist').read().lower()
+            softwares = [x for x in softwares if x.lower()in tasklist]
+            if softwares:
+                error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % ','.join(softwares)
                 ctypes.windll.user32.MessageBoxW(None, error, u'GoAgent 建议', 0)
                 #sys.exit(0)
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
