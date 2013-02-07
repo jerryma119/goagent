@@ -1611,25 +1611,27 @@ class PACServerHandler(GAEProxyHandler):
 
     firstrun      = None
     firstrun_lock = gevent.coros.Semaphore()
-    filename      = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
+    pacfile       = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
 
     def first_run(self):
-        if time.time() - os.path.getmtime(self.filename) > 12 * 60 * 60:
+        if time.time() - os.path.getmtime(self.pacfile) > 12 * 60 * 60:
             default= '%s:%s'%(common.PROXY_HOST, common.PROXY_PORT) if common.PROXY_ENABLE else 'DIRECT'
-            gevent.spawn_later(1, Autoproxy2Pac.update_filename, self.filename, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), default)
+            gevent.spawn_later(1, Autoproxy2Pac.update_filename, self.pacfile, common.PAC_GFWLIST, '%s:%s'%(common.LISTEN_IP, common.LISTEN_PORT), default)
         return True
 
     def handle_get(self):
         wfile = self.sock.makefile('wb', 0)
-        if self.path == '/'+common.PAC_FILE and os.path.isfile(self.filename):
-            self.send_file(wfile, self.filename,'application/x-ns-proxy-autoconfig')
-        elif self.path == '/CA.crt' and os.path.isfile(self.filename):
-            self.send_file(wfile, self.filename, 'application/octet-stream')
+        filename = os.path.normpath('./' + self.path)
+        if os.path.isfile(filename):
+            if filename.endswith('.pac'):
+                mimetype = 'application/x-ns-proxy-autoconfig'
+            else:
+                 mimetype = 'application/octet-stream'
+            self.send_file(wfile, filename, mimetype)
         else:
             wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
             wfile.close()
             logging.info('%s:%s "%s %s HTTP/1.1" 404 -', self.remote_addr, self.remote_port, self.method, self.path)
-
 
     def send_file(self, wfile, filename, mimetype):
         with open(filename, 'rb') as fp:
