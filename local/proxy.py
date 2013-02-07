@@ -368,8 +368,9 @@ class Http(object):
     protocol_version = 'HTTP/1.1'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations'])
     dns_blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68', '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251', '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104', '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139', '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2', '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43', '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147', '213.169.251.35', '216.221.188.182', '216.234.179.13'])
+    ssl_validate = False
 
-    def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy=''):
+    def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False):
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
@@ -379,6 +380,7 @@ class Http(object):
         self.dns = collections.defaultdict(set)
         self.crlf = 0
         self.proxy = proxy
+        self.ssl_validate = ssl_validate or self.ssl_validate
 
     @staticmethod
     def dns_remote_resolve(qname, dnsserver, timeout=None, blacklist=set(), max_retry=2, max_wait=2):
@@ -468,7 +470,7 @@ class Http(object):
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32*1024)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 sock.settimeout(timeout or self.max_timeout)
-                if not common.GAE_VALIDATE:
+                if not self.ssl_validate:
                     ssl_sock = ssl.wrap_socket(sock)
                 else:
                     ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs='cacerts.txt')
@@ -836,7 +838,7 @@ class Common(object):
         return info
 
 common = Common()
-http   = Http(max_window=common.GOOGLE_WINDOW, proxy=common.proxy)
+http   = Http(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE, proxy=common.proxy)
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
