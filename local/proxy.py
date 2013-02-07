@@ -11,6 +11,7 @@
 #      Yonsm          <YonsmGuo@gmail.com>
 #      Ming Bai       <mbbill@gmail.com>
 #      Bin Yu         <yubinlove1991@gmail.com>
+#      Zhang Youfu    <zhangyoufu@gmail.com>
 
 __version__ = '2.1.12'
 __config__  = 'proxy.ini'
@@ -425,6 +426,8 @@ class Http(object):
             sock = None
             try:
                 sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32*1024)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 sock.settimeout(timeout or self.max_timeout)
                 start_time = time.time()
                 sock.connect((ip, port))
@@ -455,8 +458,6 @@ class Http(object):
                     return result
                 else:
                     logging.warning('Http.create_connection to %s, port=%r return %r, try again.', ips, port, result)
-            if result and isinstance(result, socket.error):
-                raise result
 
     def create_ssl_connection(self, (host, port), timeout=None, source_address=None):
         def _create_ssl_connection((ip, port), timeout, queue):
@@ -509,8 +510,6 @@ class Http(object):
                     return result
                 else:
                     logging.warning('Http.create_ssl_connection to %s, port=%r return %r, try again.', ips, port, result)
-            if result and isinstance(result, socket.error):
-                raise result
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (str, unicode))
@@ -1626,7 +1625,7 @@ class PACServerHandler(GAEProxyHandler):
             if filename.endswith('.pac'):
                 mimetype = 'application/x-ns-proxy-autoconfig'
             else:
-                 mimetype = 'application/octet-stream'
+                mimetype = 'application/octet-stream'
             self.send_file(wfile, filename, mimetype)
         else:
             wfile.write('HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
