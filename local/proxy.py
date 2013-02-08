@@ -434,6 +434,8 @@ class Http(object):
                 start_time = time.time()
                 sock.connect((ip, port))
                 self.connection_time['%s:%s'%(ip,port)] = time.time() - start_time
+                # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
+                sock.settimeout(None)
                 queue.put(sock)
             except socket.error as e:
                 queue.put(e)
