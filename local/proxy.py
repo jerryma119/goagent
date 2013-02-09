@@ -102,7 +102,8 @@ except ImportError:
     gevent.server.DatagramServer = GeventServerDatagramServer
     gevent.pool.Pool             = GeventPoolPool
 
-    del GeventImport, GeventSpawn, GeventSpawnLater, GeventServerStreamServer, GeventServerDatagramServer, GeventPoolPool
+    del GeventImport, GeventSpawn, GeventSpawnLater,\
+        GeventServerStreamServer, GeventServerDatagramServer, GeventPoolPool
 
 import collections
 import errno
@@ -427,8 +428,8 @@ class HTTP(object):
             sock = None
             try:
                 sock = socket.socket(socket.AF_INET if ':' not in address[0] else socket.AF_INET6)
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32*1024)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 sock.settimeout(timeout or self.max_timeout)
                 start_time = time.time()
                 sock.connect(address)
@@ -470,8 +471,8 @@ class HTTP(object):
             ssl_sock = None
             try:
                 sock = socket.socket(socket.AF_INET if ':' not in address[0] else socket.AF_INET6)
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32*1024)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 sock.settimeout(timeout or self.max_timeout)
                 if not self.ssl_validate:
                     ssl_sock = ssl.wrap_socket(sock)
@@ -543,6 +544,7 @@ class HTTP(object):
             return sock
         except socket.error as e:
             logging.error('create_connection_withproxy error %s', e)
+            raise
 
     def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, bitmask=None):
         try:
