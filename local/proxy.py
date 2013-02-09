@@ -377,7 +377,7 @@ class Http(object):
         self.connection_time = {}
         self.ssl_connection_time = {}
         self.max_timeout = max_timeout
-        self.dns = collections.defaultdict(set)
+        self.dns = collections.defaultdict(list)
         self.crlf = 0
         self.proxy = proxy
         self.ssl_validate = ssl_validate or self.ssl_validate
@@ -420,7 +420,7 @@ class Http(object):
                 ips = self.__class__.dns_remote_resolve(host, dnsserver, timeout=2, blacklist=self.dns_blacklist)
             if ipv4_only:
                 ips = [ip for ip in ips if re.match(r'\d+.\d+.\d+.\d+', ip)]
-            iplist.update(ips)
+            iplist += set(ips)
         return iplist
 
     def create_connection(self, (host, port), timeout=None, source_address=None):
@@ -448,9 +448,9 @@ class Http(object):
         result = None
         iplist = self.dns_resolve(host)
         window = (self.max_window+1)//2
+        connection_time = self.ssl_connection_time if port == 443 else self.connection_time
         for i in xrange(self.max_retry):
             window += i
-            connection_time = self.ssl_connection_time if port == 443 else self.connection_time
             ips = heapq.nsmallest(window, iplist, key=lambda x:connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
             queue = gevent.queue.Queue()
             for ip in ips:
@@ -461,7 +461,9 @@ class Http(object):
                     gevent.spawn(_close_connection, len(ips)-i-1, queue)
                     return result
                 else:
-                    logging.warning('Http.create_connection to %s, port=%r return %r, try again.', ips, port, result)
+                    if i == 0:
+                        # only print first error
+                        logging.warning('Http.create_connection to %s, port=%r return %r, try again.', ips, port, result)
 
     def create_ssl_connection(self, (host, port), timeout=None, source_address=None):
         def _create_ssl_connection((ip, port), timeout, queue):
@@ -501,9 +503,10 @@ class Http(object):
         result = None
         iplist = self.dns_resolve(host)
         window = (self.max_window+1)//2
+        connection_time = self.ssl_connection_time
         for i in xrange(self.max_retry):
             window += i
-            ips = heapq.nsmallest(window, iplist, key=lambda x:self.ssl_connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
+            ips = heapq.nsmallest(window, iplist, key=lambda x:connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
             queue = gevent.queue.Queue()
             for ip in ips:
                 gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
@@ -513,7 +516,9 @@ class Http(object):
                     gevent.spawn(_close_ssl_connection, len(ips)-i-1, queue)
                     return result
                 else:
-                    logging.warning('Http.create_ssl_connection to %s, port=%r return %r, try again.', ips, port, result)
+                    if i == 0:
+                        # only print first error
+                        logging.warning('Http.create_ssl_connection to %s, port=%r return %r, try again.', ips, port, result)
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (str, unicode))
@@ -526,7 +531,7 @@ class Http(object):
                 pass
             proxyhost, _, proxyport = address.rpartition(':')
             sock = socket.create_connection((proxyhost, int(proxyport)))
-            hostname = random.choice(list(self.dns.get(host)) or [host if not host.endswith('.appspot.com') else 'www.google.com'])
+            hostname = random.choice(self.dns.get(host) or [host if not host.endswith('.appspot.com') else 'www.google.com'])
             request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
             if username and password:
                 request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password)).strip()
@@ -1099,7 +1104,7 @@ class GAEProxyHandler(object):
                         logging.exception('resolve remote domain=%r dnsserver=%r failed: %s', domain, dnsserver, e)
                 if len(set(sum(google_ipmap.values(), []))) > 10:
                     break
-            common.GOOGLE_HOSTS = tuple(set(sum(google_ipmap.values(), [])))
+            common.GOOGLE_HOSTS = list(set(sum(google_ipmap.values(), [])))
             if len(common.GOOGLE_HOSTS) == 0:
                 logging.error('resolve %s domain return empty! try remote dns resovle!', common.GAE_PROFILE)
                 sys.exit(-1)
@@ -1125,10 +1130,10 @@ class GAEProxyHandler(object):
                             iplist += ips
                     except socket.error as e:
                         logging.error('socket.gethostbyname_ex(host=%r) failed:%s', host, e)
-                prefix = re.sub(r'\d+\.\d+$', '', random.sample(common.GOOGLE_HOSTS, 1)[0])
+                prefix = re.sub(r'\d+\.\d+$', '', random.choice(common.GOOGLE_HOSTS))
                 iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
                 if iplist and len(iplist) > len(hosts):
-                    common.GOOGLE_HOSTS = set(iplist)
+                    common.GOOGLE_HOSTS = list(set(iplist))
                 else:
                     # seems google_cn is down, should switch to google_hk?
                     need_switch = False
@@ -1143,7 +1148,7 @@ class GAEProxyHandler(object):
                         common.GOOGLE_MODE = 'https'
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                         http.max_window = common.GOOGLE_WINDOW = common.CONFIG.getint('google_hk', 'window')
-                        common.GOOGLE_HOSTS = tuple(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
+                        common.GOOGLE_HOSTS = list(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
                         common.GOOGLE_WITHGAE = set(common.CONFIG.get('google_hk', 'withgae').split('|'))
             self._update_google_iplist()
         return True
@@ -1185,7 +1190,7 @@ class GAEProxyHandler(object):
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in http.dns:
                 logging.info('crlf dns_resolve(host=%r, dnsservers=%r)', host, common.CRLF_DNSSERVER)
-                http.dns[host] = set(http.dns_resolve(host, common.CRLF_DNSSERVER))
+                http.dns[host] = list(set(http.dns_resolve(host, common.CRLF_DNSSERVER)))
                 logging.info('crlf dns_resolve(host=%r) return %s', host, list(http.dns[host]))
             need_forward = True
 
@@ -1433,7 +1438,7 @@ class PAASProxyHandler(GAEProxyHandler):
             if len(fethhost_iplist) == 0:
                 logging.error('resolve %s domain return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                 sys.exit(-1)
-            http.dns[fetchhost] = set(fethhost_iplist)
+            http.dns[fetchhost] = list(set(fethhost_iplist))
             logging.info('resolve common.PAAS_FETCHSERVER domain to iplist=%r', fethhost_iplist)
         return True
 
