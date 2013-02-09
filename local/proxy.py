@@ -424,53 +424,54 @@ class Http(object):
         return iplist
 
     def create_connection(self, (host, port), timeout=None, source_address=None):
-        def _create_connection((ip, port), timeout, queue):
+        assert isinstance(port, int)
+        def _create_connection(address, timeout, queue):
             sock = None
             try:
-                sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
+                sock = socket.socket(socket.AF_INET if ':' not in address[0] else socket.AF_INET6)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32*1024)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 sock.settimeout(timeout or self.max_timeout)
                 start_time = time.time()
-                sock.connect((ip, port))
-                self.connection_time['%s:%s'%(ip,port)] = time.time() - start_time
+                sock.connect(address)
+                self.connection_time[address] = time.time() - start_time
                 # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
                 sock.settimeout(None)
                 queue.put(sock)
             except socket.error as e:
                 queue.put(e)
-                self.connection_time['%s:%s'%(ip,port)] = self.max_timeout+random.random()
+                self.connection_time[address] = self.max_timeout+random.random()
                 if sock:
                     sock.close()
         def _close_connection(count, queue):
             for i in xrange(count):
                 queue.get()
         result = None
-        iplist = self.dns_resolve(host)
-        window = (self.max_window+1)//2
         connection_time = self.ssl_connection_time if port == 443 else self.connection_time
+        addresses = [(x, port) for x in self.dns_resolve(host)]
         for i in xrange(self.max_retry):
-            window += i
-            ips = heapq.nsmallest(window, iplist, key=lambda x:connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
+            window = min((self.max_window+1)//2 + i, len(addresses))
+            addrs = heapq.nsmallest(window, addresses, key=connection_time.get) + random.sample(addresses, window)
             queue = gevent.queue.Queue()
-            for ip in ips:
-                gevent.spawn(_create_connection, (ip, port), timeout, queue)
-            for i in xrange(len(ips)):
+            for addr in addrs:
+                gevent.spawn(_create_connection, addr, timeout, queue)
+            for i in xrange(len(addrs)):
                 result = queue.get()
                 if not isinstance(result, socket.error):
-                    gevent.spawn(_close_connection, len(ips)-i-1, queue)
+                    gevent.spawn(_close_connection, len(addrs)-i-1, queue)
                     return result
                 else:
                     if i == 0:
                         # only print first error
-                        logging.warning('Http.create_connection to %s, port=%r return %r, try again.', ips, port, result)
+                        logging.warning('Http.create_connection to %s return %r, try again.', addrs, result)
 
     def create_ssl_connection(self, (host, port), timeout=None, source_address=None):
-        def _create_ssl_connection((ip, port), timeout, queue):
+        assert isinstance(port, int)
+        def _create_ssl_connection(address, timeout, queue):
             sock = None
             ssl_sock = None
             try:
-                sock = socket.socket(socket.AF_INET if ':' not in ip else socket.AF_INET6)
+                sock = socket.socket(socket.AF_INET if ':' not in address[0] else socket.AF_INET6)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32*1024)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
                 sock.settimeout(timeout or self.max_timeout)
@@ -484,13 +485,13 @@ class Http(object):
                     # if need_validate not in commonname:
                     #     raise ssl.SSLError("Host name '%s' doesn't match certificate host '%s'" % (host, commonname))
                 start_time = time.time()
-                ssl_sock.connect((ip, port))
-                self.ssl_connection_time['%s:%s'%(ip,port)] = time.time() - start_time
+                ssl_sock.connect(address)
+                self.ssl_connection_time[address] = time.time() - start_time
                 ssl_sock.sock = sock
                 queue.put(ssl_sock)
             except socket.error as e:
                 queue.put(e)
-                self.ssl_connection_time['%s:%s'%(ip,port)] = self.max_timeout + random.random()
+                self.ssl_connection_time[address] = self.max_timeout + random.random()
                 if ssl_sock:
                     ssl_sock.close()
                     ssl_sock = None
@@ -501,24 +502,23 @@ class Http(object):
             for i in xrange(count):
                 queue.get()
         result = None
-        iplist = self.dns_resolve(host)
-        window = (self.max_window+1)//2
         connection_time = self.ssl_connection_time
+        addresses = [(x, port) for x in self.dns_resolve(host)]
         for i in xrange(self.max_retry):
-            window += i
-            ips = heapq.nsmallest(window, iplist, key=lambda x:connection_time.get('%s:%s'%(x,port),0)) + random.sample(iplist, min(len(iplist), window))
+            window = min((self.max_window+1)//2 + i, len(addresses))
+            addrs = heapq.nsmallest(window, addresses, key=connection_time.get) + random.sample(addresses, window)
             queue = gevent.queue.Queue()
-            for ip in ips:
-                gevent.spawn(_create_ssl_connection, (ip, port), timeout, queue)
-            for i in xrange(len(ips)):
+            for addr in addrs:
+                gevent.spawn(_create_ssl_connection, addr, timeout, queue)
+            for i in xrange(len(addrs)):
                 result = queue.get()
                 if not isinstance(result, socket.error):
-                    gevent.spawn(_close_ssl_connection, len(ips)-i-1, queue)
+                    gevent.spawn(_close_ssl_connection, len(addrs)-i-1, queue)
                     return result
                 else:
                     if i == 0:
                         # only print first error
-                        logging.warning('Http.create_ssl_connection to %s, port=%r return %r, try again.', ips, port, result)
+                        logging.warning('Http.create_ssl_connection to %s return %r, try again.', addrs, result)
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (str, unicode))
