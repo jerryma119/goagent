@@ -478,15 +478,15 @@ class HTTP(object):
                     ssl_sock = ssl.wrap_socket(sock)
                 else:
                     ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs='cacerts.txt')
-                    # cert = ssl_sock.getpeercert()
-                    # commonname = (v for ((k,v),) in cert['subject'] if k=='commonName').next()
-                    # need_validate = 'google' if host.endswith('.appspot.com') or host.endswith(common.GOOGLE_SITES) else host.split('.')[1][:6]
-                    # if need_validate not in commonname:
-                    #     raise ssl.SSLError("Host name '%s' doesn't match certificate host '%s'" % (host, commonname))
                 start_time = time.time()
                 ssl_sock.connect(address)
                 self.ssl_connection_time[address] = time.time() - start_time
                 ssl_sock.sock = sock
+                if self.ssl_validate and host.endswith('.appspot.com'):
+                    cert = ssl_sock.getpeercert()
+                    commonname = (v for ((k,v),) in cert['subject'] if k=='commonName').next()
+                    if 'google' not in commonname:
+                        raise ssl.SSLError("Host name '%s' doesn't match certificate host '%s'" % (host, commonname))
                 queue.put(ssl_sock)
             except socket.error as e:
                 queue.put(e)
