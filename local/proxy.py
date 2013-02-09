@@ -361,8 +361,8 @@ class CertUtil(object):
         if not os.path.exists(certdir):
             os.makedirs(certdir)
 
-class Http(object):
-    """Http Request Class"""
+class HTTP(object):
+    """HTTP Request Class"""
 
     MessageClass = dict
     protocol_version = 'HTTP/1.1'
@@ -463,7 +463,7 @@ class Http(object):
                 else:
                     if i == 0:
                         # only print first error
-                        logging.warning('Http.create_connection to %s return %r, try again.', addrs, result)
+                        logging.warning('create_connection to %s return %r, try again.', addrs, result)
 
     def create_ssl_connection(self, (host, port), timeout=None, source_address=None):
         assert isinstance(port, int)
@@ -518,11 +518,11 @@ class Http(object):
                 else:
                     if i == 0:
                         # only print first error
-                        logging.warning('Http.create_ssl_connection to %s return %r, try again.', addrs, result)
+                        logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
 
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (str, unicode))
-        logging.debug('Http.create_connection_withproxy connect (%r, %r)', host, port)
+        logging.debug('create_connection_withproxy connect (%r, %r)', host, port)
         scheme, username, password, address = urllib2._parse_proxy(proxy or self.proxy)
         try:
             try:
@@ -540,11 +540,11 @@ class Http(object):
             response = httplib.HTTPResponse(sock)
             response.begin()
             if response.status >= 400:
-                logging.error('Http.create_connection_withproxy return http error code %s', response.status)
+                logging.error('create_connection_withproxy return http error code %s', response.status)
                 sock = None
             return sock
         except socket.error as e:
-            logging.error('Http.create_connection_withproxy error %s', e)
+            logging.error('create_connection_withproxy error %s', e)
 
     def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=__bufsize__, maxping=None, maxpong=None, pongcallback=None, bitmask=None):
         try:
@@ -694,7 +694,7 @@ class Http(object):
                         crlf = 0
                     return self._request(ssl_sock or sock, method, path, self.protocol_version, headers, payload, bufsize=bufsize, crlf=crlf, return_sock=return_sock)
             except Exception as e:
-                logging.debug('Http.request "%s %s" failed:%s', method, url, e)
+                logging.debug('request "%s %s" failed:%s', method, url, e)
                 if ssl_sock:
                     ssl_sock.close()
                 if sock:
@@ -845,7 +845,7 @@ class Common(object):
         return info
 
 common = Common()
-http   = Http(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE, proxy=common.proxy)
+http   = HTTP(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE, proxy=common.proxy)
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -1096,8 +1096,8 @@ class GAEProxyHandler(object):
                 for domain in need_resolve_remote:
                     logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
                     try:
-                        iplist = Http.dns_remote_resolve(domain, dnsserver, timeout=3)
-                        if all(x not in Http.dns_blacklist for x in iplist):
+                        iplist = HTTP.dns_remote_resolve(domain, dnsserver, timeout=3)
+                        if all(x not in HTTP.dns_blacklist for x in iplist):
                             google_ipmap[domain] = iplist
                             logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
                     except socket.error as e:
