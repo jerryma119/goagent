@@ -144,11 +144,13 @@ function post()
             break;
         case 'PUT':
         case 'DELETE':
+        case 'OPTIONS':
+        case 'TRACE':
             $curl_opt[CURLOPT_CUSTOMREQUEST] = $method;
             $curl_opt[CURLOPT_POSTFIELDS] = $body;
             break;
         default:
-            echo 'Invalid Method: ' . var_export($method, true);
+            echo error_html("403 Forbidden", "Invalid Method: $method", "$method '$url'");
             exit(-1);
     }
 
