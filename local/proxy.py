@@ -1415,7 +1415,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     skip_headers = http.skip_headers
-    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
+    metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n'%(k,v) for k,v in kwargs.iteritems() if v), ''.join('%s:%s\n'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     response = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
@@ -1425,7 +1425,6 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         del response.msg['x-status']
     if 'status' in response.msg:
         response.status = int(response.msg['status'].split()[0])
-        del response.msg['status']
     return response
 
 class PAASProxyHandler(GAEProxyHandler):

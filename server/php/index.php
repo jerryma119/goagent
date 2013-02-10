@@ -123,7 +123,7 @@ function post()
     $curl_opt[CURLOPT_WRITEFUNCTION]  = 'write_function';
 
 
-    $curl_opt[CURLOPT_FAILONERROR]    = true;
+    $curl_opt[CURLOPT_FAILONERROR]    = false;
     $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
 
     $curl_opt[CURLOPT_CONNECTTIMEOUT] = $timeout;
