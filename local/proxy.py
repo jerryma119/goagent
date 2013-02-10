@@ -326,8 +326,6 @@ class CertUtil(object):
         cmd = ''
         if sys.platform.startswith('win'):
             cmd = 'cd /d "%s" && .\certmgr.exe -add %s -c -s -r localMachine Root >NUL' % (dirname, basename)
-        elif sys.platform == 'cygwin':
-            cmd = 'cmd /c "pushd %s && certmgr.exe -add %s -c -s -r localMachine Root"' % (dirname, basename)
         elif sys.platform == 'darwin':
             cmd = 'security find-certificate -a -c "%s" | grep "%s" >/dev/null || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, commonname, certfile)
         elif sys.platform.startswith('linux'):
@@ -1710,6 +1708,9 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', gevent.server.StreamSer
                     break
 
 def pre_start():
+    if sys.platform == 'cygwin':
+        logging.critical('cygwin platform is not supported, please download `http://www.python.org/getit/`')
+        sys.exit(-1)
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
@@ -1757,8 +1758,8 @@ def main():
         __file__ = getattr(os, 'readlink', lambda x:x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     logging.basicConfig(level=logging.DEBUG if common.LISTEN_DEBUGINFO else logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    CertUtil.check_ca()
     pre_start()
+    CertUtil.check_ca()
     sys.stdout.write(common.info())
 
     if common.PAAS_ENABLE:
