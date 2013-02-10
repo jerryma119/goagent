@@ -856,7 +856,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     skip_headers = http.skip_headers
-    metadata = 'G-Method:%s\nG-Url:%s\n%s\n%s\n' % (method, url, '\n'.join('G-%s:%s'%(k,v) for k,v in kwargs.iteritems() if v), '\n'.join('%s:%s'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
+    metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n'%(k,v) for k,v in kwargs.iteritems() if v), ''.join('%s:%s\n'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
@@ -1424,8 +1424,8 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.status = int(response.msg['x-status'])
         del response.msg['x-status']
     if 'status' in response.msg:
-        response.status = int(response.msg['status'])
-        del response['status']
+        response.status = int(response.msg['status'].split()[0])
+        del response.msg['status']
     return response
 
 class PAASProxyHandler(GAEProxyHandler):
@@ -1452,7 +1452,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 content_length = int(self.headers.get('Content-Length', 0))
                 payload = self.rfile.read(content_length) if content_length else ''
                 response = self.urlfetch(self.method, self.path, self.headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
-                logging.info('%s:%s "PAAS %s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
+                logging.info('%s:%s "%s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
             except socket.error as e:
                 if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
                     raise

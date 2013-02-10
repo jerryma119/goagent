@@ -171,7 +171,7 @@ function post()
 }
 
 function get() {
-    header('Location: https://www.google.com/');
+    include 'p.php';
 }
 
 function main() {
