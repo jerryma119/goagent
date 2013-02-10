@@ -493,10 +493,8 @@ class HTTP(object):
                 self.ssl_connection_time[address] = self.max_timeout + random.random()
                 if ssl_sock:
                     ssl_sock.close()
-                    ssl_sock = None
                 if sock:
                     sock.close()
-                    sock = None
         def _close_ssl_connection(count, queue):
             for i in xrange(count):
                 queue.get()
@@ -1255,7 +1253,12 @@ class GAEProxyHandler(object):
             errors = []
             for i in xrange(common.FETCHMAX_LOCAL):
                 try:
-                    response = self.urlfetch(self.method, self.path, self.headers, payload, common.GAE_FETCHSERVER, password=common.GAE_PASSWORD)
+                    kwargs = {}
+                    if common.GAE_PASSWORD:
+                        kwargs['password'] = common.GAE_PASSWORD
+                    if common.GAE_VALIDATE:
+                        kwargs['validate'] = 1
+                    response = self.urlfetch(self.method, self.path, self.headers, payload, common.GAE_FETCHSERVER, **kwargs)
                     if response:
                         break
                 except Exception as e:

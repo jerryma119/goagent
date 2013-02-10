@@ -317,6 +317,7 @@ def gae_application(environ, start_response):
         raise StopIteration
 
     deadline = Deadline
+    validate_certificate = bool(int(kwargs.get('validate', 0)))
     headers = dict(headers)
     headers['Connection'] = 'close'
     payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
@@ -331,7 +332,7 @@ def gae_application(environ, start_response):
     errors = []
     for i in xrange(int(kwargs.get('fetchmax', FetchMax))):
         try:
-            response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=False, follow_redirects=False, deadline=deadline, validate_certificate=False)
+            response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=False, follow_redirects=False, deadline=deadline, validate_certificate=validate_certificate)
             break
         except apiproxy_errors.OverQuotaError as e:
             time.sleep(5)
