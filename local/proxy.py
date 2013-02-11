@@ -1455,7 +1455,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 response = self.urlfetch(self.method, self.path, self.headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
                 logging.info('%s:%s "%s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
             except socket.error as e:
-                if e.reason[0] not in (11004, 10051, 10060, 'timed out', 10054):
+                if e[0] not in (11004, 10051, 10060, 'timed out', 10054):
                     raise
             except Exception as e:
                 logging.exception('error: %s', e)
