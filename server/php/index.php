@@ -1,11 +1,15 @@
 <?php
 
+// Note:
+//     Please try to use the https url to bypass keyword filtering.
 // Contributor:
-//      Phus Lu        <phus.lu@gmail.com>
+//     Phus Lu        <phus.lu@gmail.com>
 
 $__version__  = '2.1.11';
 $__password__ = '';
 $__timeout__  = 20;
+$__status__ = 0;
+$__xorchar__ = '';
 
 function decode_request($data) {
     list($headers_length) = array_values(unpack('n', substr($data, 0, 2)));
@@ -90,6 +94,7 @@ function header_function($ch, $header) {
 
 function write_function($ch, $body) {
     echo $body;
+    #echo $body ^ str_repeat('g', strlen($body));
     return strlen($body);
 }
 
@@ -104,6 +109,10 @@ function post()
             echo '403 Forbidden';
             exit(-1);
         }
+    }
+
+    if (!isset($kwargs['xorchar']) && $kwargs['xorchar']) {
+        $GLOBALS['__xorchar__'] = $kwargs['xorchar'];
     }
 
     if ($body) {

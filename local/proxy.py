@@ -1413,6 +1413,8 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     skip_headers = http.skip_headers
+    #xorchar = random.choice(kwargs.get('password', 'goagent'))
+    #kwargs['xorchar'] = xorchar
     metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n'%(k,v) for k,v in kwargs.iteritems() if v), ''.join('%s:%s\n'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
@@ -1421,8 +1423,10 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if 'x-status' in response.msg:
         response.status = int(response.msg['x-status'])
         del response.msg['x-status']
-    if 'status' in response.msg:
-        response.status = int(response.msg['status'].split()[0])
+    # response_read = response.read
+    # if 200 <= response.app_status < 400:
+    #     ordchar = ord('g') #ord(xorchar)
+    #     response.read = lambda n:''.join(chr(ord(c)^ordchar) for c in response_read(n))
     return response
 
 class PAASProxyHandler(GAEProxyHandler):
@@ -1466,7 +1470,7 @@ class PAASProxyHandler(GAEProxyHandler):
             wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
 
             while 1:
-                data = response.read(8192)
+                data = response.read(32768)
                 if not data:
                     break
                 wfile.write(data)
@@ -1750,6 +1754,8 @@ def pre_start():
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
+    if common.PAAS_ENABLE and not common.PAAS_FETCHSERVER.startswith('https'):
+        logging.warning('Please try to use %r as PAAS fetchserver', common.PAAS_FETCHSERVER.replace('http://', 'https://'))
 
 def main():
     global __file__
