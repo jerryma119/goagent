@@ -475,7 +475,7 @@ class HTTP(object):
                 if not self.ssl_validate:
                     ssl_sock = ssl.wrap_socket(sock)
                 else:
-                    ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs='cacerts.txt')
+                    ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs='cacert.pem')
                 start_time = time.time()
                 ssl_sock.connect(address)
                 self.ssl_connection_time[address] = time.time() - start_time
