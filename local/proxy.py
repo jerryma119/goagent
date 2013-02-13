@@ -1755,8 +1755,9 @@ def pre_start():
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
-    if common.PAAS_ENABLE and not common.PAAS_FETCHSERVER.startswith('https'):
-        logging.warning('Please try to use %r as PAAS fetchserver', common.PAAS_FETCHSERVER.replace('http://', 'https://'))
+    if common.PAAS_ENABLE:
+        if common.PAAS_FETCHSERVER.startswith('http://') and not common.PAAS_PASSWORD:
+            logging.warning('Dont forget set your PAAS fetchserver password or use https')
 
 def main():
     global __file__
