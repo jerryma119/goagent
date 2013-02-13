@@ -359,8 +359,8 @@ def gae_application(environ, start_response):
                 headers['Range'] = 'bytes=%s-%d' % (start, start+int(kwargs.get('fetchmaxsize', FetchMaxSize)))
             deadline = Deadline * 2
         except urlfetch.SSLCertificateError as e:
-            errors.append('SSLCertificateError(%r, %r), should [gae]validate=0 ?' % (url, e))
-            logging.error('SSLCertificateError(deadline=%s, url=%r)', deadline, url)
+            errors.append('%r, should validate=0 ?' % e)
+            logging.error('%r, deadline=%s', e, deadline)
         except Exception as e:
             errors.append(str(e))
             if i==0 and method=='GET':
