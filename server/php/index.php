@@ -2,6 +2,7 @@
 
 // Note:
 //     Please try to use the https url to bypass keyword filtering.
+//     Otherwise, dont forgot set [paas]passowrd in proxy.ini
 // Contributor:
 //     Phus Lu        <phus.lu@gmail.com>
 
@@ -118,14 +119,20 @@ function post()
         $GLOBALS['__xorchar__'] = $kwargs['xorchar'];
     }
 
+    $curl_opt = array();
+
+    $header_array = array();
     if ($body) {
         $headers['Content-Length'] = strval(strlen($body));
     }
     $headers['Connection'] = 'close';
+    foreach ($headers as $key => $value) {
+        if ($key) {
+            $header_array[] = join('-', array_map('ucfirst', explode('-', $key))).': '.$value;
+        }
+    }
 
-    $timeout = $GLOBALS['__timeout__'];
-
-    $curl_opt = array();
+    $curl_opt[CURLOPT_HTTPHEADER] = $header_array;
 
     $curl_opt[CURLOPT_RETURNTRANSFER] = true;
     $curl_opt[CURLOPT_BINARYTRANSFER] = true;
@@ -138,11 +145,16 @@ function post()
     $curl_opt[CURLOPT_FAILONERROR]    = false;
     $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
 
-    $curl_opt[CURLOPT_CONNECTTIMEOUT] = $timeout;
-    $curl_opt[CURLOPT_TIMEOUT]        = $timeout;
+    $curl_opt[CURLOPT_CONNECTTIMEOUT] = $GLOBALS['__timeout__'];
+    $curl_opt[CURLOPT_TIMEOUT]        = $GLOBALS['__timeout__'];
 
-    $curl_opt[CURLOPT_SSL_VERIFYPEER] = false;
-    $curl_opt[CURLOPT_SSL_VERIFYHOST] = false;
+    if (isset($kwargs['validate']) && strval($kwargs['validate'])) {
+        $curl_opt[CURLOPT_SSL_VERIFYPEER] = true;
+        $curl_opt[CURLOPT_SSL_VERIFYHOST] = true;
+    } else {
+        $curl_opt[CURLOPT_SSL_VERIFYPEER] = false;
+        $curl_opt[CURLOPT_SSL_VERIFYHOST] = false;
+    }
 
     switch (strtoupper($method)) {
         case 'HEAD':
@@ -166,19 +178,12 @@ function post()
             exit(-1);
     }
 
-    $header_array = array();
-    foreach ($headers as $key => $value) {
-        if ($key) {
-            $header_array[] = join('-', array_map('ucfirst', explode('-', $key))).': '.$value;
-        }
-    }
-    $curl_opt[CURLOPT_HTTPHEADER] = $header_array;
-
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
     $ret = curl_exec($ch);
     $errno = curl_errno($ch);
-    if ($errno && !isset($GLOBALS['__status__'])) {
+    if ($errno && !$GLOBALS['__status__']) {
+        header('HTTP/1.1 502 Bad Gateway');
         echo error_html("cURL($errno)", "PHP Urlfetch Error: $method", curl_error($ch));
     }
     curl_close($ch);

@@ -731,6 +731,7 @@ class Common(object):
         self.PAAS_ENABLE           = self.CONFIG.getint('paas', 'enable')
         self.PAAS_LISTEN           = self.CONFIG.get('paas', 'listen')
         self.PAAS_PASSWORD         = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
+        self.PAAS_VALIDATE          = self.CONFIG.getint('paas', 'validate')
         self.PAAS_FETCHSERVER      = self.CONFIG.get('paas', 'fetchserver')
 
         self.PROXY_ENABLE         = self.CONFIG.getint('proxy', 'enable')
@@ -1415,6 +1416,8 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     skip_headers = http.skip_headers
     if 'xorchar' not in kwargs and fetchserver.startswith('http://'):
         kwargs['xorchar'] = random.choice(kwargs.get('password') or 'goagent')
+    if common.PAAS_VALIDATE:
+        kwargs['validate'] = 1
     metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n'%(k,v) for k,v in kwargs.iteritems() if v), ''.join('%s:%s\n'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
