@@ -1413,7 +1413,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     skip_headers = http.skip_headers
-    if 'xorchar' not in kwargs:
+    if 'xorchar' not in kwargs and fetchserver.startswith('http://'):
         kwargs['xorchar'] = random.choice(kwargs.get('password') or 'goagent')
     metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n'%(k,v) for k,v in kwargs.iteritems() if v), ''.join('%s:%s\n'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
@@ -1425,7 +1425,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.status = int(response.msg['x-status'])
         del response.msg['x-status']
     response_read = response.read
-    if 200 <= response.app_status < 400:
+    if 'xorchar' in kwargs and 200 <= response.app_status < 400:
         ordchar = ord(kwargs['xorchar'])
         response.read = lambda n:''.join(chr(ord(c)^ordchar) for c in response_read(n))
     return response

@@ -103,8 +103,6 @@ function write_function($ch, $body) {
 
 function post()
 {
-    global $__xorchar__;
-
     list($method, $url, $headers, $kwargs, $body) = @decode_request(@file_get_contents('php://input'));
 
     $password = $GLOBALS['__password__'];
