@@ -1413,20 +1413,21 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     skip_headers = http.skip_headers
-    #xorchar = random.choice(kwargs.get('password', 'goagent'))
-    #kwargs['xorchar'] = xorchar
+    if 'xorchar' not in kwargs:
+        kwargs['xorchar'] = random.choice(kwargs.get('password') or 'goagent')
     metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n'%(k,v) for k,v in kwargs.iteritems() if v), ''.join('%s:%s\n'%(k,v) for k,v in headers.iteritems() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+    fetchserver += '?%s' % random.random()
     response = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
     response.app_status = response.status
     if 'x-status' in response.msg:
         response.status = int(response.msg['x-status'])
         del response.msg['x-status']
-    # response_read = response.read
-    # if 200 <= response.app_status < 400:
-    #     ordchar = ord('g') #ord(xorchar)
-    #     response.read = lambda n:''.join(chr(ord(c)^ordchar) for c in response_read(n))
+    response_read = response.read
+    if 200 <= response.app_status < 400:
+        ordchar = ord(kwargs['xorchar'])
+        response.read = lambda n:''.join(chr(ord(c)^ordchar) for c in response_read(n))
     return response
 
 class PAASProxyHandler(GAEProxyHandler):

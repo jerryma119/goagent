@@ -93,13 +93,18 @@ function header_function($ch, $header) {
 }
 
 function write_function($ch, $body) {
-    echo $body;
-    #echo $body ^ str_repeat('g', strlen($body));
+    if ($GLOBALS['__xorchar__']) {
+        echo $body ^ str_repeat($GLOBALS['__xorchar__'], strlen($body));
+    } else {
+        echo $body;
+    }
     return strlen($body);
 }
 
 function post()
 {
+    global $__xorchar__;
+
     list($method, $url, $headers, $kwargs, $body) = @decode_request(@file_get_contents('php://input'));
 
     $password = $GLOBALS['__password__'];
@@ -111,7 +116,7 @@ function post()
         }
     }
 
-    if (!isset($kwargs['xorchar']) && $kwargs['xorchar']) {
+    if (isset($kwargs['xorchar'])) {
         $GLOBALS['__xorchar__'] = $kwargs['xorchar'];
     }
 

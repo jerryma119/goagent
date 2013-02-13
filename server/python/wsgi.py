@@ -241,6 +241,7 @@ def paas_application(environ, start_response):
         raise StopIteration
 
     timeout = Deadline
+    xorchar = ord(kwargs.get('xorchar') or '\x00')
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
@@ -266,7 +267,10 @@ def paas_application(environ, start_response):
                 if not data:
                     response.close()
                     break
-                yield data
+                if xorchar:
+                    yield ''.join(chr(ord(x)^xorchar) for x in data)
+                else:
+                    yield data
         except httplib.HTTPException as e:
             raise
 
