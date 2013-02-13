@@ -1,1 +1,1 @@
-gevent
+-e git://github.com/SiteSupport/gevent.git@1.0rc2#egg=gevent
