@@ -190,7 +190,8 @@ function post()
 }
 
 function get() {
-    include 'p.php';
+    $domain = preg_replace('/.*\\.(.+\\..+)$/', '$1', $_SERVER['HTTP_HOST']);
+    header('Location: http://www.' . $domain);
 }
 
 function main() {
