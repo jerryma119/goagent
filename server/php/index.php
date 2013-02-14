@@ -106,9 +106,8 @@ function post()
 {
     list($method, $url, $headers, $kwargs, $body) = @decode_request(@file_get_contents('php://input'));
 
-    $password = $GLOBALS['__password__'];
-    if ($password) {
-        if (!isset($kwargs['password']) || $password != $kwargs['password']) {
+    if ($GLOBALS['__password__']) {
+        if (!isset($kwargs['password']) || $GLOBALS['__password__'] != $kwargs['password']) {
             header("HTTP/1.0 403 Forbidden");
             echo '403 Forbidden';
             exit(-1);
@@ -148,7 +147,7 @@ function post()
     $curl_opt[CURLOPT_CONNECTTIMEOUT] = $GLOBALS['__timeout__'];
     $curl_opt[CURLOPT_TIMEOUT]        = $GLOBALS['__timeout__'];
 
-    if (isset($kwargs['validate']) && strval($kwargs['validate'])) {
+    if (isset($kwargs['validate']) && @strval($kwargs['validate'])) {
         $curl_opt[CURLOPT_SSL_VERIFYPEER] = true;
         $curl_opt[CURLOPT_SSL_VERIFYHOST] = true;
     } else {
@@ -180,7 +179,7 @@ function post()
 
     $ch = curl_init($url);
     curl_setopt_array($ch, $curl_opt);
-    $ret = curl_exec($ch);
+    curl_exec($ch);
     $errno = curl_errno($ch);
     if ($errno && !$GLOBALS['__status__']) {
         header('HTTP/1.1 502 Bad Gateway');
@@ -190,8 +189,13 @@ function post()
 }
 
 function get() {
-    $domain = preg_replace('/.*\\.(.+\\..+)$/', '$1', $_SERVER['HTTP_HOST']);
-    header('Location: http://www.' . $domain);
+    $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : $_SERVER['SERVER_NAME'];
+    $domain = preg_replace('/.*\\.(.+\\..+)$/', '$1', $host);
+    if ($host && $host != $domain && $host != 'www'.$domain) {
+        header('Location: http://www.' . $domain);
+    } else {
+        header('Location: https://www.google.com');
+    }
 }
 
 function main() {
