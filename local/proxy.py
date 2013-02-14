@@ -444,11 +444,14 @@ class HTTP(object):
             for i in xrange(count):
                 queue.get()
         result = None
-        connection_time = self.ssl_connection_time if port == 443 else self.connection_time
         addresses = [(x, port) for x in self.dns_resolve(host)]
+        if port == 443:
+            get_connection_time = lambda addr:self.ssl_connection_time.get(addr) or self.connection_time.get(addr)
+        else:
+            get_connection_time = self.connection_time.get
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
-            addrs = heapq.nsmallest(window, addresses, key=connection_time.get) + random.sample(addresses, window)
+            addrs = heapq.nsmallest(window, addresses, key=get_connection_time) + random.sample(addresses, window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_connection, addr, timeout, queue)
@@ -473,12 +476,16 @@ class HTTP(object):
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 sock.settimeout(timeout or self.max_timeout)
                 if not self.ssl_validate:
-                    ssl_sock = ssl.wrap_socket(sock)
+                    ssl_sock = ssl.wrap_socket(sock, do_handshake_on_connect=False)
                 else:
-                    ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs='cacert.pem')
+                    ssl_sock = ssl.wrap_socket(sock, do_handshake_on_connect=False, cert_reqs=ssl.CERT_REQUIRED, ca_certs='cacert.pem')
                 start_time = time.time()
                 ssl_sock.connect(address)
-                self.ssl_connection_time[address] = time.time() - start_time
+                connected_time = time.time()
+                ssl_sock.do_handshake()
+                handshaked_time = time.time()
+                self.connection_time[address] = connected_time - start_time
+                self.ssl_connection_time[address] = handshaked_time - start_time
                 ssl_sock.sock = sock
                 if self.ssl_validate and host.endswith('.appspot.com'):
                     cert = ssl_sock.getpeercert()
@@ -497,11 +504,11 @@ class HTTP(object):
             for i in xrange(count):
                 queue.get()
         result = None
-        connection_time = self.ssl_connection_time
         addresses = [(x, port) for x in self.dns_resolve(host)]
+        get_connection_time = self.ssl_connection_time.get
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
-            addrs = heapq.nsmallest(window, addresses, key=connection_time.get) + random.sample(addresses, window)
+            addrs = heapq.nsmallest(window, addresses, key=get_connection_time) + random.sample(addresses, window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_ssl_connection, addr, timeout, queue)
@@ -1149,6 +1156,63 @@ class GAEProxyHandler(object):
                         common.GOOGLE_HOSTS = list(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
                         common.GOOGLE_WITHGAE = set(common.CONFIG.get('google_hk', 'withgae').split('|'))
             self._update_google_iplist()
+        return True
+
+    def rangefetch(self, m, data):
+        m = map(int, m.groups())
+        start = m[0]
+        end = m[2] - 1
+        if 'range' in self.headers:
+            req_range = re.search(r'(\d+)?-(\d+)?', self.headers['range'])
+            if req_range:
+                req_range = [u and int(u) for u in req_range.groups()]
+                if req_range[0] is None:
+                    if req_range[1] is not None:
+                        if m[1]-m[0]+1==req_range[1] and m[1]+1==m[2]:
+                            return False
+                        if m[2] >= req_range[1]:
+                            start = m[2] - req_range[1]
+                else:
+                    start = req_range[0]
+                    if req_range[1] is not None:
+                        if m[0]==req_range[0] and m[1]==req_range[1]:
+                            return False
+                        if end > req_range[1]:
+                            end = req_range[1]
+            data['headers']['content-range'] = 'bytes %d-%d/%d' % (start, end, m[2])
+        elif start == 0:
+            data['code'] = 200
+            del data['headers']['content-range']
+        data['headers']['content-length'] = end-start+1
+        partSize = self.part_size
+
+        respline = '%s %d %s\r\n' % (self.protocol_version, data['code'], '')
+        strheaders = ''.join('%s: %s\r\n' % ('-'.join(x.title() for x in k.split('-')), v) for k, v in data['headers'].iteritems())
+        self.wfile.write(respline+strheaders+'\r\n')
+
+        if start == m[0]:
+            self.wfile.write(data['content'])
+            start = m[1] + 1
+            partSize = len(data['content'])
+        failed = 0
+        logging.info('>>>>>>>>>>>>>>> Range Fetch started')
+        while start <= end:
+            self.headers['Range'] = 'bytes=%d-%d' % (start, start + partSize - 1)
+            retval, data = self.fetch(self.headers['host'], self.path, '', self.command, self.headers)
+            if retval != 0:
+                time.sleep(4)
+                continue
+            m = re.search(r'bytes\s+(\d+)-(\d+)/(\d+)', data['headers'].get('content-range',''))
+            if not m or int(m.group(1))!=start:
+                if failed >= 1:
+                    break
+                failed += 1
+                continue
+            start = int(m.group(2)) + 1
+            logging.info('>>>>>>>>>>>>>>> %s %d' % (data['headers']['content-range'], end))
+            failed = 0
+            self.wfile.write(data['content'])
+        logging.info('>>>>>>>>>>>>>>> Range Fetch ended')
         return True
 
     def handle(self):
