@@ -1515,6 +1515,8 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     app_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     fetchserver += '?%s' % random.random()
     response = http.request('POST', fetchserver, app_payload, {'Content-Length':len(app_payload)}, crlf=0)
+    if not response:
+        raise socket.error(10054, 'urlfetch %r return None' % url)
     response.app_status = response.status
     if 'x-status' in response.msg:
         response.status = int(response.msg['x-status'])
@@ -1545,18 +1547,34 @@ class PAASProxyHandler(GAEProxyHandler):
 
     def handle_method(self):
         try:
-            try:
-                content_length = int(self.headers.get('Content-Length', 0))
-                payload = self.rfile.read(content_length) if content_length else ''
-                response = self.urlfetch(self.method, self.path, self.headers, payload, common.PAAS_FETCHSERVER, password=common.PAAS_PASSWORD)
-                logging.info('%s:%s "%s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
-            except socket.error as e:
-                if e[0] not in (11004, 10051, 10060, 'timed out', 10054):
-                    raise
-            except Exception as e:
-                logging.exception('error: %s', e)
-                raise
+            payload = ''
+            if 'Content-Length' in self.headers:
+                try:
+                    payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                except (EOFError, socket.error) as e:
+                    logging.error('handle_method read payload failed:%s', e)
+                    return
+            response = None
+            errors = []
+            for i in xrange(common.FETCHMAX_LOCAL):
+                try:
+                    kwargs = {}
+                    if common.PAAS_PASSWORD:
+                        kwargs['password'] = common.PAAS_PASSWORD
+                    if common.PAAS_VALIDATE:
+                        kwargs['validate'] = 1
+                    response = self.urlfetch(self.method, self.path, self.headers, payload, common.PAAS_FETCHSERVER, **kwargs)
+                    if response:
+                        break
+                except Exception as e:
+                    errors.append(e)
 
+            if response is None:
+                error_html = self._error_html('502', 'Local PAAS URLFetch failed', str(errors))
+                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + error_html)
+                return
+
+            logging.info('%s:%s "%s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
             if response.app_status in (400, 405):
                 http.crlf = 0
 
