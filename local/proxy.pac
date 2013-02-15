@@ -9,10 +9,16 @@ function FindProxyForURL(url, host) {
             || shExpMatch(url, "*://*.googlecode.com/*")
             || shExpMatch(url, "*://*.googleusercontent.com/*")
             || shExpMatch(url, "*://*.gstatic.com/*")
-            || shExpMatch(url, "*://goo.gl/*")
-            || shExpMatch(url, "*://*.twimg.com/*")
             || shExpMatch(url, "*://*.wikipedia.org/*")
+            || shExpMatch(url, "*://*.twimg.com/*")
             || shExpMatch(url, "*://*.ytimg.com/*")
+            || shExpMatch(url, "*://t.co/*")
+            || shExpMatch(url, "*://bit.ly/*")
+            || shExpMatch(url, "*://goo.gl/*")
+            || shExpMatch(url, "*://fb.me/*")
+            || shExpMatch(url, "*://wp.me/*")
+            || shExpMatch(url, "*://j.mp/*")
+            || shExpMatch(url, "*://ow.ly/*")
         )
     {
         return 'PROXY 127.0.0.1:8087';
