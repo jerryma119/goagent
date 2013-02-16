@@ -19,6 +19,8 @@ function FindProxyForURL(url, host) {
             || shExpMatch(url, "*://wp.me/*")
             || shExpMatch(url, "*://j.mp/*")
             || shExpMatch(url, "*://ow.ly/*")
+            || shExpMatch(url, "*://po.st/*")
+            || shExpMatch(url, "*://bbc.in/*")
         )
     {
         return 'PROXY 127.0.0.1:8087';
