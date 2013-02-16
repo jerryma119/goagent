@@ -1270,7 +1270,7 @@ class GAEProxyHandler(object):
                     self.sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % urls[0])
                     return
             elif self.path.startswith(common.GOOGLE_FORCEHTTPS):
-                self.sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % self.path.replace('http://', 'https://'))
+                self.sock.sendall('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % self.path.replace('http://', 'https://', 1))
                 return
             else:
                 if host not in http.dns:
