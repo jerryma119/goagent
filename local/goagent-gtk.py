@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '1.1'
+__version__ = '1.2'
 
 import sys
 import os
@@ -23,30 +23,59 @@ try:
 except ImportError:
     sys.exit(gtk.MessageDialog (None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, u'\u8bf7\u5b89\u88c5 python-vte').run())
 
+def should_visible():
+    import ConfigParser
+    ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
+    config = ConfigParser.ConfigParser()
+    config.read('proxy.ini')
+    visible = config.has_option('listen', 'visible') and config.getint('listen', 'visible')
+    return visible
+
+#gtk.main_quit = lambda: None
+
 class GoAgentAppIndicator:
 
-    def __init__(self, window):
-        self.window = window
+    command = ['python', 'proxy.py']
 
-        self.ind = appindicator.Indicator("GoAgent", "indicator-messages", appindicator.CATEGORY_APPLICATION_STATUS)
+    def __init__(self, window, terminal):
+        self.window = window
+        self.terminal = terminal
+
+        self.window.add(terminal)
+        self.childpid = self.terminal.fork_command(self.command[0], self.command, os.getcwd())
+        if self.childpid > 0:
+            self.childexited = self.terminal.connect('child-exited', self.on_child_exited);
+            self.window.connect('delete-event', lambda w,e: gtk.main_quit())
+        else:
+            self.childexited = None
+
+        if should_visible():
+            self.window.show_all()
+
+        self.ind = appindicator.Indicator('GoAgent', 'indicator-messages', appindicator.CATEGORY_APPLICATION_STATUS)
         self.ind.set_status(appindicator.STATUS_ACTIVE)
-        self.ind.set_attention_icon("indicator-messages-new")
+        self.ind.set_attention_icon('indicator-messages-new')
         self.ind.set_icon(os.path.join(os.path.abspath(os.path.dirname(__file__)), 'logo.png'))
 
         self.menu = gtk.Menu()
 
         item = gtk.MenuItem(u'\u663e\u793a')
-        item.connect("activate", self.show)
+        item.connect('activate', self.on_show)
         item.show()
         self.menu.append(item)
 
         item = gtk.MenuItem(u'\u9690\u85cf')
-        item.connect("activate", self.hide)
+        item.connect('activate', self.on_hide)
+        item.show()
+        self.menu.append(item)
+
+        item = gtk.MenuItem(u'\u91cd\u65b0\u8f7d\u5165')
+        item.connect('activate', self.on_reload)
         item.show()
         self.menu.append(item)
 
         item = gtk.MenuItem(u'\u9000\u51fa')
-        item.connect("activate", self.quit)
+        item.connect('activate', self.on_quit)
         item.show()
         self.menu.append(item)
 
@@ -54,22 +83,27 @@ class GoAgentAppIndicator:
 
         self.ind.set_menu(self.menu)
 
-    def show(self, widget, data=None):
+    def on_child_exited(self, term):
+        if self.terminal.get_child_exit_status() == 0:
+            gtk.main_quit()
+
+    def on_show(self, widget, data=None):
         self.window.show_all()
         self.window.present()
 
-    def hide(self, widget, data=None):
+    def on_hide(self, widget, data=None):
         self.window.hide_all()
 
-    def quit(self, widget, data=None):
-        gtk.main_quit()
+    def on_reload(self, widget, data=None):
+        if self.childexited:
+            self.terminal.disconnect(self.childexited)
+        os.system('kill -9 %s' % self.childpid)
+        self.on_show(widget, data)
+        self.childpid = self.terminal.fork_command(self.command[0], self.command, os.getcwd())
+        self.childexited = self.terminal.connect('child-exited', lambda term:gtk.main_quit());
 
-def get_config():
-    import ConfigParser
-    ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
-    config = ConfigParser.ConfigParser()
-    config.read('proxy.ini')
-    return config
+    def on_quit(self, widget, data=None):
+        gtk.main_quit()
 
 def main():
     global __file__
@@ -77,17 +111,10 @@ def main():
     if os.path.islink(__file__):
         __file__ = getattr(os, 'readlink', lambda x:x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    command = ['python', 'proxy.py']
-    v = vte.Terminal()
-    v.connect ("child-exited", lambda term: gtk.main_quit())
-    v.fork_command(command[0], command, os.getcwd())
+
     window = gtk.Window()
-    window.add(v)
-    window.connect('delete-event', lambda window, event: gtk.main_quit())
-    config = get_config()
-    if config.getint('listen', 'visible'):
-        window.show_all()
-    indicator = GoAgentAppIndicator(window)
+    terminal = vte.Terminal()
+    indicator = GoAgentAppIndicator(window, terminal)
     gtk.main()
 
 if __name__ == '__main__':
