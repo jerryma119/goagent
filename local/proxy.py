@@ -1481,7 +1481,10 @@ class GAEProxyHandler(object):
                 raise
         finally:
             if self.__realsock:
-                self.__realsock.shutdown(socket.SHUT_WR)
+                try:
+                    self.__realsock.shutdown(socket.SHUT_WR)
+                except socket.error:
+                    pass
                 self.__realsock.close()
             if self.__realrfile:
                 self.__realrfile.close()

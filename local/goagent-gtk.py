@@ -3,12 +3,13 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '1.2'
+__version__ = '1.3'
 
 import sys
 import os
 import re
 import time
+import platform
 
 import pygtk
 pygtk.require('2.0')
@@ -22,6 +23,26 @@ try:
     import vte
 except ImportError:
     sys.exit(gtk.MessageDialog (None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, u'\u8bf7\u5b89\u88c5 python-vte').run())
+
+def drop_desktop():
+    filename = os.path.abspath(__file__)
+    dirname = os.path.dirname(filename)
+    DESKTOP_FILE = '''\
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=GoAgent GTK
+Comment=GoAgent GTK Shell
+Categories=GTK;Utility;
+Exec=/usr/bin/env python "%s"
+Icon=%s/logo.png
+Terminal=false
+Type=Application''' % (filename, dirname)
+    for dirname in map(os.path.expanduser, ['~/Desktop', u'~/桌面']):
+        if os.path.isdir(dirname):
+            filename = os.path.join(dirname, 'goagent-gtk.desktop')
+            with open(filename, 'w') as fp:
+                fp.write(DESKTOP_FILE)
+            os.chmod(filename, 0755)
 
 def should_visible():
     import ConfigParser
@@ -111,6 +132,9 @@ def main():
     if os.path.islink(__file__):
         __file__ = getattr(os, 'readlink', lambda x:x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+    if platform.dist()[0] == 'Ubuntu':
+        drop_desktop()
 
     window = gtk.Window()
     terminal = vte.Terminal()
