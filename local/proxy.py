@@ -967,7 +967,8 @@ class RangeFetch(object):
         self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.items())))
 
         queues = [gevent.queue.Queue() for _ in range(end+1, length, self.maxsize)]
-        gevent.spawn_later(0.1, self._poolfetch, min(len(queues), self.threads), queues, end, length, self.maxsize)
+        if queues:
+            gevent.spawn_later(0.1, self._poolfetch, min(len(queues), self.threads), queues, end, length, self.maxsize)
 
         try:
             left = end-start+1
