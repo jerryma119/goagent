@@ -879,6 +879,7 @@ class Common(object):
 
 common = Common()
 http   = HTTP(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE or common.PAAS_VALIDATE, proxy=common.proxy)
+http.dns.update(common.HOSTS)
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -1148,7 +1149,6 @@ class GAEProxyHandler(object):
 
     def first_run(self):
         """GAEProxyHandler first_run, init domain/iplist map"""
-        http.dns.update(common.HOSTS)
         if common.GAE_PROFILE == 'google_ipv6' or common.PROXY_ENABLE:
             for appid in common.GAE_APPIDS:
                 http.dns['%s.appspot.com' % appid] = http.dns.default_factory(common.GOOGLE_HOSTS)
