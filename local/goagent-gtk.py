@@ -153,6 +153,7 @@ class GoAgentAppIndicator:
     def on_show(self, widget, data=None):
         self.window.show_all()
         self.window.present()
+        self.terminal.feed_child('\r\n')
 
     def on_hide(self, widget, data=None):
         self.window.hide_all()
