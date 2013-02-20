@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '1.3'
+__version__ = '1.4'
 
 import sys
 import os
@@ -12,11 +12,13 @@ import time
 import thread
 import platform
 
-import pygtk
-pygtk.require('2.0')
-import gtk
-gtk.gdk.threads_init()
-
+try:
+    import pygtk
+    pygtk.require('2.0')
+    import gtk
+    gtk.gdk.threads_init()
+except Exception:
+    sys.exit(os.system(u'gdialog --title "GoAgent GTK" --msgbox "\u8bf7\u5b89\u88c5 python-gtk2" 15 60'.encode(sys.getfilesystemencoding() or sys.getdefaultencoding(), 'replace')))
 try:
     import pynotify
     pynotify.init('GoAgent Notify')
@@ -153,7 +155,7 @@ class GoAgentAppIndicator:
     def on_show(self, widget, data=None):
         self.window.show_all()
         self.window.present()
-        self.terminal.feed_child('\r\n')
+        self.terminal.feed('\r')
 
     def on_hide(self, widget, data=None):
         self.window.hide_all()
