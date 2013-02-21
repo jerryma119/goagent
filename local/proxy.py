@@ -1245,12 +1245,12 @@ class GAEProxyHandler(object):
         return True
 
     def handle(self):
+        self.rfile = self.sock.makefile('rb', self.bufsize)
         try:
-            self.rfile = self.sock.makefile('rb', self.bufsize)
             self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
             getattr(self, 'handle_%s' % self.method.lower(), self.handle_method)()
         except socket.error as e:
-            if e[0] not in (10053, errno.EPIPE):
+            if e[0] not in (10053, 10054, errno.EPIPE):
                 raise
 
     def handle_method(self):
@@ -1307,11 +1307,11 @@ class GAEProxyHandler(object):
             wfile.write(response.read())
             response.close()
         except socket.error as e:
-            if e[0] not in (10053, errno.EPIPE):
-                raise
-            elif e[0] in (10054, 10063):
+            if e[0] in (10054, 10063):
                 logging.warn('http.request "%s %s" failed:%s, try addto `withgae`', self.method, self.path, e)
-                common.GOOGLE_WITHGAE.add(host)
+                common.GOOGLE_WITHGAE.add(re.sub(r':\d+$', '', urlparse.urlparse(self.path).netloc))
+            elif e[0] not in (10053, errno.EPIPE):
+                raise
         except Exception as e:
             logging.warn('GAEProxyHandler direct(%s) Error', host)
             raise
@@ -1466,7 +1466,8 @@ class GAEProxyHandler(object):
         try:
             ssl_sock = ssl.wrap_socket(self.sock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
         except Exception as e:
-            logging.error('ssl.wrap_socket(self.sock=%r) failed: %s', self.sock, e)
+            if e[0] not in (10053, 10054):
+                logging.error('ssl.wrap_socket(self.sock=%r) failed: %s', self.sock, e)
             return
         self.__realsock = self.sock
         self.__realrfile = self.rfile
@@ -1474,8 +1475,12 @@ class GAEProxyHandler(object):
         self.rfile = self.sock.makefile('rb', self.bufsize)
         try:
             self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
-            if self.path[0] == '/' and host:
-                self.path = 'https://%s%s' % (self.headers['Host'], self.path)
+        except socket.error as e:
+            if e[0] not in (10053, 10054, errno.EPIPE):
+                raise
+        if self.path[0] == '/' and host:
+            self.path = 'https://%s%s' % (self.headers['Host'], self.path)
+        try:
             self.handle_method()
         except socket.error as e:
             if e[0] not in (10053, 10060, errno.EPIPE):
