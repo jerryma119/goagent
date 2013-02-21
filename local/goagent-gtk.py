@@ -46,13 +46,15 @@ def drop_desktop():
     DESKTOP_FILE = '''\
 #!/usr/bin/env xdg-open
 [Desktop Entry]
+Type=Application
 Name=GoAgent GTK
-Comment=GoAgent GTK Shell
-Categories=GTK;Utility;
+Comment=GoAgent GTK Launcher
+Categories=Network;Proxy;
 Exec=/usr/bin/env python "%s"
 Icon=%s/logo.png
 Terminal=false
-Type=Application''' % (filename, dirname)
+StartupNotify=true
+''' % (filename, dirname)
     for dirname in map(os.path.expanduser, ['~/Desktop', u'~/桌面']):
         if os.path.isdir(dirname):
             filename = os.path.join(dirname, 'goagent-gtk.desktop')
