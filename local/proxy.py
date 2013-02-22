@@ -845,7 +845,7 @@ class Common(object):
         self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
         self.LOVE_TIP             = [re.sub(r'\\u([0-9a-fA-F]{4})', lambda m:unichr(int(m.group(1), 16)), x) for x in self.CONFIG.get('love','tip').split('|')]
 
-        self.HOSTS                = dict((k, tuple(v.split('|')) if v else tuple()) for k, v in self.CONFIG.items('hosts'))
+        self.HOSTS                = dict((k, v.split('|') if v else []) for k, v in self.CONFIG.items('hosts'))
 
         random.shuffle(self.GAE_APPIDS)
         self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GOOGLE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
@@ -1556,6 +1556,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
     def handle_method(self):
         try:
+            host = self.headers.get('Host', '')
             payload = ''
             if 'Content-Length' in self.headers:
                 try:
@@ -1572,6 +1573,8 @@ class PAASProxyHandler(GAEProxyHandler):
                         kwargs['password'] = common.PAAS_PASSWORD
                     if common.PAAS_VALIDATE:
                         kwargs['validate'] = 1
+                    if common.CONFIG.has_option('hosts', host):
+                        kwargs['hostip'] = random.choice(http.dns_resolve(host))
                     response = self.urlfetch(self.method, self.path, self.headers, payload, common.PAAS_FETCHSERVER, **kwargs)
                     if response:
                         break

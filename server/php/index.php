@@ -118,6 +118,11 @@ function post()
         $GLOBALS['__xorchar__'] = $kwargs['xorchar'];
     }
 
+    if (isset($kwargs['hostip']) && isset($headers['Host'])) {
+        $ip = $kwargs['hostip'];
+        $url = preg_replace('#(.+://)([\w\.\-]+)#', '${1}'.$ip, $url);
+    }
+
     $curl_opt = array();
 
     $header_array = array();
