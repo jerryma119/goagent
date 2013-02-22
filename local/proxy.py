@@ -1546,7 +1546,7 @@ class PAASProxyHandler(GAEProxyHandler):
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
             logging.info('resolve common.PAAS_FETCHSERVER domain=%r to iplist', fetchhost)
-            fethhost_iplist = socket.gethostbyname_ex(fetchhost)[-1]
+            fethhost_iplist = http.dns_resolve(fetchhost)
             if len(fethhost_iplist) == 0:
                 logging.error('resolve %s domain return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
                 sys.exit(-1)
