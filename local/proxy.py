@@ -420,6 +420,25 @@ class HTTP(object):
             iplist += set(ips)
         return iplist
 
+    def wrap_socket(self, sock, **ssl_options):
+        if 'server_hostname' not in ssl_options:
+            return ssl.wrap_socket(sock, **ssl_options)
+        else:
+            if not getattr(ssl, 'HAS_SNI'):
+                del ssl_options['server_hostname']
+                return ssl.wrap_socket(sock, **ssl_options)
+            else:
+                context = ssl.SSLContext(ssl_options.get('ssl_version', ssl.PROTOCOL_SSLv23))
+                if 'certfile' in ssl_options:
+                    context.load_cert_chain(ssl_options['certfile'], ssl_options.get('keyfile', None))
+                if 'cert_reqs' in ssl_options:
+                    context.verify_mode = ssl_options['cert_reqs']
+                if 'ca_certs' in ssl_options:
+                    context.load_verify_locations(ssl_options['ca_certs'])
+                if 'ciphers' in ssl_options:
+                    context.set_ciphers(ssl_options['ciphers'])
+                return context.wrap_socket(sock, **ssl_options)
+
     def create_connection(self, (host, port), timeout=None, source_address=None):
         assert isinstance(port, int)
         def _create_connection(address, timeout, queue):
