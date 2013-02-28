@@ -1027,43 +1027,76 @@ class RangeFetch(object):
             headers = self.headers.copy()
             headers['Range'] = 'bytes=%d-%d' % (start, end)
             headers['Connection'] = 'close'
+            tqueue = gevent.queue.Queue()
+
+            data_error = False
             for i in xrange(self.retry):
                 fetchserver = random.choice(self.fetchservers)
                 response = self.urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
-                if response.app_status != 200:
-                    logging.warning('Range Fetch %r %s return %s', self.url, headers['Range'], response.app_status)
-                    time.sleep(5)
-                    continue
-                if 200 <= response.status < 300:
-                    break
-                elif 300 <= response.status < 400:
-                    self.url = response.getheader('Location')
-                    logging.info('Range Fetch Redirect(%r)', self.url)
-                    response.close()
-                    continue
+                if data_error:
+                    # logging.info('Retry #%i of %d-%d', i, start, end)
+                    tqueue.queue.clear()
+                    data_error = False
+
+                if response:
+                    if response.app_status != 200:
+                        logging.warning('Range Fetch %s return %s', headers['Range'], response.app_status)
+                        logging.warning("Retry %i of %i", i, self.retry)
+                        time.sleep(5)
+                        continue
+                    if 200 <= response.status < 300:
+                        content_range = response.getheader('Content-Range')
+                        if not content_range:
+                            logging.error('Range Fetch "%s %s" failed: response headers=%s', self.method, self.url, response.msg)
+                            logging.error("Retry %i of %i", i, self.retry)
+                            response.close()
+                            continue
+                            #return
+
+                        content_length = int(response.getheader('Content-Length', 0))
+                        logging.debug('>>>>>>>>>>>>>>> [thread %s] %s %s', id(gevent.getcurrent()), content_length, content_range)
+
+                        left = content_length
+
+                        while 1:
+                            try:
+                                data = response.read(min(self.bufsize, left))
+                            except Exception as e:
+                                # logging.warning("Response%s%s/%s(%s - %s): %s", type(e), response.status, response.reason, start, end, e)
+                                # logging.warning("Retry %i of %i", i, self.retry)
+                                response.close()
+                                data_error = True
+                                break
+                            if not data:
+                                response.close()
+                                tqueue.put(StopIteration)
+                                break
+                            else:
+                                tqueue.put(data)
+                                left -= len(data)
+
+                        if data_error:
+                            logging.error("SSL Error. Retry range fetch %i of %i", i, self.retry)
+                            continue
+                        else:
+                            while not tqueue.empty():
+                                queue.put(tqueue.get())
+                            break
+                    elif 300 <= response.status < 400:
+                        self.url = response.getheader('Location')
+                        Logging.info('Range Fetch Redirect(%r)', self.url)
+                        response.close()
+                        continue
+                    else:
+                        logging.error('Range Fetch %r return %s', self.url, response.status)
+                        response.close()
+                        time.sleep(5)
+                        continue
                 else:
-                    logging.error('Range Fetch %r return %s', self.url, response.status)
-                    response.close()
+                    logging.error('Range Fetch is None, retry %i of %i', i, self.retry)
                     time.sleep(5)
                     continue
 
-            content_range = response.getheader('Content-Range')
-            if not content_range:
-                logging.error('Range Fetch "%s %s" failed: response headers=%s', self.method, self.url, response.msg)
-                return
-            content_length = int(response.getheader('Content-Length',0))
-            logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', id(gevent.getcurrent()), content_length, content_range)
-
-            left = content_length
-            while 1:
-                data = response.read(min(self.bufsize, left))
-                if not data:
-                    response.close()
-                    queue.put(StopIteration)
-                    break
-                else:
-                    queue.put(data)
-                    left -= len(data)
         except Exception as e:
             logging.exception('_fetch error:%s', e)
             raise
