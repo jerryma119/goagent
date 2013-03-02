@@ -12,6 +12,7 @@
 #      Ming Bai       <mbbill@gmail.com>
 #      Bin Yu         <yubinlove1991@gmail.com>
 #      Zhang Youfu    <zhangyoufu@gmail.com>
+#      Harmony Meow   <harmony.meow@gmail.com>
 
 __version__ = '2.1.12'
 
@@ -19,10 +20,11 @@ import sys
 import os
 import glob
 
-sys.path += glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'python*.zip'))
+any(sys.path.append(x) for x in glob.glob('*.egg') if x not in sys.path)
 
 try:
     import gevent
+    import gevent.core
     import gevent.queue
     import gevent.monkey
     import gevent.coros
@@ -32,7 +34,11 @@ try:
     import gevent.timeout
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
-    sys.stderr.write('WARNING: python-gevent not installed. `https://github.com/SiteSupport/gevent/downloads`\n')
+    sys.stderr.write('WARNING: python-gevent not installed. \n')
+    if sys.platform.startswith('linux'):
+        sys.stderr.write('wget --no-check-certificate --header="Host: goagent.googlecode.com" https://www.google.cn/files/gevent-1.0dev-linux.egg\n')
+    else:
+        sys.stderr.write('sudo easy_install gevent')
     import Queue
     import thread
     import threading
