@@ -121,6 +121,7 @@ import heapq
 import re
 import traceback
 import random
+import shutil
 import base64
 import hashlib
 import fnmatch
@@ -222,7 +223,7 @@ class CertUtil(object):
         subj.localityName = 'Cernet'
         subj.organizationName = 'GoAgent'
         subj.organizationalUnitName = 'GoAgent Root'
-        subj.commonName = 'GoAgent'
+        subj.commonName = 'GoAgent CA'
         ca.gmtime_adj_notBefore(0)
         ca.gmtime_adj_notAfter(24 * 60 * 60 * 3652)
         ca.set_issuer(ca.get_subject())
@@ -348,19 +349,24 @@ class CertUtil(object):
     def check_ca():
         #Check CA exists
         capath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'CA.crt')
+        certdir = os.path.join(os.path.dirname(__file__), 'certs')
         if not os.path.exists(capath):
             if not OpenSSL:
                 logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
                 sys.exit(-1)
             if os.name == 'nt':
                 os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
-            [os.remove(os.path.join('certs', x)) for x in os.listdir('certs')]
+            if os.path.exists(certdir):
+                if os.path.isdir(certdir):
+                    shutil.rmtree(certdir)
+                else:
+                    os.remove(certdir)
+                os.mkdir(certdir)
             CertUtil.dump_ca('CA.key', 'CA.crt')
         #Check CA imported
         if CertUtil.import_ca(capath) != 0:
             logging.warning('GoAgent install certificate failed, Please run proxy.py by administrator/root/sudo')
         #Check Certs Dir
-        certdir = os.path.join(os.path.dirname(__file__), 'certs')
         if not os.path.exists(certdir):
             os.makedirs(certdir)
 
