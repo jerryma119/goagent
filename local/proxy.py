@@ -1084,7 +1084,7 @@ class RangeFetch(object):
                             break
                     elif 300 <= response.status < 400:
                         self.url = response.getheader('Location')
-                        Logging.info('Range Fetch Redirect(%r)', self.url)
+                        # Logging.info('Range Fetch Redirect(%r)', self.url)
                         response.close()
                         continue
                     else:
