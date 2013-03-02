@@ -130,7 +130,6 @@ import socket
 import ssl
 import select
 import httplib
-import urllib2
 import urlparse
 import ConfigParser
 try:
@@ -370,6 +369,28 @@ class CertUtil(object):
         if not os.path.exists(certdir):
             os.makedirs(certdir)
 
+class ProxyUtil(object):
+    """ProxyUtil module, based on urllib2"""
+
+    urllib2 = __import__('urllib.request', fromlist=['']) if sys.version[0] == '3' else __import__('urllib2')
+
+    @staticmethod
+    def parse_proxy(proxy):
+        urllib2 = ProxyUtil.urllib2
+        return urllib2._parse_proxy(proxy)
+
+    @staticmethod
+    def get_system_proxy():
+        urllib2 = ProxyUtil.urllib2
+        system_proxy = None
+        try:
+            proxies = (x for x in urllib2.build_opener().handlers if isinstance(x, urllib2.ProxyHandler)).next().proxies
+            system_proxy = proxies.get('https') or proxies.get('http') or None
+        except StopIteration:
+            pass
+        finally:
+            return system_proxy
+
 class HTTP(object):
     """HTTP Request Class"""
 
@@ -584,7 +605,7 @@ class HTTP(object):
     def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (str, unicode))
         logging.debug('create_connection_withproxy connect (%r, %r)', host, port)
-        scheme, username, password, address = urllib2._parse_proxy(proxy or self.proxy)
+        scheme, username, password, address = ProxyUtil.parse_proxy(proxy or self.proxy)
         try:
             try:
                 self.dns_resolve(host)
@@ -678,7 +699,7 @@ class HTTP(object):
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
         request_data += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
         if self.proxy:
-            _, username, password, _ = urllib2._parse_proxy(self.proxy)
+            _, username, password, _ = ProxyUtil.parse_proxy(self.proxy)
             if username and password:
                 request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
         request_data += '\r\n'
@@ -808,19 +829,15 @@ class Common(object):
         self.PROXY_PASSWROD       = self.CONFIG.get('proxy', 'password')
 
         if not self.PROXY_ENABLE and self.PROXY_AUTODETECT:
-            try:
-                proxies = (x for x in urllib2.build_opener().handlers if isinstance(x, urllib2.ProxyHandler)).next().proxies
-                proxy = proxies.get('https') or proxies.get('http') or ''
-                if self.LISTEN_IP not in proxy:
-                    scheme, username, password, address = urllib2._parse_proxy(proxy)
-                    proxyhost, _, proxyport = address.rpartition(':')
-                    self.PROXY_ENABLE   = 1
-                    self.PROXY_USERNAME = username
-                    self.PROXY_PASSWROD = password
-                    self.PROXY_HOST     = proxyhost
-                    self.PROXY_PORT     = int(proxyport)
-            except StopIteration:
-                pass
+            system_proxy = ProxyUtil.get_system_proxy()
+            if system_proxy and self.LISTEN_IP not in system_proxy:
+                scheme, username, password, address = ProxyUtil.parse_proxy(system_proxy)
+                proxyhost, _, proxyport = address.rpartition(':')
+                self.PROXY_ENABLE   = 1
+                self.PROXY_USERNAME = username
+                self.PROXY_PASSWROD = password
+                self.PROXY_HOST     = proxyhost
+                self.PROXY_PORT     = int(proxyport)
         if self.PROXY_ENABLE:
             self.GOOGLE_MODE = 'https'
             self.proxy = 'https://%s:%s@%s:%d' % (self.PROXY_USERNAME or '' , self.PROXY_PASSWROD or '', self.PROXY_HOST, self.PROXY_PORT)
@@ -1730,6 +1747,10 @@ class Autoproxy2Pac(object):
         self.default = default
         self.encoding = encoding
     def _fetch_rulelist(self):
+        try:
+            import urllib2
+        except ImportError:
+            import urllib.request as urllib2
         proxies = {'http':self.proxy,'https':self.proxy}
         opener = urllib2.build_opener(urllib2.ProxyHandler(proxies))
         response = opener.open(self.url)
