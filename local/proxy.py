@@ -34,28 +34,27 @@ try:
     import gevent.timeout
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
-    sys.stderr.write('WARNING: python-gevent not installed. \n')
+    sys.stderr.write('WARNING: python-gevent not installed. Please ')
     if sys.platform.startswith('linux'):
-        sys.stderr.write('wget --no-check-certificate --header="Host: goagent.googlecode.com" https://www.google.cn/files/gevent-1.0dev-linux.egg\n')
+        sys.stderr.write('`wget --no-check-certificate --header="Host: goagent.googlecode.com" https://www.google.cn/files/gevent-1.0dev-linux.egg`\n')
     else:
-        sys.stderr.write('sudo easy_install gevent')
-    import Queue
-    import thread
+        sys.stderr.write('`sudo easy_install gevent`\n')
     import threading
-    import SocketServer
+    Queue = __import__('queue') if sys.version[0] == '3' else __import__('Queue')
+    SocketServer = __import__('socketserver') if sys.version[0] == '3' else __import__('SocketServer')
 
     def GeventImport(name):
         import sys
         sys.modules[name] = type(sys)(name)
         return sys.modules[name]
     def GeventSpawn(target, *args, **kwargs):
-        return thread.start_new_thread(target, args, kwargs)
+        return threading._start_new_thread(target, args, kwargs)
     def GeventSpawnLater(seconds, target, *args, **kwargs):
         def wrap(*args, **kwargs):
             import time
             time.sleep(seconds)
             return target(*args, **kwargs)
-        return thread.start_new_thread(wrap, args, kwargs)
+        return threading._start_new_thread(wrap, args, kwargs)
     class GeventServerStreamServer(SocketServer.ThreadingTCPServer):
         allow_reuse_address = True
         def finish_request(self, request, client_address):
@@ -72,7 +71,8 @@ except ImportError:
             finally:
                 self._writelock.release()
         @staticmethod
-        def RequestHandlerClass((data, server_socket), client_addr, server):
+        def RequestHandlerClass(request, client_addr, server):
+            data, server_socket = request
             return server.handle(data, client_addr)
         def handle(self, data, address):
             raise NotImplemented()
@@ -90,7 +90,7 @@ except ImportError:
                 self._lock.release()
         def spawn(self, target, *args, **kwargs):
             self._lock.acquire()
-            return thread.start_new_thread(self.__target_wrapper, (target, args, kwargs))
+            return threading._start_new_thread(self.__target_wrapper, (target, args, kwargs))
 
     gevent        = GeventImport('gevent')
     gevent.queue  = GeventImport('gevent.queue')
@@ -114,7 +114,6 @@ except ImportError:
 import collections
 import errno
 import time
-import cStringIO
 import struct
 import zlib
 import heapq
@@ -129,9 +128,18 @@ import threading
 import socket
 import ssl
 import select
-import httplib
-import urlparse
-import ConfigParser
+if sys.version[0] == '2':
+    import httplib
+    import urlparse
+    import ConfigParser
+else:
+    import http.client as httplib
+    import urllib.parse as urlparse
+    import configparser as ConfigParser
+try:
+    from io import BytesIO
+except ImportError:
+    from cStringIO import StringIO as BytesIO
 try:
     import ctypes
 except ImportError:
@@ -434,7 +442,7 @@ class HTTP(object):
             except socket.error as e:
                 if e[0] in (10060, 'timed out'):
                     continue
-            except Exception, e:
+            except Exception as e:
                 raise
             finally:
                 if sock:
@@ -472,8 +480,7 @@ class HTTP(object):
                     context.set_ciphers(ssl_options['ciphers'])
                 return context.wrap_socket(sock, **ssl_options)
 
-    def create_connection(self, (host, port), timeout=None, source_address=None):
-        assert isinstance(port, int)
+    def create_connection(self, address, timeout=None, source_address=None):
         def _create_connection(address, timeout, queue):
             sock = None
             try:
@@ -506,6 +513,7 @@ class HTTP(object):
         def _close_connection(count, queue):
             for i in xrange(count):
                 queue.get()
+        host, port = address
         result = None
         addresses = [(x, port) for x in self.dns_resolve(host)]
         if port == 443:
@@ -528,8 +536,7 @@ class HTTP(object):
                         # only print first error
                         logging.warning('create_connection to %s return %r, try again.', addrs, result)
 
-    def create_ssl_connection(self, (host, port), timeout=None, source_address=None):
-        assert isinstance(port, int)
+    def create_ssl_connection(self, address, timeout=None, source_address=None):
         def _create_ssl_connection(address, timeout, queue):
             sock = None
             ssl_sock = None
@@ -583,6 +590,7 @@ class HTTP(object):
         def _close_ssl_connection(count, queue):
             for i in xrange(count):
                 queue.get()
+        host, port = address
         result = None
         addresses = [(x, port) for x in self.dns_resolve(host)]
         get_connection_time = self.ssl_connection_time.get
@@ -602,8 +610,9 @@ class HTTP(object):
                         # only print first error
                         logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
 
-    def create_connection_withproxy(self, (host, port), timeout=None, source_address=None, proxy=None):
+    def create_connection_withproxy(self, address, timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (str, unicode))
+        host, port = address
         logging.debug('create_connection_withproxy connect (%r, %r)', host, port)
         scheme, username, password, address = ProxyUtil.parse_proxy(proxy or self.proxy)
         try:
@@ -891,7 +900,7 @@ class Common(object):
 
         self.LOVE_ENABLE          = self.CONFIG.getint('love','enable')
         self.LOVE_TIMESTAMP       = self.CONFIG.get('love', 'timestamp')
-        self.LOVE_TIP             = [re.sub(r'\\u([0-9a-fA-F]{4})', lambda m:unichr(int(m.group(1), 16)), x) for x in self.CONFIG.get('love','tip').split('|')]
+        self.LOVE_TIP             = self.CONFIG.get('love','tip').encode('utf8').decode('unicode-escape').split('|')
 
         self.HOSTS                = dict((k, v.split('|') if v else []) for k, v in self.CONFIG.items('hosts'))
 
@@ -953,15 +962,15 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     data = response.read(4)
     if len(data) < 4:
         response.status = 502
-        response.fp = cStringIO.StringIO('connection aborted. too short leadtype data=%r' % data)
+        response.fp = BytesIO('connection aborted. too short leadtype data=%r' % data)
         return response
     response.status, headers_length = struct.unpack('!hh', data)
     data = response.read(headers_length)
     if len(data) < headers_length:
         response.status = 502
-        response.fp = cStringIO.StringIO('connection aborted. too short headers data=%r' % data)
+        response.fp = BytesIO('connection aborted. too short headers data=%r' % data)
         return response
-    response.msg = httplib.HTTPMessage(cStringIO.StringIO(zlib.decompress(data, -15)))
+    response.msg = httplib.HTTPMessage(BytesIO(zlib.decompress(data, -15)))
     return response
 
 class RangeFetch(object):
