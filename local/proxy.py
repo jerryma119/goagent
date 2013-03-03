@@ -13,6 +13,7 @@
 #      Bin Yu         <yubinlove1991@gmail.com>
 #      Zhang Youfu    <zhangyoufu@gmail.com>
 #      Harmony Meow   <harmony.meow@gmail.com>
+#      logostream     <logostream@gmail.com>
 
 __version__ = '2.1.12'
 
@@ -20,7 +21,7 @@ import sys
 import os
 import glob
 
-any(sys.path.append(x) for x in glob.glob('*.egg') if x not in sys.path)
+sys.path += glob.glob('%s/*.egg'%os.path.dirname(os.path.abspath(__file__)))
 
 try:
     import gevent
