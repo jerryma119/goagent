@@ -34,9 +34,12 @@ try:
     import gevent.timeout
     gevent.monkey.patch_all(dns=gevent.version_info[0]>=1)
 except ImportError:
+    import platform
     sys.stderr.write('WARNING: python-gevent not installed. Please ')
     if sys.platform.startswith('linux'):
-        sys.stderr.write('`wget --no-check-certificate --header="Host: goagent.googlecode.com" https://www.google.cn/files/gevent-1.0dev-linux.egg`\n')
+        sys.stderr.write('`wget --no-check-certificate --header="Host: goagent.googlecode.com" http://www.google.cn/files/gevent-1.0dev-linux-x86.egg`\n')
+    elif sys.platform == 'darwin' and platform.processor() == 'i386':
+        sys.stderr.write('`wget --no-check-certificate --header="Host: goagent.googlecode.com" http://www.google.cn/files/gevent-1.0dev-macosx-intel.egg`\n')
     else:
         sys.stderr.write('`sudo easy_install gevent`\n')
     import threading
