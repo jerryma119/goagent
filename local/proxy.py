@@ -1371,6 +1371,7 @@ class GAEProxyHandler(object):
             elif e[0] not in (10053, errno.EPIPE):
                 raise
         except Exception as e:
+            host = self.headers.get('Host', '')
             logging.warn('GAEProxyHandler direct(%s) Error', host)
             raise
 
