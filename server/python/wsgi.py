@@ -60,7 +60,7 @@ A.u:link {color: green}
 </head>
 <body text=#000000 bgcolor=#ffffff>
 <table border=0 cellpadding=2 cellspacing=0 width=100%>
-<tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
+<tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
 <tr><td>&nbsp;</td></tr></table>
 <blockquote>
 <H1>{{error}}</H1>
@@ -309,9 +309,17 @@ def gae_application(environ, start_response):
         yield error_html('403', 'Wrong password', description='GoAgent proxy.ini password is wrong!')
         raise StopIteration
 
-    if __hostsdeny__ and urlparse.urlparse(url).netloc.endswith(__hostsdeny__):
+    netloc = urlparse.urlparse(url).netloc
+
+    if __hostsdeny__ and netloc.endswith(__hostsdeny__):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
         yield error_html('403', 'Hosts Deny', description='url=%r' % url)
+        raise StopIteration
+
+    if netloc.startswith('127.0.0.'):
+        start_response('400 Bad Request', [('Content-Type', 'text/html')])
+        html = ''.join('<a href="https://%s/">%s</a><br/>' % (x,x) for x in ('google.com', 'mail.google.com'))
+        yield error_html('OK,', 'GoAgent %s is Running' % __version__, html)
         raise StopIteration
 
     fetchmethod = getattr(urlfetch, method, '')
