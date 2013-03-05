@@ -316,7 +316,7 @@ def gae_application(environ, start_response):
         yield error_html('403', 'Hosts Deny', description='url=%r' % url)
         raise StopIteration
 
-    if netloc.startswith('127.0.0.'):
+    if netloc.startswith(('127.0.0.','::1','localhost')):
         start_response('400 Bad Request', [('Content-Type', 'text/html')])
         html = ''.join('<a href="https://%s/">%s</a><br/>' % (x,x) for x in ('google.com', 'mail.google.com'))
         yield error_html('OK,', 'GoAgent %s is Running' % __version__, html)
