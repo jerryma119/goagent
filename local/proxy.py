@@ -15,7 +15,7 @@
 #      Harmony Meow   <harmony.meow@gmail.com>
 #      logostream     <logostream@gmail.com>
 
-__version__ = '2.1.12'
+__version__ = '2.1.13'
 
 import sys
 import os
@@ -101,8 +101,10 @@ except ImportError:
     gevent.coros  = GeventImport('gevent.coros')
     gevent.server = GeventImport('gevent.server')
     gevent.pool   = GeventImport('gevent.pool')
+    gevent.sleep  = __import__('time').sleep
 
     gevent.queue.Queue           = Queue.Queue
+    gevent.queue.PriorityQueue   = Queue.PriorityQueue
     gevent.queue.Empty           = Queue.Empty
     gevent.coros.Semaphore       = threading.Semaphore
     gevent.getcurrent            = threading.currentThread
@@ -984,164 +986,142 @@ class RangeFetch(object):
     bufsize   = 8192
     waitsize  = 1024*512
     threads   = 1
-    retry     = 8
     urlfetch  = staticmethod(gae_urlfetch)
 
-    def __init__(self, sock, response_code, response_headers, response_rfile, method, url, headers, payload, fetchservers, password, maxsize=0, bufsize=0, waitsize=0, threads=0):
-        self.response_code = response_code
-        self.response_headers = response_headers
-        self.response_rfile = response_rfile
+    def __init__(self, sock, response, method, url, headers, payload, fetchservers, password, maxsize=0, bufsize=0, waitsize=0, threads=0):
+        self.sock = sock
+        self.response = response
         self.method = method
         self.url = url
         self.headers = headers
         self.payload = payload
         self.fetchservers = fetchservers
         self.password = password
-
-        if maxsize:
-            self.maxsize = maxsize
-        if bufsize:
-            self.bufsize = bufsize
-        if waitsize:
-            self.waitsize = waitsize
-        if threads:
-            self.threads = threads
-
-        self._sock = sock
+        self.maxsize = maxsize or self.__class__.maxsize
+        self.bufsize = bufsize or self.__class__.bufsize
+        self.waitsize = waitsize or self.__class__.bufsize
+        self.threads = threads or self.__class__.threads
         self._stopped = None
+        self._last_app_status = {}
 
     def fetch(self):
-        response_headers = self.response_headers
-        response_rfile   = self.response_rfile
-        content_range    = response_headers['Content-Range']
-        content_length   = response_headers['Content-Length']
+        response_status = self.response.status
+        response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
+        content_range  = response_headers['Content-Range']
+        content_length = response_headers['Content-Length']
         start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
         if start == 0:
             response_status = 200
             response_headers['Content-Length'] = str(length)
         else:
-            response_status = 206
             if not self.headers.get('Range'):
                 response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, length-1, length)
                 response_headers['Content-Length'] = str(length-start)
 
+        wfile = self.sock.makefile('w', 0)
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
-        self._sock.sendall('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k.title(),v) for k,v in response_headers.items())))
+        wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k,v) for k,v in response_headers.items())))
 
-        queues = [gevent.queue.Queue() for _ in range(end+1, length, self.maxsize)]
-        if queues:
-            gevent.spawn_later(0.1, self._poolfetch, min(len(queues), self.threads), queues, end, length, self.maxsize)
-
-        try:
-            left = end-start+1
-            while 1:
-                data = response_rfile.read(min(self.bufsize, left))
-                if not data:
-                    response_rfile.close()
+        data_queue  = gevent.queue.PriorityQueue()
+        range_queue = gevent.queue.PriorityQueue()
+        range_queue.put((start, end, self.response))
+        for begin in range(end+1, length, self.maxsize):
+            range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
+        for i in xrange(self.threads):
+            gevent.spawn(self.__fetchlet, range_queue, data_queue)
+        empty_count = 0
+        expect_begin = start
+        while expect_begin < length-1:
+            try:
+                begin, data = data_queue.peek(timeout=5)
+                empty_count = 0
+                if begin > expect_begin:
+                    gevent.sleep(0.1)
+                    continue
+                elif begin < expect_begin:
+                    logging.error('>>>>>>>>>>>>>>> Range Fetch failed: begin=%r less than expect_begin=%r', begin, expect_begin)
                     break
                 else:
-                    self._sock.sendall(data)
-                    left -= len(data)
-            while queues:
-                queue = queues.pop(0)
-                while 1:
-                    data = queue.get()
-                    if data is StopIteration:
-                        break
-                    self._sock.sendall(data)
-            logging.info('>>>>>>>>>>>>>>> Range Fetch ended(%r)', urlparse.urlparse(self.url).netloc)
-        except socket.error as e:
-            self._stopped = True
-            if e[0] not in (10053, errno.EPIPE):
-                logging.exception('Range Fetch socket.error: %s', e)
-                raise
+                    data_queue.get()
+            except gevent.queue.Empty:
+                empty_count += 1
+                if empty_count >= 30:
+                    break
+                else:
+                    continue
+            try:
+                wfile.write(data)
+                expect_begin += len(data)
+            except socket.error as e:
+                break
+        self._stopped = True
 
-    def _poolfetch(self, size, queues, end, length, maxsize):
-        pool = gevent.pool.Pool(size)
-        for queue, partial_start in zip(queues, range(end+1, length, maxsize)):
-            pool.spawn(self._fetch, queue, partial_start, min(length, partial_start+maxsize-1))
-
-    def _fetch(self, queue, start, end):
-        try:
-            if self._stopped:
-                queue.put(StopIteration)
-                return
-            headers = self.headers.copy()
-            headers['Range'] = 'bytes=%d-%d' % (start, end)
-            headers['Connection'] = 'close'
-            tqueue = gevent.queue.Queue()
-
-            data_error = False
-            for i in xrange(self.retry):
-                fetchserver = random.choice(self.fetchservers)
-                response = self.urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
-                if data_error:
-                    # logging.info('Retry #%i of %d-%d', i, start, end)
-                    tqueue.queue.clear()
-                    data_error = False
-
-                if response:
-                    if response.app_status != 200:
-                        logging.warning('Range Fetch %s return %s', headers['Range'], response.app_status)
-                        logging.warning("Retry %i of %i", i, self.retry)
-                        time.sleep(5)
+    def __fetchlet(self, range_queue, data_queue):
+        while 1:
+            try:
+                if self._stopped:
+                    return
+                try:
+                    start, end, response = range_queue.get(timeout=1)
+                    headers = self.headers.copy()
+                    headers['Range'] = 'bytes=%d-%d' % (start, end)
+                    headers['Connection'] = 'close'
+                    fetchserver = ''
+                    if not response:
+                        fetchserver = random.choice(self.fetchservers)
+                        if self._last_app_status.get(fetchserver, 200) >= 500:
+                            gevent.sleep(5)
+                        response = self.urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
+                except gevent.queue.Empty:
+                    continue
+                if not response:
+                    logging.warning('Range Fetch %s return %r', headers['Range'], response)
+                    range_queue.put((start, end, None))
+                    continue
+                if fetchserver:
+                    self._last_app_status[fetchserver] = response.app_status
+                if response.app_status != 200:
+                    logging.warning('Range Fetch "%s %s" %s return %s', self.method, self.url, headers['Range'], response.app_status)
+                    response.close()
+                    range_queue.put((start, end, None))
+                    continue
+                if response.getheader('Location'):
+                    self.url = response.getheader('Location')
+                    logging.info('Range Fetch Redirect(%r)', self.url)
+                    response.close()
+                    range_queue.put((start, end, None))
+                    continue
+                if 200 <= response.status < 300:
+                    content_range = response.getheader('Content-Range')
+                    if not content_range:
+                        logging.error('Range Fetch "%s %s" failed: response headers=%s', self.method, self.url, response.msg)
+                        response.close()
+                        range_queue.put((start, end, None))
                         continue
-                    if 200 <= response.status < 300:
-                        content_range = response.getheader('Content-Range')
-                        if not content_range:
-                            logging.error('Range Fetch "%s %s" failed: response headers=%s', self.method, self.url, response.msg)
-                            logging.error("Retry %i of %i", i, self.retry)
-                            response.close()
-                            continue
-                            #return
-
-                        content_length = int(response.getheader('Content-Length', 0))
-                        logging.debug('>>>>>>>>>>>>>>> [thread %s] %s %s', id(gevent.getcurrent()), content_length, content_range)
-
-                        left = content_length
-
-                        while 1:
-                            try:
-                                data = response.read(min(self.bufsize, left))
-                            except Exception as e:
-                                # logging.warning("Response%s%s/%s(%s - %s): %s", type(e), response.status, response.reason, start, end, e)
-                                # logging.warning("Retry %i of %i", i, self.retry)
-                                response.close()
-                                data_error = True
-                                break
+                    content_length = int(response.getheader('Content-Length', 0))
+                    logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', id(gevent.getcurrent()), content_length, content_range)
+                    while 1:
+                        try:
+                            data = response.read(self.maxsize)
+                            data_queue.put((start, data))
+                            start += len(data)
                             if not data:
-                                response.close()
-                                tqueue.put(StopIteration)
                                 break
-                            else:
-                                tqueue.put(data)
-                                left -= len(data)
-
-                        if data_error:
-                            logging.error("SSL Error. Retry range fetch %i of %i", i, self.retry)
-                            continue
-                        else:
-                            while not tqueue.empty():
-                                queue.put(tqueue.get())
+                        except socket.error as e:
+                            logging.warning('Range Fetch "%s %s" %s failed: %s', self.method, self.url, headers['Range'], e)
                             break
-                    elif 300 <= response.status < 400:
-                        self.url = response.getheader('Location')
-                        # Logging.info('Range Fetch Redirect(%r)', self.url)
-                        response.close()
-                        continue
-                    else:
-                        logging.error('Range Fetch %r return %s', self.url, response.status)
-                        response.close()
-                        time.sleep(5)
+                    if start < end:
+                        logging.warning('Range Fetch "%s %s" retry %s-%s', self.method, self.url, start, end)
+                        range_queue.put((start, end, None))
                         continue
                 else:
-                    logging.error('Range Fetch is None, retry %i of %i', i, self.retry)
-                    time.sleep(5)
+                    logging.error('Range Fetch %r return %s', self.url, response.status)
+                    response.close()
+                    #range_queue.put((start, end, None))
                     continue
-
-        except Exception as e:
-            logging.exception('_fetch error:%s', e)
-            raise
+            except Exception as e:
+                logging.exception('_fetch error:%s', e)
+                raise
 
 class GAEProxyHandler(object):
 
@@ -1487,7 +1467,7 @@ class GAEProxyHandler(object):
 
             if response.status == 206:
                 fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
-                rangefetch = RangeFetch(self.sock, response.status, response.msg, response, self.method, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
+                rangefetch = RangeFetch(self.sock, response, self.method, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
 
             if 'Set-Cookie' in response.msg:
