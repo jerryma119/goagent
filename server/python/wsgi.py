@@ -41,11 +41,11 @@ FetchMaxSize = 1024*1024*4
 DeflateMaxSize = 1024*1024*4
 Deadline = 60
 
-def error_html(errno, error, description=''):
+def message_html(title, banner, detail=''):
     ERROR_TEMPLATE = '''
 <html><head>
 <meta http-equiv="content-type" content="text/html;charset=utf-8">
-<title>{{errno}} {{error}}</title>
+<title>{{title}}</title>
 <style><!--
 body {font-family: arial,sans-serif}
 div.nav {margin-top: 1ex}
@@ -63,15 +63,15 @@ A.u:link {color: green}
 <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
 <tr><td>&nbsp;</td></tr></table>
 <blockquote>
-<H1>{{error}}</H1>
-{{description}}
+<H1>{{banner}}</H1>
+{{detail}}
 
 <p>
 </blockquote>
 <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
 </body></html>
 '''
-    kwargs = dict(errno=errno, error=error, description=description)
+    kwargs = dict(title=title, banner=banner, detail=detail)
     template = ERROR_TEMPLATE
     for keyword, value in kwargs.items():
         template = template.replace('{{%s}}' % keyword, value)
@@ -237,7 +237,7 @@ def paas_application(environ, start_response):
 
     if __hostsdeny__ and urlparse.urlparse(url).netloc.endswith(__hostsdeny__):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
-        yield error_html('403', 'Hosts Deny', description='url=%r' % url)
+        yield message_html('403 Forbidden Host', 'Hosts Deny(%s)' % url, detail='url=%r' % url)
         raise StopIteration
 
     timeout = Deadline
@@ -306,26 +306,26 @@ def gae_application(environ, start_response):
 
     if __password__ and __password__ != kwargs.get('password', ''):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
-        yield error_html('403', 'Wrong password', description='GoAgent proxy.ini password is wrong!')
+        yield message_html('403 Wrong password', 'Wrong password(%r)'%kwargs.get('password', ''), 'GoAgent proxy.ini password is wrong!')
         raise StopIteration
 
     netloc = urlparse.urlparse(url).netloc
 
     if __hostsdeny__ and netloc.endswith(__hostsdeny__):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
-        yield error_html('403', 'Hosts Deny', description='url=%r' % url)
+        yield message_html('403 Hosts Deny', 'Hosts Deny(%r)'%netloc, detail='url=%r'%url)
         raise StopIteration
 
     if netloc.startswith(('127.0.0.','::1','localhost')):
         start_response('400 Bad Request', [('Content-Type', 'text/html')])
         html = ''.join('<a href="https://%s/">%s</a><br/>' % (x,x) for x in ('google.com', 'mail.google.com'))
-        yield error_html('OK,', 'GoAgent %s is Running' % __version__, html)
+        yield message_html('GoAgent %s is Running'%__version__, 'Now you can visit some websites', html)
         raise StopIteration
 
     fetchmethod = getattr(urlfetch, method, '')
     if not fetchmethod:
         start_response('501 Unsupported', [('Content-Type', 'text/html')])
-        yield error_html('501', 'Invalid Method: %r'% method, description='Unsupported Method')
+        yield message_html('501 Invalid Method', 'Invalid Method: %r'%method, detail='Unsupported Method URL=%r'%url)
         raise StopIteration
 
     deadline = Deadline
@@ -379,7 +379,7 @@ def gae_application(environ, start_response):
                 deadline = Deadline * 2
     else:
         start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
-        yield error_html('502', 'Python Urlfetch Error: %r' % method, description='<br />\n'.join(errors) or 'UNKOWN')
+        yield message_html('502 Urlfetch Error', 'Python Urlfetch Error: %r' % method, '<br />\n'.join(errors) or 'Internal Server Error')
         raise StopIteration
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])

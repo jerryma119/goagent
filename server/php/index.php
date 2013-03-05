@@ -6,7 +6,7 @@
 // Contributor:
 //     Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '2.1.12';
+$__version__  = '2.1.13';
 $__password__ = '';
 $__timeout__  = 20;
 $__status__ = 0;
@@ -46,11 +46,11 @@ function decode_request($data) {
     return array($method, $url, $headers, $kwargs, $body);
 }
 
-function error_html($errno, $error, $description) {
+function message_html($title, $banner, $detail) {
     $error = <<<ERROR_STRING
 <html><head>
 <meta http-equiv="content-type" content="text/html;charset=utf-8">
-<title>${errno} ${error}</title>
+<title>${title}</title>
 <style><!--
 body {font-family: arial,sans-serif}
 div.nav {margin-top: 1ex}
@@ -68,8 +68,8 @@ A.u:link {color: green}
 <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
 <tr><td>&nbsp;</td></tr></table>
 <blockquote>
-<H1>${error}</H1>
-${description}
+<H1>${banner}</H1>
+${detail}
 
 <p>
 </blockquote>
@@ -178,7 +178,7 @@ function post()
             $curl_opt[CURLOPT_POSTFIELDS] = $body;
             break;
         default:
-            echo error_html("403 Forbidden", "Invalid Method: $method", "$method '$url'");
+            echo message_html("403 Forbidden", "Invalid Method: $method", "$method '$url'");
             exit(-1);
     }
 
@@ -188,7 +188,7 @@ function post()
     $errno = curl_errno($ch);
     if ($errno && !$GLOBALS['__status__']) {
         header('HTTP/1.1 502 Bad Gateway');
-        echo error_html("cURL($errno)", "PHP Urlfetch Error: $method", curl_error($ch));
+        echo message_html("500 Internal Server Error", "PHP Urlfetch Error: $method", "cURL($errno): ".curl_error($ch));
     }
     curl_close($ch);
 }
