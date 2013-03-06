@@ -1033,7 +1033,11 @@ class RangeFetch(object):
         expect_begin = start
         while expect_begin < length-1:
             try:
-                begin, data = data_queue.peek(timeout=5)
+                if hasattr(data_queue, 'peek'):
+                    begin, data = data_queue.peek(timeout=5)
+                else:
+                    begin, data = data_queue.get(timeout=5)
+                    data_queue.put((begin, data))
                 empty_count = 0
                 if begin > expect_begin:
                     gevent.sleep(0.1)
