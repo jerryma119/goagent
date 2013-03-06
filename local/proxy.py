@@ -1029,30 +1029,34 @@ class RangeFetch(object):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
         for i in xrange(self.threads):
             gevent.spawn(self.__fetchlet, range_queue, data_queue)
-        empty_count = 0
+        has_peek = hasattr(data_queue, 'peek')
+        peek_timeout = 90
         expect_begin = start
         while expect_begin < length-1:
             try:
-                if hasattr(data_queue, 'peek'):
-                    begin, data = data_queue.peek(timeout=5)
+                if has_peek:
+                    begin, data = data_queue.peek(timeout=peek_timeout)
+                    if expect_begin == begin:
+                        data_queue.get()
+                    elif expect_begin < begin:
+                        gevent.sleep(0.1)
+                        continue
+                    else:
+                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, expect_begin)
+                        break
                 else:
-                    begin, data = data_queue.get(timeout=5)
-                    data_queue.put((begin, data))
-                empty_count = 0
-                if begin > expect_begin:
-                    gevent.sleep(0.1)
-                    continue
-                elif begin < expect_begin:
-                    logging.error('>>>>>>>>>>>>>>> Range Fetch failed: begin=%r less than expect_begin=%r', begin, expect_begin)
-                    break
-                else:
-                    data_queue.get()
+                    begin, data = data_queue.get(timeout=peek_timeout)
+                    if expect_begin == begin:
+                        pass
+                    elif expect_begin < begin:
+                        data_queue.put((begin, data))
+                        gevent.sleep(0.1)
+                        continue
+                    else:
+                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, expect_begin)
+                        break
             except gevent.queue.Empty:
-                empty_count += 1
-                if empty_count >= 30:
-                    break
-                else:
-                    continue
+                break
             try:
                 wfile.write(data)
                 expect_begin += len(data)
@@ -1106,7 +1110,7 @@ class RangeFetch(object):
                     logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', id(gevent.getcurrent()), content_length, content_range)
                     while 1:
                         try:
-                            data = response.read(self.maxsize)
+                            data = response.read(self.bufsize)
                             data_queue.put((start, data))
                             start += len(data)
                             if not data:
