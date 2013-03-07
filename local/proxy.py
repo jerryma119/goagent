@@ -1018,8 +1018,9 @@ class RangeFetch(object):
             response_status = 200
             response_headers['Content-Length'] = str(length)
         else:
-            response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, end, length)
-            response_headers['Content-Length'] = str(length)
+            if not self.headers.get('Range'):
+                response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, end, length)
+                response_headers['Content-Length'] = str(length)
 
         wfile = self.sock.makefile('w', 0)
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
@@ -1059,11 +1060,13 @@ class RangeFetch(object):
                         logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, expect_begin)
                         break
             except gevent.queue.Empty:
+                logging.error('data_queue peek timeout, break')
                 break
             try:
                 wfile.write(data)
                 expect_begin += len(data)
             except socket.error as e:
+                logging.error('wfile.write(data) failed:%s', e)
                 break
         self._stopped = True
 
@@ -1114,10 +1117,10 @@ class RangeFetch(object):
                     while 1:
                         try:
                             data = response.read(self.bufsize)
-                            data_queue.put((start, data))
-                            start += len(data)
                             if not data:
                                 break
+                            data_queue.put((start, data))
+                            start += len(data)
                         except socket.error as e:
                             logging.warning('Range Fetch "%s %s" %s failed: %s', self.method, self.url, headers['Range'], e)
                             break
