@@ -407,7 +407,8 @@ class ProxyUtil(object):
 
 class DNSUtil(object):
 
-    blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68',
+    blacklist = set(['74.125.127.102', '74.125.155.102', # only for google -_-
+                    '4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68',
                     '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251',
                     '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104',
                     '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139',
@@ -965,8 +966,8 @@ class Common(object):
             info += 'PAAS Listen        : %s\n' % common.PAAS_LISTEN
             info += 'PAAS FetchServer   : %s\n' % common.PAAS_FETCHSERVER
         if common.DNS_ENABLE:
-            info += 'DNS Listen        : %s\n' % common.DNS_LISTEN
-            info += 'DNS Remote        : %s\n' % common.DNS_REMOTE
+            info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
+            info += 'DNS Remote         : %s\n' % common.DNS_REMOTE
         if common.SOCKS5_ENABLE:
             info += 'SOCKS5 Listen      : %s\n' % common.SOCKS5_LISTEN
             info += 'SOCKS5 FetchServer : %s\n' % common.SOCKS5_FETCHSERVER
