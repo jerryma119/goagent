@@ -1018,9 +1018,8 @@ class RangeFetch(object):
             response_status = 200
             response_headers['Content-Length'] = str(length)
         else:
-            if not self.headers.get('Range'):
-                response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, end, length)
-                response_headers['Content-Length'] = str(length)
+            response_headers['Content-Range']  = 'bytes %s-%s/%s' % (start, end, length)
+            response_headers['Content-Length'] = str(length)
 
         wfile = self.sock.makefile('w', 0)
         logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
