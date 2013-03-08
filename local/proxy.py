@@ -405,13 +405,75 @@ class ProxyUtil(object):
         finally:
             return system_proxy
 
+class DNSUtil(object):
+
+    blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68',
+                    '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251',
+                    '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104',
+                    '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139',
+                    '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2',
+                    '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43',
+                    '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147',
+                    '213.169.251.35', '216.221.188.182', '216.234.179.13',])
+    max_retry = 2
+    max_wait = 2
+
+    @staticmethod
+    def _reply_to_iplist(data):
+        assert isinstance(data, basestring)
+        iplist = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\xc0.\x00\x01\x00\x01.{6}(.{4})', data) if all(ord(x)<=255 for x in s)]
+        return iplist
+
+    @staticmethod
+    def is_bad_reply(data):
+        assert isinstance(data, basestring)
+        weak_iplist = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\x00\x01\x00\x01.{6}(.{4})', data) if all(ord(x)<=255 for x in s)]
+        return any(x in DNSUtil.blacklist for x in weak_iplist)
+
+    @staticmethod
+    def _remote_resolve(qname, dnsserver, timeout=None):
+        if isinstance(dnsserver, tuple):
+            dnsserver, port = dnsserver
+        else:
+            port = 53
+        for i in xrange(DNSUtil.max_retry):
+            index = os.urandom(2)
+            host = ''.join(chr(len(x))+x for x in qname.split('.'))
+            data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, host)
+            address_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
+            sock = None
+            try:
+                sock = socket.socket(family=address_family, type=socket.SOCK_DGRAM)
+                if isinstance(timeout, (int, long)):
+                    sock.settimeout(timeout)
+                sock.sendto(data, (dnsserver, port))
+                for i in xrange(DNSUtil.max_wait):
+                    data = sock.recv(512)
+                    if DNSUtil.is_bad_reply(data):
+                        logging.warning('DNSUtil._remote_resolve(%r, dnsserver=%r) return position data=%r', qname, dnsserver, data)
+                        continue
+                    return data
+            except socket.error as e:
+                if e[0] in (10060, 'timed out'):
+                    continue
+            except Exception as e:
+                raise
+            finally:
+                if sock:
+                    sock.close()
+
+    @staticmethod
+    def remote_resolve(qname, dnsserver, timeout=None):
+        data = DNSUtil._remote_resolve(qname, dnsserver, timeout)
+        iplist = DNSUtil._reply_to_iplist(data)
+        return iplist
+
 class HTTP(object):
     """HTTP Request Class"""
 
     MessageClass = dict
     protocol_version = 'HTTP/1.1'
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations'])
-    dns_blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68', '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251', '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104', '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139', '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2', '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43', '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147', '213.169.251.35', '216.221.188.182', '216.234.179.13'])
     ssl_validate = False
 
     def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False):
@@ -426,34 +488,6 @@ class HTTP(object):
         self.proxy = proxy
         self.ssl_validate = ssl_validate or self.ssl_validate
 
-    @staticmethod
-    def dns_remote_resolve(qname, dnsserver, timeout=None, blacklist=set(), max_retry=2, max_wait=2):
-        for i in xrange(max_retry):
-            index = os.urandom(2)
-            host = ''.join(chr(len(x))+x for x in qname.split('.'))
-            data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, host)
-            address_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
-            sock = None
-            try:
-                sock = socket.socket(family=address_family, type=socket.SOCK_DGRAM)
-                if isinstance(timeout, (int, long)):
-                    sock.settimeout(timeout)
-                sock.sendto(data, (dnsserver, 53))
-                for i in xrange(max_wait):
-                    data = sock.recv(512)
-                    iplist = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\xc0.\x00\x01\x00\x01.{6}(.{4})', data) if all(ord(x)<=255 for x in s)]
-                    iplist = [x for x in iplist if x not in blacklist]
-                    if iplist:
-                        return iplist
-            except socket.error as e:
-                if e[0] in (10060, 'timed out'):
-                    continue
-            except Exception as e:
-                raise
-            finally:
-                if sock:
-                    sock.close()
-
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
         iplist = self.dns[host]
         if not iplist:
@@ -461,7 +495,7 @@ class HTTP(object):
             if not dnsserver:
                 ips = socket.gethostbyname_ex(host)[-1]
             else:
-                ips = self.__class__.dns_remote_resolve(host, dnsserver, timeout=2, blacklist=self.dns_blacklist)
+                ips = DNSUtil.remote_resolve(host, dnsserver, timeout=2)
             if ipv4_only:
                 ips = [ip for ip in ips if re.match(r'\d+.\d+.\d+.\d+', ip)]
             iplist += set(ips)
@@ -1065,7 +1099,7 @@ class RangeFetch(object):
                 wfile.write(data)
                 expect_begin += len(data)
             except socket.error as e:
-                logging.error('wfile.write(data) failed:%s', e)
+                logging.info('send data to client return error=%s, abort.', e)
                 break
         self._stopped = True
 
@@ -1218,8 +1252,8 @@ class GAEProxyHandler(object):
                 for domain in need_resolve_remote:
                     logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
                     try:
-                        iplist = HTTP.dns_remote_resolve(domain, dnsserver, timeout=3)
-                        if all(x not in HTTP.dns_blacklist for x in iplist):
+                        iplist = DNSUtil.remote_resolve(domain, dnsserver, timeout=3)
+                        if iplist:
                             google_ipmap[domain] = iplist
                             logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
                     except socket.error as e:
@@ -1877,57 +1911,32 @@ class PACServerHandler(GAEProxyHandler):
 
 class DNSServer(getattr(gevent.server, 'DatagramServer', gevent.server.StreamServer)):
     """DNS Proxy over TCP to avoid DNS poisoning"""
-    remote_addresses = [('8.8.8.8', 53), ('8.8.4.4', 53)]
+    dnsservers = ['8.8.8.8', '8.8.4.4']
     max_wait = 1
     max_retry = 2
     max_cache_size = 2000
-    timeout   = 3
-    dns_blacklist = set(['4.36.66.178', '8.7.198.45', '37.61.54.158', '46.82.174.68', '59.24.3.173', '64.33.88.161', '64.33.99.47', '64.66.163.251', '65.104.202.252', '65.160.219.113', '66.45.252.237', '72.14.205.104', '72.14.205.99', '78.16.49.15', '93.46.8.89', '128.121.126.139', '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2', '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43', '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147', '213.169.251.35', '216.221.188.182', '216.234.179.13'])
+    timeout   = 6
 
     def __init__(self, *args, **kwargs):
         gevent.server.DatagramServer.__init__(self, *args, **kwargs)
         self.cache = {}
     def handle(self, data, address):
-        cache   = self.cache
-        timeout = self.timeout
         reqid   = data[:2]
         domain  = data[12:data.find('\x00', 12)]
-        if len(cache) > self.max_cache_size:
-            cache.clear()
-        if domain in cache:
-            return self.sendto(reqid + cache[domain][2:], address)
-        retry = 0
-        while domain not in cache:
+        if len(self.cache) > self.max_cache_size:
+            self.cache.clear()
+        if domain not in self.cache:
             qname = re.sub(r'[\x01-\x10]', '.', domain[1:])
-            logging.info('DNSServer resolve domain=%r to iplist', qname)
-            sock = None
             try:
-                data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (os.urandom(2), domain)
-                address_family = socket.AF_INET
-                sock = socket.socket(family=address_family, type=socket.SOCK_DGRAM)
-                if isinstance(timeout, (int, long)):
-                    sock.settimeout(timeout)
-                for remote_address in self.remote_addresses:
-                    sock.sendto(data, remote_address)
-                for i in xrange(self.max_wait+len(self.remote_addresses)):
-                    data, address = sock.recvfrom(512)
-                    iplist = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\x00\x01\x00\x01.{6}(.{4})', data)]
-                    if not any(x in self.dns_blacklist for x in iplist):
-                        if not iplist:
-                            logging.info('DNS return unkown result, iplist=%s', iplist)
-                        cache[domain] = data
-                        self.sendto(reqid + cache[domain][2:], address)
-                        break
-                    else:
-                        logging.info('DNS Poisoning return %s from %s', iplist, sock)
+                dnsserver = random.choice(self.dnsservers)
+                logging.info('DNSServer resolve domain=%r by dnsserver=%r to iplist', qname, dnsserver)
+                data = DNSUtil._remote_resolve(qname, dnsserver, self.timeout)
+                iplist = DNSUtil._reply_to_iplist(data)
+                self.cache[domain] = data
+                logging.info('DNSServer resolve domain=%r return iplist=%s', qname, iplist)
             except socket.error as e:
                 logging.error('DNSServer resolve domain=%r to iplist failed:%s', qname, e)
-            finally:
-                if sock:
-                    sock.close()
-                retry += 1
-                if retry >= self.max_retry:
-                    break
+        return self.sendto(reqid + self.cache[domain][2:], address)
 
 def pre_start():
     if sys.platform == 'cygwin':
@@ -2004,7 +2013,7 @@ def main():
     if common.DNS_ENABLE:
         host, port = common.DNS_LISTEN.split(':')
         server = DNSServer((host, int(port)))
-        server.remote_addresses = [(x, 53) for x in common.DNS_REMOTE.split('|')]
+        server.remote_addresses = common.DNS_REMOTE.split('|')
         server.timeout = common.DNS_TIMEOUT
         server.max_cache_size = common.DNS_CACHESIZE
         gevent.spawn(server.serve_forever)
