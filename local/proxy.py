@@ -415,9 +415,9 @@ class DNSUtil(object):
                     '159.106.121.75', '169.132.13.103', '192.67.198.6', '202.106.1.2',
                     '202.181.7.85', '203.161.230.171', '207.12.88.98', '208.56.31.43',
                     '209.145.54.50', '209.220.30.174', '209.36.73.33', '211.94.66.147',
-                    '213.169.251.35', '216.221.188.182', '216.234.179.13',])
-    max_retry = 2
-    max_wait = 2
+                    '213.169.251.35', '216.221.188.182', '216.234.179.13', '203.98.7.65', '243.185.187.39'])
+    max_retry = 3
+    max_wait = 3
 
     @staticmethod
     def _reply_to_iplist(data):
@@ -428,8 +428,9 @@ class DNSUtil(object):
     @staticmethod
     def is_bad_reply(data):
         assert isinstance(data, basestring)
-        weak_iplist = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\x00\x01\x00\x01.{6}(.{4})', data) if all(ord(x)<=255 for x in s)]
-        return any(x in DNSUtil.blacklist for x in weak_iplist)
+        iplist = ['.'.join(str(ord(x)) for x in s) for s in re.findall('\xc0.\x00\x01\x00\x01.{6}(.{4})', data) if all(ord(x)<=255 for x in s)]
+        iplist += ['.'.join(str(ord(x)) for x in s) for s in re.findall('\x00\x01\x00\x01.{6}(.{4})', data) if all(ord(x)<=255 for x in s)]
+        return any(x in DNSUtil.blacklist for x in iplist)
 
     @staticmethod
     def _remote_resolve(qname, dnsserver, timeout=None):
@@ -450,10 +451,10 @@ class DNSUtil(object):
                 sock.sendto(data, (dnsserver, port))
                 for i in xrange(DNSUtil.max_wait):
                     data = sock.recv(512)
-                    if DNSUtil.is_bad_reply(data):
+                    if not DNSUtil.is_bad_reply(data):
+                        return data
+                    else:
                         logging.warning('DNSUtil._remote_resolve(%r, dnsserver=%r) return position data=%r', qname, dnsserver, data)
-                        continue
-                    return data
             except socket.error as e:
                 if e[0] in (10060, 'timed out'):
                     continue
