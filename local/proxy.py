@@ -23,6 +23,7 @@ import glob
 
 sys.path += glob.glob('%s/*.egg'%os.path.dirname(os.path.abspath(__file__)))
 
+DummyGeventObject = type('DummyGeventObject', (object,), {'__init__':lambda *a,**kw:sys.stdout.write('*** WARNING: Please install python-gevent 1.0 ***\n\n')})
 try:
     import gevent
     import gevent.core
@@ -41,6 +42,8 @@ except ImportError:
         sys.stderr.write('`wget --no-check-certificate --header="Host: goagent.googlecode.com" http://www.google.cn/files/gevent-1.0dev-linux-x86.egg`\n')
     elif sys.platform == 'darwin' and platform.processor() == 'i386':
         sys.stderr.write('`wget --no-check-certificate --header="Host: goagent.googlecode.com" http://www.google.cn/files/gevent-1.0dev-macosx-intel.egg`\n')
+    elif os.name == 'nt':
+        sys.stderr.write('visit `https://github.com/SiteSupport/gevent/downloads`\n')
     else:
         sys.stderr.write('`sudo easy_install gevent`\n')
     import threading
@@ -66,7 +69,7 @@ except ImportError:
     class GeventServerDatagramServer(SocketServer.ThreadingUDPServer):
         allow_reuse_address = True
         def __init__(self, server_address, *args, **kwargs):
-            SocketServer.ThreadingUDPServer.__init__(self, server_address, GeventServerDatagramServer.RequestHandlerClass, *args, **kwargs)
+            SocketServer.ThreadingUDPServer.__init__(self, server_address, self.__class__.RequestHandlerClass, *args, **kwargs)
             self._writelock = threading.Semaphore()
         def sendto(self, *args):
             self._writelock.acquire()
@@ -113,6 +116,8 @@ except ImportError:
     gevent.server.StreamServer   = GeventServerStreamServer
     gevent.server.DatagramServer = GeventServerDatagramServer
     gevent.pool.Pool             = GeventPoolPool
+
+    gevent.version_info = (1, 0, 0, 'fake')
 
     del GeventImport, GeventSpawn, GeventSpawnLater,\
         GeventServerStreamServer, GeventServerDatagramServer, GeventPoolPool
@@ -406,7 +411,11 @@ class ProxyUtil(object):
             return system_proxy
 
 class DNSUtil(object):
-    '''http://zh.wikipedia.org/wiki/%E5%9F%9F%E5%90%8D%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%BC%93%E5%AD%98%E6%B1%A1%E6%9F%93'''
+    """
+    http://gfwrev.blogspot.com/2009/11/gfwdns.html
+    http://zh.wikipedia.org/wiki/域名服务器缓存污染
+    http://support.microsoft.com/kb/241352
+    """
     blacklist = set([
                     '1.1.1.1', '255.255.255.255', # for ipv6
                     '74.125.127.102', '74.125.155.102', '74.125.39.113', '209.85.229.138', # for google+
@@ -470,7 +479,7 @@ class DNSUtil(object):
     @staticmethod
     def remote_resolve(qname, dnsserver, timeout=None):
         data = DNSUtil._remote_resolve(qname, dnsserver, timeout)
-        iplist = DNSUtil._reply_to_iplist(data)
+        iplist = DNSUtil._reply_to_iplist(data or '')
         return iplist
 
 class HTTP(object):
@@ -1061,7 +1070,7 @@ class RangeFetch(object):
             response_headers['Content-Length'] = str(length)
 
         wfile = self.sock.makefile('w', 0)
-        logging.info('>>>>>>>>>>>>>>> Range Fetch started(%r) %d-%d', self.url, start, end)
+        logging.info('>>>>>>>>>>>>>>> RangeFetch started(%r) %d-%d', self.url, start, end)
         wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k,v) for k,v in response_headers.items())))
 
         data_queue  = gevent.queue.PriorityQueue()
@@ -1104,20 +1113,20 @@ class RangeFetch(object):
                 wfile.write(data)
                 expect_begin += len(data)
             except socket.error as e:
-                logging.info('send data to client return error=%s, abort.', e)
+                logging.info('RangeFetch client connection aborted(%s).', e)
                 break
         self._stopped = True
 
     def __fetchlet(self, range_queue, data_queue):
+        headers = self.headers.copy()
+        headers['Connection'] = 'close'
         while 1:
             try:
                 if self._stopped:
                     return
                 try:
                     start, end, response = range_queue.get(timeout=1)
-                    headers = self.headers.copy()
                     headers['Range'] = 'bytes=%d-%d' % (start, end)
-                    headers['Connection'] = 'close'
                     fetchserver = ''
                     if not response:
                         fetchserver = random.choice(self.fetchservers)
@@ -1127,7 +1136,7 @@ class RangeFetch(object):
                 except gevent.queue.Empty:
                     continue
                 if not response:
-                    logging.warning('Range Fetch %s return %r', headers['Range'], response)
+                    logging.warning('RangeFetch %s return %r', headers['Range'], response)
                     range_queue.put((start, end, None))
                     continue
                 if fetchserver:
@@ -1139,14 +1148,14 @@ class RangeFetch(object):
                     continue
                 if response.getheader('Location'):
                     self.url = response.getheader('Location')
-                    logging.info('Range Fetch Redirect(%r)', self.url)
+                    logging.info('RangeFetch Redirect(%r)', self.url)
                     response.close()
                     range_queue.put((start, end, None))
                     continue
                 if 200 <= response.status < 300:
                     content_range = response.getheader('Content-Range')
                     if not content_range:
-                        logging.error('Range Fetch "%s %s" failed: response headers=%s', self.method, self.url, response.msg)
+                        logging.warning('RangeFetch "%s %s" return Content-Range=%r: response headers=%r', self.method, self.url, content_range, str(response.msg))
                         response.close()
                         range_queue.put((start, end, None))
                         continue
@@ -1160,19 +1169,20 @@ class RangeFetch(object):
                             data_queue.put((start, data))
                             start += len(data)
                         except socket.error as e:
-                            logging.warning('Range Fetch "%s %s" %s failed: %s', self.method, self.url, headers['Range'], e)
+                            logging.warning('RangeFetch "%s %s" %s failed: %s', self.method, self.url, headers['Range'], e)
                             break
                     if start < end:
-                        logging.warning('Range Fetch "%s %s" retry %s-%s', self.method, self.url, start, end)
+                        logging.warning('RangeFetch "%s %s" retry %s-%s', self.method, self.url, start, end)
+                        response.close()
                         range_queue.put((start, end, None))
                         continue
                 else:
-                    logging.error('Range Fetch %r return %s', self.url, response.status)
+                    logging.error('RangeFetch %r return %s', self.url, response.status)
                     response.close()
                     #range_queue.put((start, end, None))
                     continue
             except Exception as e:
-                logging.exception('_fetch error:%s', e)
+                logging.exception('RangeFetch._fetchlet error:%s', e)
                 raise
 
 class GAEProxyHandler(object):
@@ -1914,7 +1924,7 @@ class PACServerHandler(GAEProxyHandler):
     def handle_method(self):
         self.sock.sendall('HTTP/1.1 400 Bad Request\r\n\r\n')
 
-class DNSServer(getattr(gevent.server, 'DatagramServer', gevent.server.StreamServer)):
+class DNSServer(getattr(gevent.server, 'DatagramServer', DummyGeventObject)):
     """DNS Proxy over TCP to avoid DNS poisoning"""
     dnsservers = ['8.8.8.8', '8.8.4.4']
     max_wait = 1
@@ -1936,6 +1946,9 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', gevent.server.StreamSer
                 dnsserver = random.choice(self.dnsservers)
                 logging.info('DNSServer resolve domain=%r by dnsserver=%r to iplist', qname, dnsserver)
                 data = DNSUtil._remote_resolve(qname, dnsserver, self.timeout)
+                if not data:
+                    logging.warning('DNSServer resolve domain=%r return data=%s', qname, data)
+                    return
                 iplist = DNSUtil._reply_to_iplist(data)
                 self.cache[domain] = data
                 logging.info('DNSServer resolve domain=%r return iplist=%s', qname, iplist)
@@ -1989,6 +2002,10 @@ def pre_start():
     if common.PAAS_ENABLE:
         if common.PAAS_FETCHSERVER.startswith('http://') and not common.PAAS_PASSWORD:
             logging.warning('Dont forget set your PAAS fetchserver password or use https')
+    if common.DNS_ENABLE:
+        if gevent.version_info[0] == 0:
+            logging.critical('GoAgent DNSServer needs python-gevent 1.0, Please disable DNS Server or upgarde gevent version.')
+            sys.exit()
 
 def main():
     global __file__
