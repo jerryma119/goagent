@@ -1942,7 +1942,7 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', DummyGeventObject)):
         if len(self.cache) > self.max_cache_size:
             self.cache.clear()
         if domain not in self.cache:
-            qname = re.sub(r'[\x01-\x10]', '.', domain[1:])
+            qname = re.sub(r'[\x01-\x29]', '.', domain[1:])
             try:
                 dnsserver = random.choice(self.dnsservers)
                 logging.info('DNSServer resolve domain=%r by dnsserver=%r to iplist', qname, dnsserver)
