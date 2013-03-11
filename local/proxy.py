@@ -986,7 +986,7 @@ class Common(object):
             info += 'SOCKS5 FetchServer : %s\n' % common.SOCKS5_FETCHSERVER
         if common.PAC_ENABLE:
             info += 'Pac Server         : http://%s:%d/%s\n' % (self.PAC_IP,self.PAC_PORT,self.PAC_FILE)
-            info += 'Pac File           : file:///%s\n' % os.path.join(os.path.dirname(os.path.abspath(__file__)), self.PAC_FILE).replace('\\','/').replace(' ', '%20').lstrip('')
+            info += 'Pac File           : file:///%s\n' % os.path.join(os.path.dirname(os.path.abspath(__file__)), self.PAC_FILE).replace('\\','/').replace(' ', '%20').lstrip('/')
         if common.CRLF_ENABLE:
             #http://www.acunetix.com/websitesecurity/crlf-injection.htm
             info += 'CRLF Injection     : %s\n' % '|'.join(self.CRLF_SITES)
