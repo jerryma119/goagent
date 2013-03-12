@@ -445,28 +445,46 @@ class DNSUtil(object):
         return any(x in DNSUtil.blacklist for x in iplist)
 
     @staticmethod
-    def _remote_resolve(qname, dnsserver, timeout=None):
+    def _remote_resolve(dnsserver, qname, timeout=None):
         if isinstance(dnsserver, tuple):
             dnsserver, port = dnsserver
         else:
             port = 53
         for i in xrange(DNSUtil.max_retry):
-            index = os.urandom(2)
             host = ''.join(chr(len(x))+x for x in qname.split('.'))
-            data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (index, host)
+            seqid = os.urandom(2)
+            data = '%s\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00%s\x00\x00\x01\x00\x01' % (seqid, host)
             address_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
             sock = None
             try:
-                sock = socket.socket(family=address_family, type=socket.SOCK_DGRAM)
-                if isinstance(timeout, (int, long)):
+                if i < DNSUtil.max_retry-1:
+                    # UDP mode query
+                    sock = socket.socket(family=address_family, type=socket.SOCK_DGRAM)
                     sock.settimeout(timeout)
-                sock.sendto(data, (dnsserver, port))
-                for i in xrange(DNSUtil.max_wait):
-                    data = sock.recv(512)
-                    if not DNSUtil.is_bad_reply(data):
-                        return data
+                    sock.sendto(data, (dnsserver, port))
+                    for i in xrange(DNSUtil.max_wait):
+                        data = sock.recv(512)
+                        if data and not DNSUtil.is_bad_reply(data):
+                            return data[2:]
+                        else:
+                            logging.warning('DNSUtil._remote_resolve(dnsserver=%r, %r) return position udp data=%r', qname, dnsserver, data)
+                else:
+                    # TCP mode query
+                    sock = socket.socket(family=address_family, type=socket.SOCK_STREAM)
+                    sock.settimeout(timeout)
+                    sock.connect((dnsserver, port))
+                    data = struct.pack('>h', len(data)) + data
+                    print repr(data)
+                    sock.send(data)
+                    rfile = sock.makefile('r', 512)
+                    data = rfile.read(2)
+                    if not data:
+                        logging.warning('DNSUtil._remote_resolve(dnsserver=%r, %r) return bad tcp header data=%r', qname, dnsserver, data)
+                    data = rfile.read(struct.unpack('>h', data)[0])
+                    if data and not DNSUtil.is_bad_reply(data):
+                        return data[2:]
                     else:
-                        logging.warning('DNSUtil._remote_resolve(%r, dnsserver=%r) return position data=%r', qname, dnsserver, data)
+                        logging.warning('DNSUtil._remote_resolve(dnsserver=%r, %r) return bad tcp data=%r', qname, dnsserver, data)
             except socket.error as e:
                 if e[0] in (10060, 'timed out'):
                     continue
@@ -477,8 +495,8 @@ class DNSUtil(object):
                     sock.close()
 
     @staticmethod
-    def remote_resolve(qname, dnsserver, timeout=None):
-        data = DNSUtil._remote_resolve(qname, dnsserver, timeout)
+    def remote_resolve(dnsserver, qname, timeout=None):
+        data = DNSUtil._remote_resolve(dnsserver, qname, timeout)
         iplist = DNSUtil._reply_to_iplist(data or '')
         return iplist
 
@@ -509,7 +527,7 @@ class HTTP(object):
             if not dnsserver:
                 ips = socket.gethostbyname_ex(host)[-1]
             else:
-                ips = DNSUtil.remote_resolve(host, dnsserver, timeout=2)
+                ips = DNSUtil.remote_resolve(dnsserver, host, timeout=2)
             if ipv4_only:
                 ips = [ip for ip in ips if re.match(r'\d+.\d+.\d+.\d+', ip)]
             iplist += set(ips)
@@ -1268,7 +1286,7 @@ class GAEProxyHandler(object):
                 for domain in need_resolve_remote:
                     logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
                     try:
-                        iplist = DNSUtil.remote_resolve(domain, dnsserver, timeout=3)
+                        iplist = DNSUtil.remote_resolve(dnsserver, domain, timeout=3)
                         if iplist:
                             google_ipmap[domain] = iplist
                             logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
@@ -1946,7 +1964,7 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', DummyGeventObject)):
             try:
                 dnsserver = random.choice(self.dnsservers)
                 logging.info('DNSServer resolve domain=%r by dnsserver=%r to iplist', qname, dnsserver)
-                data = DNSUtil._remote_resolve(qname, dnsserver, self.timeout)
+                data = DNSUtil._remote_resolve(dnsserver, qname, self.timeout)
                 if not data:
                     logging.warning('DNSServer resolve domain=%r return data=%s', qname, data)
                     return
@@ -1955,7 +1973,7 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', DummyGeventObject)):
                 logging.info('DNSServer resolve domain=%r return iplist=%s', qname, iplist)
             except socket.error as e:
                 logging.error('DNSServer resolve domain=%r to iplist failed:%s', qname, e)
-        return self.sendto(reqid + self.cache[domain][2:], address)
+        return self.sendto(reqid + self.cache[domain], address)
 
 def pre_start():
     if sys.platform == 'cygwin':
