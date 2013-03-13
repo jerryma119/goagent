@@ -467,7 +467,7 @@ class DNSUtil(object):
                         if data and not DNSUtil.is_bad_reply(data):
                             return data[2:]
                         else:
-                            logging.warning('DNSUtil._remote_resolve(dnsserver=%r, %r) return position udp data=%r', qname, dnsserver, data)
+                            logging.warning('DNSUtil._remote_resolve(dnsserver=%r, %r) return poisoned udp data=%r', qname, dnsserver, data)
                 else:
                     # TCP mode query
                     sock = socket.socket(family=address_family, type=socket.SOCK_STREAM)
