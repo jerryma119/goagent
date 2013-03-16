@@ -1297,7 +1297,8 @@ class GAEProxyHandler(object):
             common.GOOGLE_HOSTS = list(set(sum(google_ipmap.values(), [])))
             if len(common.GOOGLE_HOSTS) == 0:
                 logging.error('resolve %s domain return empty! try remote dns resovle!', common.GAE_PROFILE)
-                sys.exit(-1)
+                common.GOOGLE_HOSTS = common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|')
+                #sys.exit(-1)
         for appid in common.GAE_APPIDS:
             http.dns['%s.appspot.com' % appid] = http.dns.default_factory(common.GOOGLE_HOSTS)
         logging.info('resolve common.GOOGLE_HOSTS domain to iplist=%r', common.GOOGLE_HOSTS)
