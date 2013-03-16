@@ -1323,22 +1323,30 @@ class GAEProxyHandler(object):
                 iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
                 if iplist and len(iplist) > len(hosts):
                     common.GOOGLE_HOSTS = list(set(iplist))
-                else:
-                    # seems google_cn is down, should switch to google_hk?
-                    need_switch = False
-                    for host in random.sample(list(common.GOOGLE_HOSTS), min(3, len(common.GOOGLE_HOSTS))):
-                        try:
-                            socket.create_connection((host, 443), timeout=2).close()
-                        except socket.error:
-                            need_switch = True
-                            break
-                    if need_switch:
-                        common.GAE_PROFILE = 'google_hk'
-                        common.GOOGLE_MODE = 'https'
-                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-                        http.max_window = common.GOOGLE_WINDOW = common.CONFIG.getint('google_hk', 'window')
-                        common.GOOGLE_HOSTS = list(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
-                        common.GOOGLE_WITHGAE = set(common.CONFIG.get('google_hk', 'withgae').split('|'))
+                # OK, let test google_cn iplist and decide whether to switch
+                need_switch = False
+                sample_hosts = random.sample(list(common.GOOGLE_HOSTS), min(3, len(common.GOOGLE_HOSTS)))
+                connect_timing = 0
+                for host in sample_hosts:
+                    try:
+                        start = time.time()
+                        socket.create_connection((host, 443), timeout=2).close()
+                        end = time.time()
+                        connect_timing += end - start
+                    except socket.error:
+                        # connect failed, need switch
+                        need_switch = True
+                        break
+                if 1000 * connect_timing / len(sample_hosts) > 128:
+                    # avg connect time large than 128 ms, need switch
+                    need_switch = True
+                if need_switch:
+                    common.GAE_PROFILE = 'google_hk'
+                    common.GOOGLE_MODE = 'https'
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                    http.max_window = common.GOOGLE_WINDOW = common.CONFIG.getint('google_hk', 'window')
+                    common.GOOGLE_HOSTS = list(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
+                    common.GOOGLE_WITHGAE = set(common.CONFIG.get('google_hk', 'withgae').split('|'))
             self._update_google_iplist()
         return True
 
