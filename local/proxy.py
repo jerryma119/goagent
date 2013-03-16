@@ -795,7 +795,7 @@ class HTTP(object):
         line = rfile.readline(bufsize)
         if not line:
             raise socket.error(10053, 'empty line')
-        method, path, version = line.split(' ', 2)
+        method, path = line.split(' ')[:2]
         headers = self.MessageClass()
         while 1:
             line = rfile.readline(bufsize)
@@ -805,7 +805,7 @@ class HTTP(object):
             keyword = keyword.title()
             value = value.strip()
             headers[keyword] = value
-        return method, path, version.strip(), headers
+        return method, path, 'HTTP/1.1', headers
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=1048576, crlf=None, return_sock=None):
         skip_headers = self.skip_headers
