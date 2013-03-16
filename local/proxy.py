@@ -795,7 +795,7 @@ class HTTP(object):
         line = rfile.readline(bufsize)
         if not line:
             raise socket.error(10053, 'empty line')
-        method, path = line.split(' ')[:2]
+        method, path = line.split()[:2]
         headers = self.MessageClass()
         while 1:
             line = rfile.readline(bufsize)
@@ -1283,7 +1283,6 @@ class GAEProxyHandler(object):
         A.l:link {color: #6f6f6f}
         A.u:link {color: green}
         //--></style>
-
         </head>
         <body text=#000000 bgcolor=#ffffff>
         <table border=0 cellpadding=2 cellspacing=0 width=100%>
@@ -1292,7 +1291,6 @@ class GAEProxyHandler(object):
         <blockquote>
         <H1>{{banner}}</H1>
         {{detail}}
-
         <p>
         </blockquote>
         <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
