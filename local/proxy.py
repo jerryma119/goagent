@@ -333,9 +333,9 @@ class CertUtil(object):
         cert.set_subject(req.get_subject())
         cert.set_pubkey(req.get_pubkey())
         if commonname[0] == '.':
-            sans = ['*'+commonname] + [x for x in sans if x != '*'+commonname]
+            sans = ['*'+commonname] + [s for s in sans if s != '*'+commonname]
         else:
-            sans = [commonname] + [x for x in sans if x != commonname]
+            sans = [commonname] + [s for s in sans if s != commonname]
         cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
@@ -374,8 +374,7 @@ class CertUtil(object):
                     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
                     commonname = (v for k, v in x509.get_subject().get_components() if k == 'O').next()
             except Exception as e:
-                pass
-
+                logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
         cmd = ''
         if sys.platform.startswith('win'):
             cmd = 'cd /d "%s" && .\certmgr.exe -add %s -c -s -r localMachine Root >NUL' % (dirname, basename)
@@ -1118,7 +1117,7 @@ class RangeFetch(object):
         response_status = self.response.status
         response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
         content_range = response_headers['Content-Range']
-        content_length = response_headers['Content-Length']
+        #content_length = response_headers['Content-Length']
         start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
         if start == 0:
             response_status = 200
@@ -1574,7 +1573,7 @@ class GAEProxyHandler(object):
         host, _, port = self.path.rpartition(':')
         port = int(port)
         logging.info('%s:%s "%s %s:%d HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, host, port)
-        http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems())
+        #http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems())
         self.sock.send('HTTP/1.1 200 OK\r\n\r\n')
         if not common.PROXY_ENABLE:
             if host not in http.dns:
