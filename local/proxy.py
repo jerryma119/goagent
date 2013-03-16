@@ -118,6 +118,7 @@ except ImportError:
     gevent.pool.Pool             = GeventPoolPool
 
     gevent.version_info = (1, 0, 0, 'fake')
+    gevent.__version__ = '1.0fake'
 
     del GeventImport, GeventSpawn, GeventSpawnLater,\
         GeventServerStreamServer, GeventServerDatagramServer, GeventPoolPool
@@ -1229,11 +1230,11 @@ class GAEProxyHandler(object):
         finally:
             self.finish()
 
-    def _error_html(self, errno, error, description=''):
-        ERROR_TEMPLATE = '''
+    def _message_html(self, title, banner, detail=''):
+        MESSAGE_TEMPLATE = '''
         <html><head>
         <meta http-equiv="content-type" content="text/html;charset=utf-8">
-        <title>{{errno}} {{error}}</title>
+        <title>{{title}}</title>
         <style><!--
         body {font-family: arial,sans-serif}
         div.nav {margin-top: 1ex}
@@ -1248,19 +1249,19 @@ class GAEProxyHandler(object):
         </head>
         <body text=#000000 bgcolor=#ffffff>
         <table border=0 cellpadding=2 cellspacing=0 width=100%>
-        <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Error</b></td></tr>
+        <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
         <tr><td>&nbsp;</td></tr></table>
         <blockquote>
-        <H1>{{error}}</H1>
-        {{description}}
+        <H1>{{banner}}</H1>
+        {{detail}}
 
         <p>
         </blockquote>
         <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
         </body></html>
         '''
-        kwargs = dict(errno=errno, error=error, description=description)
-        template = ERROR_TEMPLATE
+        kwargs = dict(title=title, banner=banner, detail=detail)
+        template = MESSAGE_TEMPLATE
         for keyword, value in kwargs.items():
             template = template.replace('{{%s}}' % keyword, value)
         return template
@@ -1526,8 +1527,8 @@ class GAEProxyHandler(object):
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
 
             if response is None:
-                error_html = self._error_html('502', 'Local URLFetch failed', str(errors))
-                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + error_html)
+                message_html = self._message_html('502 URLFetch failed', 'Local URLFetch %r failed' % self.path, str(errors))
+                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + message_html)
                 return
 
             # gateway error, switch to https mode
@@ -1747,8 +1748,8 @@ class PAASProxyHandler(GAEProxyHandler):
                     errors.append(e)
 
             if response is None:
-                error_html = self._error_html('502', 'Local PAAS URLFetch failed', str(errors))
-                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + error_html)
+                message_html = self._message_html('502 PAAS URLFetch failed', 'Local PAAS URLFetch %r failed' % self.path, str(errors))
+                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + message_html)
                 return
 
             logging.info('%s:%s "%s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
