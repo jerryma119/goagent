@@ -1366,7 +1366,7 @@ class GAEProxyHandler(object):
                     common.GOOGLE_HOSTS = list(set(iplist))
                 # OK, let test google_cn iplist and decide whether to switch
                 need_switch = False
-                sample_hosts = random.sample(list(common.GOOGLE_HOSTS), min(3, len(common.GOOGLE_HOSTS)))
+                sample_hosts = random.sample(list(common.GOOGLE_HOSTS), min(4, len(common.GOOGLE_HOSTS)))
                 connect_timing = 0
                 for host in sample_hosts:
                     try:
