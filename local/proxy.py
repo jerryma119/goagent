@@ -1361,7 +1361,7 @@ class GAEProxyHandler(object):
                 iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
                 if iplist and len(iplist) > len(hosts):
                     common.GOOGLE_HOSTS = list(set(iplist))
-                # OK, let test google_cn iplist and decide whether to switch
+                # OK, let's test google_cn iplist and decide whether to switch
                 need_switch = False
                 sample_hosts = random.sample(list(common.GOOGLE_HOSTS), min(4, len(common.GOOGLE_HOSTS)))
                 connect_timing = 0
@@ -1377,8 +1377,8 @@ class GAEProxyHandler(object):
                         need_switch = True
                         break
                 average_timing = 1000 * connect_timing / len(sample_hosts)
-                if average_timing > 128:
-                    # avg connect time large than 128 ms, need switch
+                if average_timing > 768:
+                    # avg connect time large than 768 ms, need switch
                     need_switch = True
                 logging.info('speedtest google_cn iplist average_timing=%0.2f ms, need_switch=%r', average_timing, need_switch)
                 if need_switch:
