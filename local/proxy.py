@@ -157,10 +157,12 @@ import ssl
 import select
 if sys.version[0] == '2':
     import httplib
+    import urllib2
     import urlparse
     import ConfigParser
 else:
     import http.client as httplib
+    import urllib.request as urllib2
     import urllib.parse as urlparse
     import configparser as ConfigParser
 try:
@@ -419,16 +421,12 @@ class CertUtil(object):
 class ProxyUtil(object):
     """ProxyUtil module, based on urllib2"""
 
-    urllib2 = __import__('urllib.request', fromlist=['']) if sys.version[0] == '3' else __import__('urllib2')
-
     @staticmethod
     def parse_proxy(proxy):
-        urllib2 = ProxyUtil.urllib2
         return urllib2._parse_proxy(proxy)
 
     @staticmethod
     def get_system_proxy():
-        urllib2 = ProxyUtil.urllib2
         system_proxy = None
         try:
             proxies = (x for x in urllib2.build_opener().handlers if isinstance(x, urllib2.ProxyHandler)).next().proxies
@@ -1934,12 +1932,12 @@ class PACServerHandler(GAEProxyHandler):
             logging.info('%s:%s "%s %s HTTP/1.1" 404 -', self.remote_addr, self.remote_port, self.method, self.path)
 
     def send_file(self, wfile, filename, mimetype):
+        logging.info('%s:%s "%s %s HTTP/1.1" 200 -', self.remote_addr, self.remote_port, self.method, self.path)
         with open(filename, 'rb') as fp:
             data = fp.read()
             wfile.write('HTTP/1.1 200\r\nContent-Type: %s\r\nConnection: close\r\n\r\n' % (mimetype))
             wfile.write(data)
             wfile.close()
-            logging.info('%s:%s "%s %s HTTP/1.1" 200 -', self.remote_addr, self.remote_port, self.method, self.path)
 
     def handle_method(self):
         self.sock.sendall('HTTP/1.1 400 Bad Request\r\n\r\n')
@@ -2020,6 +2018,9 @@ def pre_start():
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
+    if common.PAC_ENABLE:
+        url = 'http://%s:%d/%s' % (common.PAC_IP, common.PAC_PORT, common.PAC_FILE)
+        gevent.spawn_later(1800, lambda x: urllib2.build_opener(urllib2.ProxyHandler({})).open(x), url)
     if common.PAAS_ENABLE:
         if common.PAAS_FETCHSERVER.startswith('http://') and not common.PAAS_PASSWORD:
             logging.warning('Dont forget set your PAAS fetchserver password or use https')
