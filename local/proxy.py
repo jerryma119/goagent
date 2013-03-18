@@ -401,14 +401,8 @@ class ProxyUtil(object):
 
     @staticmethod
     def get_system_proxy():
-        system_proxy = None
-        try:
-            proxies = (x for x in urllib2.build_opener().handlers if isinstance(x, urllib2.ProxyHandler)).next().proxies
-            system_proxy = proxies.get('https') or proxies.get('http') or None
-        except StopIteration:
-            pass
-        finally:
-            return system_proxy
+        proxies = urllib2.getproxies()
+        return proxies.get('https') or proxies.get('http') or {}
 
 
 class DNSUtil(object):
@@ -478,7 +472,6 @@ class DNSUtil(object):
                     sock.settimeout(timeout)
                     sock.connect((dnsserver, port))
                     data = struct.pack('>h', len(data)) + data
-                    print repr(data)
                     sock.send(data)
                     rfile = sock.makefile('r', 512)
                     data = rfile.read(2)
@@ -612,7 +605,7 @@ class HTTP(object):
                     return result
                 else:
                     if i == 0:
-                        # only print first error
+                        # only output first error
                         logging.warning('create_connection to %s return %r, try again.', addrs, result)
 
     def create_ssl_connection(self, address, timeout=None, source_address=None):
@@ -689,7 +682,7 @@ class HTTP(object):
                     return result
                 else:
                     if i == 0:
-                        # only print first error
+                        # only output first error
                         logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
 
     def create_connection_withproxy(self, address, timeout=None, source_address=None, proxy=None):
@@ -970,13 +963,13 @@ class Common(object):
         else:
             self.DNS_ENABLE = 0
 
-        if self.CONFIG.has_section('socks5'):
-            self.SOCKS5_ENABLE = self.CONFIG.getint('socks5', 'enable')
-            self.SOCKS5_LISTEN = self.CONFIG.get('socks5', 'listen')
-            self.SOCKS5_PASSWORD = self.CONFIG.get('socks5', 'password')
-            self.SOCKS5_FETCHSERVER = self.CONFIG.get('socks5', 'fetchserver')
+        if self.CONFIG.has_section('light'):
+            self.LIGHT_ENABLE = self.CONFIG.getint('light', 'enable')
+            self.LIGHT_PASSWORD = self.CONFIG.get('light', 'password')
+            self.LIGHT_LISTEN = self.CONFIG.get('light', 'listen')
+            self.LIGHT_SERVER = self.CONFIG.get('light', 'server')
         else:
-            self.SOCKS5_ENABLE = 0
+            self.LIGHT_ENABLE = 0
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
@@ -1009,9 +1002,9 @@ class Common(object):
         if common.DNS_ENABLE:
             info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
             info += 'DNS Remote         : %s\n' % common.DNS_REMOTE
-        if common.SOCKS5_ENABLE:
-            info += 'SOCKS5 Listen      : %s\n' % common.SOCKS5_LISTEN
-            info += 'SOCKS5 FetchServer : %s\n' % common.SOCKS5_FETCHSERVER
+        if common.LIGHT_ENABLE:
+            info += 'LIGHT Listen       : %s\n' % common.LIGHT_LISTEN
+            info += 'LIGHT Server       : %s\n' % common.LIGHT_SERVER
         if common.CRLF_ENABLE:
             #http://www.acunetix.com/websitesecurity/crlf-injection.htm
             info += 'CRLF Injection     : %s\n' % '|'.join(self.CRLF_SITES)
@@ -1732,54 +1725,93 @@ class PAASProxyHandler(GAEProxyHandler):
         return GAEProxyHandler.handle_connect_urlfetch(self)
 
 
-def socks5proxy_handler(sock, address, hls={'setuplock': gevent.coros.Semaphore()}):
-    import hmac
-    import collections
-    if 'setup' not in hls:
-        if not common.PROXY_ENABLE:
-            fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
-            logging.info('resolve common.SOCKS5_FETCHSERVER domain=%r to iplist', fetchhost)
-            with hls['setuplock']:
-                fethhost_iplist = socket.gethostbyname_ex(fetchhost)[-1]
-                if len(fethhost_iplist) == 0:
-                    logging.error('resolve %s domain return empty! please use ip list to replace domain list!', fetchhost)
-                    sys.exit(-1)
-                hls['dns'] = collections.defaultdict(list)
-                hls['dns'][fetchhost] = list(set(fethhost_iplist))
-                logging.info('resolve common.PAAS_SOCKS5SERVER domain to iplist=%r', fethhost_iplist)
-        hls['setup'] = True
+class LightProxyHandler(object):
 
-    remote_addr, remote_port = address
-    logging.info('%s:%s "POST %s SOCKS/5" - -', remote_addr, remote_port, common.SOCKS5_FETCHSERVER)
-    scheme, netloc, path, params, query, fragment = urlparse.urlparse(common.SOCKS5_FETCHSERVER)
-    if re.search(r':\d+$', netloc):
-        host, _, port = netloc.rpartition(':')
-        port = int(port)
-    else:
-        host = netloc
-        port = {'https': 443, 'http': 80}.get(scheme, 80)
-    if host in hls['dns']:
-        host = random.choice(hls['dns'][host])
-    remote = socket.create_connection((host, port))
-    if scheme == 'https':
-        remote = ssl.wrap_socket(remote, ssl_version=ssl.PROTOCOL_TLSv1)
-    password = common.SOCKS5_PASSWORD.strip()
-    bitmask = ord(os.urandom(1))
-    digest = hmac.new(password, chr(bitmask)).hexdigest()
-    request_data = 'PUT /?%s HTTP/1.1\r\n' % digest
-    request_data += 'Host: %s\r\n' % host
-    request_data += 'Connection: Upgrade\r\n'
-    request_data += 'Content-Length: 0\r\n'
-    request_data += '\r\n'
-    remote.sendall(request_data)
-    rfile = remote.makefile('rb', 0)
-    while 1:
-        line = rfile.readline()
+    MessageClass = dict
+    bufsize = 1024 * 1024
+    firstrun = None
+    firstrun_lock = gevent.coros.Semaphore()
+
+    def __init__(self, sock, address):
+        self.sock = sock
+        self.remote_addr, self.remote_port = self.address = address
+
+        if not self.__class__.firstrun:
+            with self.__class__.firstrun_lock:
+                if not self.__class__.firstrun:
+                    try:
+                        self.__class__.firstrun = self.first_run()
+                    except Exception as e:
+                        logging.error('%r first_run raise Exception: %s', self, e)
+        try:
+            self.handle()
+        except Exception as e:
+            logging.exception('%r Exception: %s', self, e)
+        finally:
+            self.finish()
+
+    def first_run(self):
+        """LightProxyHandler first_run, init domain/iplist map"""
+        return True
+
+    def parse_request(self, bufsize=1048576):
+        line = self.rfile.readline(bufsize)
         if not line:
-            break
-        if line == '\r\n':
-            break
-    http.forward_socket(sock, remote, bitmask=bitmask)
+            raise socket.error(10053, 'empty line')
+        method, path = line.split()[:2]
+        headers = self.MessageClass()
+        while 1:
+            line = self.rfile.readline(bufsize)
+            if not line or line == '\r\n':
+                break
+            keyword, _, value = line.partition(':')
+            keyword = keyword.title()
+            value = value.strip()
+            headers[keyword] = value
+        return method, path, 'HTTP/1.1', headers
+
+    def handle(self):
+        self.rfile = self.sock.makefile('rb', 0)
+        try:
+            self.method, self.path, self.version, self.headers = self.parse_request(self.bufsize)
+            getattr(self, 'handle_%s' % self.method.lower(), self.handle_method)()
+        except socket.error as e:
+            if e[0] not in (10053, 10054, errno.EPIPE):
+                raise
+
+    def handle_method(self):
+        """Direct http forward"""
+        try:
+            logging.info('%s:%s "%s %s HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, self.path)
+            content_length = int(self.headers.get('Content-Length', 0))
+            payload = self.rfile.read(content_length) if content_length else None
+            server_ip, _, server_port = common.LIGHT_SERVER.rpartition(':')
+            server_sock = socket.create_connection((server_ip, int(server_port)))
+            server_ssl_sock = ssl.wrap_socket(server_sock)
+            data = '%s %s HTTP/1.1\r\n%s\r\n' % (self.method, self.path, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.iteritems()))
+            server_ssl_sock.sendall(data)
+            if payload:
+                server_ssl_sock.sendall(payload)
+            if self.method == 'CONNECT':
+                http.forward_socket(self.sock, server_sock)
+            else:
+                http.forward_socket(self.sock, server_ssl_sock)
+        except socket.error as e:
+            if e[0] not in (10053, errno.EPIPE):
+                raise
+        except Exception as e:
+            logging.warn('LightProxyHandler "%s %s" failed:%s', self.method, self.headers.get('Host', ''), e)
+            raise
+
+    def finish(self):
+        try:
+            self.rfile.close()
+        except:
+            pass
+        try:
+            self.sock.close()
+        except:
+            pass
 
 
 class Autoproxy2Pac(object):
@@ -1994,7 +2026,7 @@ def pre_start():
         sys.exit(-1)
     if common.PAC_ENABLE:
         url = 'http://%s:%d/%s' % (common.PAC_IP, common.PAC_PORT, common.PAC_FILE)
-        gevent.spawn_later(1800, lambda x: urllib2.build_opener(urllib2.ProxyHandler({})).open(x), url)
+        gevent.spawn_later(600, lambda x: urllib2.build_opener(urllib2.ProxyHandler({})).open(x), url)
     if common.PAAS_ENABLE:
         if common.PAAS_FETCHSERVER.startswith('http://') and not common.PAAS_PASSWORD:
             logging.warning('Dont forget set your PAAS fetchserver password or use https')
@@ -2020,9 +2052,9 @@ def main():
         server = gevent.server.StreamServer((host, int(port)), PAASProxyHandler)
         gevent.spawn(server.serve_forever)
 
-    if common.SOCKS5_ENABLE:
-        host, port = common.SOCKS5_LISTEN.split(':')
-        server = gevent.server.StreamServer((host, int(port)), socks5proxy_handler)
+    if common.LIGHT_ENABLE:
+        host, port = common.LIGHT_LISTEN.split(':')
+        server = gevent.server.StreamServer((host, int(port)), LightProxyHandler)
         gevent.spawn(server.serve_forever)
 
     if common.PAC_ENABLE:

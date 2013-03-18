@@ -354,9 +354,44 @@ def light_handler(sock, address):
         if method == 'CONNECT':
             host, _, port = path.rpartition(':')
             remote = socket.create_connection((host, int(port)))
-            wfile.write('HTTP/1.1 200 OK')
+            wfile.write('HTTP/1.1 200 OK\r\n\r\n')
+            forward_socket(sock._sock, remote)
         else:
-            pass
+            host = headers.get('Host') or urlparse.urlparse(path).netloc
+            if re.search(r':\d+$', host):
+                host, _, port = host.rpartition(':')
+                port = int(port)
+            else:
+                port = 80
+            if path.startswith('http://'):
+                path = re.sub(r'http://[^/]+', '', path)
+            payload = None
+            if 'Content-Length' in headers:
+                payload = rfile.read(int(headers.get('Content-Length', 0)))
+            conn = httplib.HTTPConnection(host, port=port)
+            conn.request(method, path, body=payload, headers=headers)
+            response = conn.getresponse()
+            version = 'HTTP/1.1' if response.version == 11 else 'HTTP/1.0'
+            data = '%s %s\r\n%s\r\n' % (version, response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.msg.items() if k != 'transfer-encoding'))
+            wfile.write(data)
+            left = int(response.getheader('Content-Length', 0))
+            if left:
+                while 1:
+                    if not left:
+                        break
+                    data = response.read(min(left, bufsize))
+                    if not data:
+                        break
+                    wfile.write(data)
+                    left -= len(data)
+                response.close()
+            else:
+                while 1:
+                    data = response.read(bufsize)
+                    if not data:
+                        break
+                    wfile.write(data)
+                response.close()
     except socket.error as e:
         if e[0] not in (10053, errno.EPIPE, 'empty line'):
             raise
@@ -384,7 +419,7 @@ if __name__ == '__main__':
     app = options.get('-a', 'light')
 
     if app == 'light':
-        server = gevent.server.StreamServer((host, int(port)), light_handler)
+        server = gevent.server.StreamServer((host, int(port)), light_handler, keyfile='ca.pem', certfile='ca.pem')
     else:
         server = gevent.wsgi.WSGIServer((host, int(port)), paas_application)
 
