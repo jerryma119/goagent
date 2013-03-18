@@ -31,12 +31,9 @@ try:
     import gevent
     import gevent.core
     import gevent.queue
-    import gevent.monkey
     import gevent.coros
     import gevent.server
-    import gevent.pool
-    import gevent.event
-    import gevent.timeout
+    import gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0] >= 1)
 except ImportError:
     import platform
@@ -96,24 +93,6 @@ except ImportError:
         def handle(self, data, address):
             raise NotImplemented()
 
-    class GeventPoolPool(object):
-        def __init__(self, size):
-            self._lock = threading.Semaphore(size)
-
-        def __target_wrapper(self, target, args, kwargs):
-            t = threading.Thread(target=target, args=args, kwargs=kwargs)
-            try:
-                t.start()
-                t.join()
-            except Exception as e:
-                logging.error('threading.Thread target=%r error:%s', target, e)
-            finally:
-                self._lock.release()
-
-        def spawn(self, target, *args, **kwargs):
-            self._lock.acquire()
-            return threading._start_new_thread(self.__target_wrapper, (target, args, kwargs))
-
     gevent = GeventImport('gevent')
     gevent.pool = GeventImport('gevent.pool')
     gevent.queue = GeventImport('gevent.queue')
@@ -130,24 +109,19 @@ except ImportError:
     gevent.spawn_later = GeventSpawnLater
     gevent.server.StreamServer = GeventServerStreamServer
     gevent.server.DatagramServer = GeventServerDatagramServer
-    gevent.pool.Pool = GeventPoolPool
 
     gevent.version_info = (1, 0, 0, 'fake')
     gevent.__version__ = '1.0fake'
 
-    del GeventImport, GeventSpawn, GeventSpawnLater,\
-        GeventServerStreamServer, GeventServerDatagramServer, GeventPoolPool
+    del GeventImport, GeventSpawn, GeventSpawnLater, GeventServerStreamServer, GeventServerDatagramServer
 
-import collections
 import errno
 import time
 import struct
 import zlib
-import heapq
 import re
 import traceback
 import random
-import shutil
 import base64
 import hashlib
 import fnmatch
@@ -405,7 +379,7 @@ class CertUtil(object):
                 os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
             if os.path.exists(certdir):
                 if os.path.isdir(certdir):
-                    shutil.rmtree(certdir)
+                    any(os.remove(x) for x in (glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/*.key')))
                 else:
                     os.remove(certdir)
                 os.mkdir(certdir)
@@ -546,22 +520,21 @@ class HTTP(object):
         self.tcp_connection_time = {}
         self.ssl_connection_time = {}
         self.max_timeout = max_timeout
-        self.dns = collections.defaultdict(list)
+        self.dns = {}
         self.crlf = 0
         self.proxy = proxy
         self.ssl_validate = ssl_validate or self.ssl_validate
 
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
-        iplist = self.dns[host]
+        iplist = self.dns.get(host)
         if not iplist:
-            iplist = self.dns[host] = self.dns.default_factory([])
             if not dnsserver:
-                ips = socket.gethostbyname_ex(host)[-1]
+                iplist = socket.gethostbyname_ex(host)[-1]
             else:
-                ips = DNSUtil.remote_resolve(dnsserver, host, timeout=2)
+                iplist = DNSUtil.remote_resolve(dnsserver, host, timeout=2)
             if ipv4_only:
-                ips = [ip for ip in ips if re.match(r'\d+.\d+.\d+.\d+', ip)]
-            iplist += set(ips)
+                iplist = [ip for ip in iplist if re.match(r'\d+.\d+.\d+.\d+', ip)]
+            self.dns[host] = iplist = list(set(iplist))
         return iplist
 
     def wrap_socket(self, sock, **ssl_options):
@@ -628,7 +601,7 @@ class HTTP(object):
             get_connection_time = self.tcp_connection_time.get
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
-            addrs = heapq.nsmallest(window, addresses, key=get_connection_time) + random.sample(addresses, window)
+            addrs = sorted(addresses, key=get_connection_time)[:window] + random.sample(addresses, window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_connection, addr, timeout, queue)
@@ -705,7 +678,7 @@ class HTTP(object):
         get_connection_time = self.ssl_connection_time.get
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
-            addrs = heapq.nsmallest(window, addresses, key=get_connection_time) + random.sample(addresses, window)
+            addrs = sorted(addresses, key=get_connection_time)[:window] + random.sample(addresses, window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_ssl_connection, addr, timeout, queue)
@@ -1335,14 +1308,14 @@ class GAEProxyHandler(object):
                 common.GOOGLE_HOSTS = common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|')
                 #sys.exit(-1)
         for appid in common.GAE_APPIDS:
-            http.dns['%s.appspot.com' % appid] = http.dns.default_factory(common.GOOGLE_HOSTS)
+            http.dns['%s.appspot.com' % appid] = list(set(common.GOOGLE_HOSTS))
         logging.info('resolve common.GOOGLE_HOSTS domain to iplist=%r', common.GOOGLE_HOSTS)
 
     def first_run(self):
         """GAEProxyHandler first_run, init domain/iplist map"""
         if common.GAE_PROFILE == 'google_ipv6' or common.PROXY_ENABLE:
             for appid in common.GAE_APPIDS:
-                http.dns['%s.appspot.com' % appid] = http.dns.default_factory(common.GOOGLE_HOSTS)
+                http.dns['%s.appspot.com' % appid] = list(set(common.GOOGLE_HOSTS))
         elif not common.PROXY_ENABLE:
             logging.info('resolve common.GOOGLE_HOSTS domain=%r to iplist', common.GOOGLE_HOSTS)
             if common.GAE_PROFILE == 'google_cn':
@@ -1421,7 +1394,7 @@ class GAEProxyHandler(object):
             else:
                 if host not in http.dns:
                     #http.dns[host] = http.dns.default_factory(http.dns_resolve(host))
-                    http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
+                    http.dns[host] = list(set(common.GOOGLE_HOSTS))
                 need_forward = True
         elif common.CRLF_ENABLE and host.endswith(common.CRLF_SITES):
             if host not in http.dns:
@@ -1573,7 +1546,7 @@ class GAEProxyHandler(object):
         self.sock.send('HTTP/1.1 200 OK\r\n\r\n')
         if not common.PROXY_ENABLE:
             if host not in http.dns:
-                http.dns[host] = http.dns.default_factory(common.GOOGLE_HOSTS)
+                http.dns[host] = common.GOOGLE_HOSTS
             data = self.sock.recv(1024)
             for i in xrange(5):
                 try:
@@ -1761,6 +1734,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
 def socks5proxy_handler(sock, address, hls={'setuplock': gevent.coros.Semaphore()}):
     import hmac
+    import collections
     if 'setup' not in hls:
         if not common.PROXY_ENABLE:
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.SOCKS5_FETCHSERVER).netloc)
