@@ -393,7 +393,7 @@ def light_handler(sock, address):
                     wfile.write(data)
                 response.close()
     except socket.error as e:
-        if e[0] not in (10053, errno.EPIPE, 'empty line'):
+        if e[0] not in (10053, errno.EPIPE):
             raise
     finally:
         rfile.close()
