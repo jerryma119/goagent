@@ -1985,8 +1985,8 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', DummyGeventObject)):
 
 def pre_start():
     if sys.platform == 'cygwin':
-        logging.critical('cygwin platform is not supported, please download `http://www.python.org/getit/`')
-        sys.exit(-1)
+        logging.info('cygwin is not officially supported, please continue at your own risk :)')
+        #sys.exit(-1)
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
