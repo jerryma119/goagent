@@ -232,6 +232,7 @@ logging = sys.modules['logging'] = Logging('logging')
 class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
 
+    ca_vendor = 'GoAgent'
     ca_lock = threading.Lock()
 
     @staticmethod
@@ -245,9 +246,9 @@ class CertUtil(object):
         subj.countryName = 'CN'
         subj.stateOrProvinceName = 'Internet'
         subj.localityName = 'Cernet'
-        subj.organizationName = 'GoAgent'
-        subj.organizationalUnitName = 'GoAgent Root'
-        subj.commonName = 'GoAgent CA'
+        subj.organizationName = CertUtil.ca_vendor
+        subj.organizationalUnitName = '%s Root' % CertUtil.ca_vendor
+        subj.commonName = '%s CA' % CertUtil.ca_vendor
         ca.gmtime_adj_notBefore(0)
         ca.gmtime_adj_notAfter(24 * 60 * 60 * 3652)
         ca.set_issuer(ca.get_subject())
@@ -284,7 +285,7 @@ class CertUtil(object):
         subj.countryName = 'CN'
         subj.stateOrProvinceName = 'Internet'
         subj.localityName = 'Cernet'
-        subj.organizationalUnitName = 'GoAgent Branch'
+        subj.organizationalUnitName = '%s Branch' % CertUtil.ca_vendor
         if commonname[0] == '.':
             subj.commonName = '*' + commonname
             subj.organizationName = '*' + commonname
@@ -376,7 +377,7 @@ class CertUtil(object):
                 logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
                 sys.exit(-1)
             if os.name == 'nt':
-                os.system('certmgr.exe -del -n "GoAgent CA" -c -s -r localMachine Root')
+                os.system('certmgr.exe -del -n "%s CA" -c -s -r localMachine Root' % CertUtil.ca_vendor)
             if os.path.exists(certdir):
                 if os.path.isdir(certdir):
                     any(os.remove(x) for x in (glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/*.key')))
@@ -386,7 +387,7 @@ class CertUtil(object):
             CertUtil.dump_ca('CA.key', 'CA.crt')
         #Check CA imported
         if CertUtil.import_ca(capath) != 0:
-            logging.warning('GoAgent install certificate failed, Please run proxy.py by administrator/root/sudo')
+            logging.warning('install root certificate failed, Please run as administrator/root/sudo')
         #Check Certs Dir
         if not os.path.exists(certdir):
             os.makedirs(certdir)
