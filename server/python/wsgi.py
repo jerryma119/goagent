@@ -37,10 +37,10 @@ try:
 except ImportError:
     OpenSSL = None
 
-FetchMax = 2
-FetchMaxSize = 1024*1024*4
-DeflateMaxSize = 1024*1024*4
-Deadline = 60
+URLFETCH_MAX = 2
+URLFETCH_MAXSIZE = 4*1024*1024
+URLFETCH_DEFLATE_MAXSIZE = 4*1024*1024
+URLFETCH_TIMEOUT = 60
 
 
 def message_html(title, banner, detail=''):
@@ -88,7 +88,7 @@ def gae_application(environ, start_response):
             start_response('204 No Content', [])
             yield ''
         else:
-            timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/pow(2, 28)
+            timestamp = long(os.environ['CURRENT_VERSION_ID'].split('.')[1])/2**28
             ctime = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(timestamp+8*3600))
             html = u'GoAgent Python Server %s \u5df2\u7ecf\u5728\u5de5\u4f5c\u4e86\uff0c\u90e8\u7f72\u65f6\u95f4 %s\n' % (__version__, ctime)
             start_response('200 OK', [('Content-Type', 'text/plain; charset=utf-8')])
@@ -130,16 +130,15 @@ def gae_application(environ, start_response):
         yield message_html('GoAgent %s is Running' % __version__, 'Now you can visit some websites', html)
         raise StopIteration
 
-    fetchmethod = getattr(urlfetch, method, '')
+    fetchmethod = getattr(urlfetch, method, None)
     if not fetchmethod:
-        start_response('501 Unsupported', [('Content-Type', 'text/html')])
-        yield message_html('501 Invalid Method', 'Invalid Method: %r' % method, detail='Unsupported Method URL=%r' % url)
+        start_response('405 Method Not Allowed', [('Content-Type', 'text/html')])
+        yield message_html('405 Method Not Allowed', 'Method Not Allowed: %r' % method, detail='Method Not Allowed URL=%r' % url)
         raise StopIteration
 
-    deadline = Deadline
+    deadline = URLFETCH_TIMEOUT
     validate_certificate = bool(int(kwargs.get('validate', 0)))
     headers = dict(headers)
-    headers['Connection'] = 'close'
     payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
     if 'Content-Encoding' in headers:
         if headers['Content-Encoding'] == 'deflate':
@@ -150,7 +149,7 @@ def gae_application(environ, start_response):
     accept_encoding = headers.get('Accept-Encoding', '')
 
     errors = []
-    for i in xrange(int(kwargs.get('fetchmax', FetchMax))):
+    for i in xrange(int(kwargs.get('fetchmax', URLFETCH_MAX))):
         try:
             response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=False, follow_redirects=False, deadline=deadline, validate_certificate=validate_certificate)
             break
@@ -160,31 +159,31 @@ def gae_application(environ, start_response):
             errors.append('%r, deadline=%s' % (e, deadline))
             logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
-            deadline = Deadline * 2
+            deadline = URLFETCH_TIMEOUT * 2
         except urlfetch.DownloadError as e:
             errors.append('%r, deadline=%s' % (e, deadline))
             logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
             time.sleep(1)
-            deadline = Deadline * 2
+            deadline = URLFETCH_TIMEOUT * 2
         except urlfetch.ResponseTooLargeError as e:
             response = e.response
             logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
             m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
             if m is None:
-                headers['Range'] = 'bytes=0-%d' % int(kwargs.get('fetchmaxsize', FetchMaxSize))
+                headers['Range'] = 'bytes=0-%d' % int(kwargs.get('fetchmaxsize', URLFETCH_MAXSIZE))
             else:
                 headers.pop('Range', '')
                 headers.pop('range', '')
                 start = int(m.group(1))
-                headers['Range'] = 'bytes=%s-%d' % (start, start+int(kwargs.get('fetchmaxsize', FetchMaxSize)))
-            deadline = Deadline * 2
+                headers['Range'] = 'bytes=%s-%d' % (start, start+int(kwargs.get('fetchmaxsize', URLFETCH_MAXSIZE)))
+            deadline = URLFETCH_TIMEOUT * 2
         except urlfetch.SSLCertificateError as e:
             errors.append('%r, should validate=0 ?' % e)
             logging.error('%r, deadline=%s', e, deadline)
         except Exception as e:
             errors.append(str(e))
             if i == 0 and method == 'GET':
-                deadline = Deadline * 2
+                deadline = URLFETCH_TIMEOUT * 2
     else:
         start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
         error_string = '<br />\n'.join(errors)
@@ -196,7 +195,7 @@ def gae_application(environ, start_response):
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
 
     data = response.content
-    if 'content-encoding' not in response.headers and len(response.content) < DeflateMaxSize and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+    if 'content-encoding' not in response.headers and len(response.content) < URLFETCH_DEFLATE_MAXSIZE and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         if 'deflate' in accept_encoding:
             response.headers['Content-Encoding'] = 'deflate'
             data = zlib.compress(data)[2:-4]
@@ -259,7 +258,7 @@ def paas_application(environ, start_response):
         yield message_html('403 Forbidden Host', 'Hosts Deny(%s)' % url, detail='url=%r' % url)
         raise StopIteration
 
-    timeout = Deadline
+    timeout = URLFETCH_TIMEOUT
     xorchar = ord(kwargs.get('xorchar') or '\x00')
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
