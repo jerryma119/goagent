@@ -595,7 +595,8 @@ class HTTP(object):
             get_connection_time = self.tcp_connection_time.get
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
-            addrs = sorted(addresses, key=get_connection_time)[:window] + random.sample(addresses, window)
+            addresses.sort(key=get_connection_time)
+            addrs = addresses[:window] + random.sample(addresses[window:], window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_connection, addr, timeout, queue)
@@ -669,10 +670,10 @@ class HTTP(object):
         host, port = address
         result = None
         addresses = [(x, port) for x in self.dns_resolve(host)]
-        get_connection_time = self.ssl_connection_time.get
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
-            addrs = sorted(addresses, key=get_connection_time)[:window] + random.sample(addresses, window)
+            addresses.sort(key=self.ssl_connection_time.get)
+            addrs = addresses[:window] + random.sample(addresses[window:], window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_ssl_connection, addr, timeout, queue)
@@ -1252,7 +1253,7 @@ class GAEProxyHandler(object):
         <body text=#000000 bgcolor=#ffffff>
         <table border=0 cellpadding=2 cellspacing=0 width=100%>
         <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
-        <tr><td>&nbsp;</td></tr></table>
+        <tr><td> </td></tr></table>
         <blockquote>
         <H1>{{banner}}</H1>
         {{detail}}
