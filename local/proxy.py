@@ -118,6 +118,7 @@ except ImportError:
 import errno
 import time
 import struct
+import binascii
 import zlib
 import re
 import traceback
@@ -352,11 +353,18 @@ class CertUtil(object):
                     commonname = (v for k, v in x509.get_subject().get_components() if k == 'O').next()
             except Exception as e:
                 logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
-        cmd = ''
         if sys.platform.startswith('win'):
-            cmd = 'cd /d "%s" && .\certmgr.exe -add %s -c -s -r localMachine Root >NUL' % (dirname, basename)
+            # return os.system('cd /d "%s" && .\certmgr.exe -add %s -c -s -r localMachine Root >NUL' % (dirname, basename))
+            with open(certfile, 'rb') as fp:
+                certdata = fp.read()
+                if certdata.startswith('-----'):
+                    certdata = base64.b64decode(''.join(certdata.strip().splitlines()[1:-1]))
+                handle = ctypes.windll.crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, u'ROOT')
+                ret = ctypes.windll.crypt32.CertAddEncodedCertificateToStore(handle, 0x1, certdata, len(certdata), 4, None)
+                ctypes.windll.crypt32.CertCloseStore(handle, 0)
+                return 0 if ret else -1
         elif sys.platform == 'darwin':
-            cmd = 'security find-certificate -a -c "%s" | grep "%s" >/dev/null || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, commonname, certfile)
+            return os.system('security find-certificate -a -c "%s" | grep "%s" >/dev/null || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, commonname, certfile))
         elif sys.platform.startswith('linux'):
             import platform
             platform_distname = platform.dist()[0]
@@ -364,8 +372,8 @@ class CertUtil(object):
                 pemfile = "/etc/ssl/certs/%s.pem" % commonname
                 new_certfile = "/usr/local/share/ca-certificates/%s.crt" % commonname
                 if not os.path.exists(pemfile):
-                    cmd = 'cp "%s" "%s" && update-ca-certificates' % (certfile, new_certfile)
-        return os.system(cmd)
+                    return os.system('cp "%s" "%s" && update-ca-certificates' % (certfile, new_certfile))
+        return 0
 
     @staticmethod
     def check_ca():
