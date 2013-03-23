@@ -359,9 +359,13 @@ class CertUtil(object):
                 certdata = fp.read()
                 if certdata.startswith('-----'):
                     certdata = base64.b64decode(''.join(certdata.strip().splitlines()[1:-1]))
-                handle = ctypes.windll.crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, u'ROOT')
-                ret = ctypes.windll.crypt32.CertAddEncodedCertificateToStore(handle, 0x1, certdata, len(certdata), 4, None)
-                ctypes.windll.crypt32.CertCloseStore(handle, 0)
+                crypt32_handle = ctypes.windll.kernel32.LoadLibraryW(u'crypt32.dll')
+                libcrypt32 = ctypes.WinDLL(None, handle=crypt32_handle)
+                handle = libcrypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, u'ROOT')
+                ret = libcrypt32.CertAddEncodedCertificateToStore(handle, 0x1, certdata, len(certdata), 4, None)
+                libcrypt32.CertCloseStore(handle, 0)
+                del libcrypt32
+                ctypes.windll.kernel32.FreeLibrary(crypt32_handle)
                 return 0 if ret else -1
         elif sys.platform == 'darwin':
             return os.system('security find-certificate -a -c "%s" | grep "%s" >/dev/null || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, commonname, certfile))
