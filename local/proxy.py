@@ -354,17 +354,18 @@ class CertUtil(object):
             except Exception as e:
                 logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
         if sys.platform.startswith('win'):
-            # return os.system('cd /d "%s" && .\certmgr.exe -add %s -c -s -r localMachine Root >NUL' % (dirname, basename))
             with open(certfile, 'rb') as fp:
                 certdata = fp.read()
                 if certdata.startswith('-----'):
                     certdata = base64.b64decode(''.join(certdata.strip().splitlines()[1:-1]))
                 crypt32_handle = ctypes.windll.kernel32.LoadLibraryW(u'crypt32.dll')
-                libcrypt32 = ctypes.WinDLL(None, handle=crypt32_handle)
-                handle = libcrypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, u'ROOT')
-                ret = libcrypt32.CertAddEncodedCertificateToStore(handle, 0x1, certdata, len(certdata), 4, None)
-                libcrypt32.CertCloseStore(handle, 0)
-                del libcrypt32
+                crypt32 = ctypes.WinDLL(None, handle=crypt32_handle)
+                store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, u'ROOT')
+                if not store_handle:
+                    return -1
+                ret = crypt32.CertAddEncodedCertificateToStore(store_handle, 0x1, certdata, len(certdata), 4, None)
+                crypt32.CertCloseStore(store_handle, 0)
+                del crypt32
                 ctypes.windll.kernel32.FreeLibrary(crypt32_handle)
                 return 0 if ret else -1
         elif sys.platform == 'darwin':
@@ -388,14 +389,12 @@ class CertUtil(object):
             if not OpenSSL:
                 logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
                 sys.exit(-1)
-            if os.name == 'nt':
-                os.system('certmgr.exe -del -n "%s CA" -c -s -r localMachine Root' % CertUtil.ca_vendor)
             if os.path.exists(certdir):
                 if os.path.isdir(certdir):
                     any(os.remove(x) for x in (glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/*.key')))
                 else:
                     os.remove(certdir)
-                os.mkdir(certdir)
+                    os.mkdir(certdir)
             CertUtil.dump_ca('CA.key', 'CA.crt')
         #Check CA imported
         if CertUtil.import_ca(capath) != 0:
