@@ -538,7 +538,7 @@ class HTTP(object):
             else:
                 iplist = DNSUtil.remote_resolve(dnsserver, host, timeout=2)
             if ipv4_only:
-                iplist = [ip for ip in iplist if re.match(r'\d+.\d+.\d+.\d+', ip)]
+                iplist = [ip for ip in iplist if re.match(r'\d+\.\d+\.\d+\.\d+', ip)]
             self.dns[host] = iplist = list(set(iplist))
         return iplist
 
