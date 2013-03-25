@@ -9,6 +9,11 @@ import sys
 import os
 import re
 import time
+import ctypes
+import platform
+
+def main_linux():
+    pass
 
 def main_macos():
     if os.getuid() != 0:
@@ -57,16 +62,22 @@ def main_macos():
         sys.exit(0)
     print 'Adding CA.crt to system keychain Done'
     print 'To start goagent right now, try this command: sudo launchctl load /Library/LaunchDaemons/org.goagent.macos.plist'
-    print 'To checkout log file: using Console.app to locate /var/log/goagent.log' 
-
-def main_linux():
-    pass
+    print 'To checkout log file: using Console.app to locate /var/log/goagent.log'
 
 def main_windows():
-    pass
+    if 1 == ctypes.windll.user32.MessageBoxW(None, u'是否将goagent.exe加入到启动项？', u'GoAgent 对话框', 1):
+        if 1 == ctypes.windll.user32.MessageBoxW(None, u'是否显示托盘区图标？', u'GoAgent 对话框', 1):
+            pass
 
 def main():
-    main_macos()
+    if os.name == 'nt':
+        main_windows()
+    elif sys.platform == 'darwin':
+        main_macos()
+    elif sys.platform.startswith('linux'):
+        main_linux()
+    else:
+        pass
 
 
 if __name__ == '__main__':
