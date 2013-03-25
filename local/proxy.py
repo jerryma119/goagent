@@ -323,7 +323,7 @@ class CertUtil(object):
 
     @staticmethod
     def get_cert(commonname, certdir='certs', keyfile='CA.crt', sans=[]):
-        if len(commonname) >= 32 and commonname.count('.') >= 2:
+        if commonname.count('.') >= 2 and len(commonname.split('.')[-2]) > 4:
             commonname = re.sub(r'^[^\.]+', '', commonname)
         certfile = os.path.join(certdir, commonname + '.crt')
         if os.path.exists(certfile):
