@@ -118,7 +118,6 @@ except ImportError:
 import errno
 import time
 import struct
-import binascii
 import zlib
 import re
 import traceback
@@ -264,19 +263,18 @@ class CertUtil(object):
         return key, ca
 
     @staticmethod
-    def dump_ca(keyfile='CA.key', certfile='CA.crt'):
+    def dump_ca(keyfile='CA.crt'):
         key, ca = CertUtil.create_ca()
         with open(keyfile, 'wb') as fp:
-            fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
-        with open(certfile, 'wb') as fp:
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca))
+            fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
 
     @staticmethod
-    def _get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans=[]):
-        with open(ca_keyfile, 'rb') as fp:
-            key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, fp.read())
-        with open(ca_certfile, 'rb') as fp:
-            ca = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
+    def _get_cert(commonname, certdir='certs', keyfile='CA.crt', sans=[]):
+        with open(keyfile, 'rb') as fp:
+            content = fp.read()
+            key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, content)
+            ca = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, content)
 
         pkey = OpenSSL.crypto.PKey()
         pkey.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
@@ -317,30 +315,26 @@ class CertUtil(object):
         cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
-        keyfile = os.path.join(certdir, commonname + '.key')
-        with open(keyfile, 'wb') as fp:
-            fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, pkey))
         certfile = os.path.join(certdir, commonname + '.crt')
         with open(certfile, 'wb') as fp:
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, cert))
-
-        return keyfile, certfile
+            fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, pkey))
+        return certfile
 
     @staticmethod
-    def get_cert(commonname, certdir='certs', ca_keyfile='CA.key', ca_certfile='CA.crt', sans=[]):
+    def get_cert(commonname, certdir='certs', keyfile='CA.crt', sans=[]):
         if len(commonname) >= 32 and commonname.count('.') >= 2:
             commonname = re.sub(r'^[^\.]+', '', commonname)
-        keyfile = os.path.join(certdir, commonname + '.key')
         certfile = os.path.join(certdir, commonname + '.crt')
         if os.path.exists(certfile):
-            return keyfile, certfile
+            return certfile
         elif OpenSSL is None:
-            return ca_keyfile, ca_certfile
+            return keyfile
         else:
             with CertUtil.ca_lock:
                 if os.path.exists(certfile):
-                    return keyfile, certfile
-                return CertUtil._get_cert(commonname, certdir, ca_keyfile, ca_certfile, sans)
+                    return certfile
+                return CertUtil._get_cert(commonname, certdir, keyfile, sans)
 
     @staticmethod
     def import_ca(certfile):
@@ -357,7 +351,9 @@ class CertUtil(object):
             with open(certfile, 'rb') as fp:
                 certdata = fp.read()
                 if certdata.startswith('-----'):
-                    certdata = base64.b64decode(''.join(certdata.strip().splitlines()[1:-1]))
+                    begin = '-----BEGIN CERTIFICATE-----'
+                    end = '-----END CERTIFICATE-----'
+                    certdata = base64.b64decode(''.join(certdata[certdata.find(begin)+len(begin):certdata.find(end)].strip().splitlines()))
                 crypt32_handle = ctypes.windll.kernel32.LoadLibraryW(u'crypt32.dll')
                 crypt32 = ctypes.WinDLL(None, handle=crypt32_handle)
                 store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, u'ROOT')
@@ -391,11 +387,11 @@ class CertUtil(object):
                 sys.exit(-1)
             if os.path.exists(certdir):
                 if os.path.isdir(certdir):
-                    any(os.remove(x) for x in (glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/*.key')))
+                    any(os.remove(x) for x in glob.glob(certdir+'/*.crt'))
                 else:
                     os.remove(certdir)
                     os.mkdir(certdir)
-            CertUtil.dump_ca('CA.key', 'CA.crt')
+            CertUtil.dump_ca('CA.crt')
         #Check CA imported
         if CertUtil.import_ca(capath) != 0:
             logging.warning('install root certificate failed, Please run as administrator/root/sudo')
@@ -1583,13 +1579,13 @@ class GAEProxyHandler(object):
         """deploy fake cert to client"""
         host, _, port = self.path.rpartition(':')
         port = int(port)
-        keyfile, certfile = CertUtil.get_cert(host)
+        certfile = CertUtil.get_cert(host)
         logging.info('%s:%s "%s %s:%d HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, host, port)
         self.__realsock = None
         self.__realrfile = None
         self.sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
         try:
-            ssl_sock = ssl.wrap_socket(self.sock, certfile=certfile, keyfile=keyfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
+            ssl_sock = ssl.wrap_socket(self.sock, certfile=certfile, keyfile=certfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
         except Exception as e:
             if e[0] not in (10053, 10054):
                 logging.error('ssl.wrap_socket(self.sock=%r) failed: %s', self.sock, e)
