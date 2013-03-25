@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '1.4'
+__version__ = '1.5'
 
 GOAGENT_LOGO_DATA = """\
 iVBORw0KGgoAAAANSUhEUgAAADcAAAA3CAYAAACo29JGAAAABHNCSVQICAgIfAhkiAAADVdJREFU
@@ -72,7 +72,6 @@ AAAASUVORK5CYII="""
 import sys
 import os
 import re
-import time
 import thread
 import base64
 import platform
@@ -92,11 +91,12 @@ except ImportError:
 try:
     import appindicator
 except ImportError:
-    sys.exit(gtk.MessageDialog (None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, u'\u8bf7\u5b89\u88c5 python-appindicator').run())
+    sys.exit(gtk.MessageDialog(None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, u'请安装 python-appindicator').run())
 try:
     import vte
 except ImportError:
-    sys.exit(gtk.MessageDialog (None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, u'\u8bf7\u5b89\u88c5 python-vte').run())
+    sys.exit(gtk.MessageDialog(None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, u'请安装 python-vte').run())
+
 
 def spawn_later(seconds, target, *args, **kwargs):
     def wrap(*args, **kwargs):
@@ -104,6 +104,7 @@ def spawn_later(seconds, target, *args, **kwargs):
         time.sleep(seconds)
         return target(*args, **kwargs)
     return thread.start_new_thread(wrap, args, kwargs)
+
 
 def drop_desktop():
     filename = os.path.abspath(__file__)
@@ -116,7 +117,7 @@ Name=GoAgent GTK
 Comment=GoAgent GTK Launcher
 Categories=Network;Proxy;
 Exec=/usr/bin/env python "%s"
-Icon=%s/logo.png
+Icon=%s/goagent-logo.png
 Terminal=false
 StartupNotify=true
 ''' % (filename, dirname)
@@ -127,6 +128,7 @@ StartupNotify=true
                 fp.write(DESKTOP_FILE)
             os.chmod(filename, 0755)
 
+
 def should_visible():
     import ConfigParser
     ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
@@ -136,6 +138,7 @@ def should_visible():
     return visible
 
 #gtk.main_quit = lambda: None
+
 
 class GoAgentAppIndicator:
 
@@ -150,8 +153,8 @@ class GoAgentAppIndicator:
         self.window.add(terminal)
         self.childpid = self.terminal.fork_command(self.command[0], self.command, os.getcwd())
         if self.childpid > 0:
-            self.childexited = self.terminal.connect('child-exited', self.on_child_exited);
-            self.window.connect('delete-event', lambda w,e: gtk.main_quit())
+            self.childexited = self.terminal.connect('child-exited', self.on_child_exited)
+            self.window.connect('delete-event', lambda w, e: gtk.main_quit())
         else:
             self.childexited = None
 
@@ -164,9 +167,10 @@ class GoAgentAppIndicator:
         self.ind.set_status(appindicator.STATUS_ACTIVE)
         self.ind.set_attention_icon('indicator-messages-new')
 
-        with open('/tmp/goagent-logo.png', 'wb') as fp:
+        logo_filename = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'goagent-logo.png')
+        with open(logo_filename, 'wb') as fp:
             fp.write(base64.b64decode(GOAGENT_LOGO_DATA))
-        self.ind.set_icon('/tmp/goagent-logo.png')
+        self.ind.set_icon(logo_filename)
 
         self.menu = gtk.Menu()
 
@@ -236,16 +240,17 @@ class GoAgentAppIndicator:
         os.system('kill -9 %s' % self.childpid)
         self.on_show(widget, data)
         self.childpid = self.terminal.fork_command(self.command[0], self.command, os.getcwd())
-        self.childexited = self.terminal.connect('child-exited', lambda term:gtk.main_quit());
+        self.childexited = self.terminal.connect('child-exited', lambda term: gtk.main_quit())
 
     def on_quit(self, widget, data=None):
         gtk.main_quit()
+
 
 def main():
     global __file__
     __file__ = os.path.abspath(__file__)
     if os.path.islink(__file__):
-        __file__ = getattr(os, 'readlink', lambda x:x)(__file__)
+        __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     if platform.dist()[0] == 'Ubuntu':
@@ -253,7 +258,7 @@ def main():
 
     window = gtk.Window()
     terminal = vte.Terminal()
-    indicator = GoAgentAppIndicator(window, terminal)
+    GoAgentAppIndicator(window, terminal)
     gtk.main()
 
 if __name__ == '__main__':
