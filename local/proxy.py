@@ -768,6 +768,29 @@ class HTTP(object):
             if remote:
                 remote.close()
 
+    def green_forward_socket(self, local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, bitmask=None):
+        def io_copy(dest, source):
+            try:
+                dest.settimeout(timeout)
+                source.settimeout(timeout)
+                while 1:
+                    data = source.recv(bufsize)
+                    if not data:
+                        break
+                    if bitmask:
+                        data = ''.join(chr(ord(x) ^ bitmask) for x in data)
+                    dest.sendall(data)
+            except socket.error as e:
+                if e[0] not in ('timed out', 10053, 10054, errno.EBADF, errno.EPIPE, 10057, 10060):
+                    raise
+            finally:
+                if local:
+                    local.close()
+                if remote:
+                    remote.close()
+        gevent.spawn(io_copy, remote.dup(), local.dup())
+        io_copy(local, remote)
+
     def parse_request(self, rfile, bufsize=1048576):
         line = rfile.readline(bufsize)
         if not line:
@@ -1425,7 +1448,7 @@ class GAEProxyHandler(object):
                 return
             if response.status in (400, 405):
                 common.GAE_CRLF = 0
-            logging.info('%s:%s "%s %s HTTP/1.1" %s %s', self.remote_addr, self.remote_port, self.method, self.path, response.status, response.msg.get('Content-Length', '-'))
+            logging.info('%s:%s "FWD %s %s HTTP/1.1" %s %s', self.remote_addr, self.remote_port, self.method, self.path, response.status, response.msg.get('Content-Length', '-'))
             wfile = self.sock.makefile('wb', 0)
             wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
             wfile.write(response.read())
@@ -1507,13 +1530,13 @@ class GAEProxyHandler(object):
             wfile = self.sock.makefile('wb', 0)
 
             if response.app_status != 200:
-                logging.info('%s:%s "%s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
+                logging.info('%s:%s "GAE %s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
                 wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
                 wfile.write(response.read())
                 response.close()
                 return
 
-            logging.info('%s:%s "%s %s HTTP/1.1" %s %s', self.remote_addr, self.remote_port, self.method, self.path, response.status, response.getheader('Content-Length', '-'))
+            logging.info('%s:%s "GAE %s %s HTTP/1.1" %s %s', self.remote_addr, self.remote_port, self.method, self.path, response.status, response.getheader('Content-Length', '-'))
 
             if response.status == 206:
                 fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
@@ -1547,21 +1570,22 @@ class GAEProxyHandler(object):
         """socket forward for http CONNECT command"""
         host, _, port = self.path.rpartition(':')
         port = int(port)
-        logging.info('%s:%s "%s %s:%d HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, host, port)
+        logging.info('%s:%s "FWD %s %s:%d HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, host, port)
         #http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.iteritems())
-        self.sock.send('HTTP/1.1 200 OK\r\n\r\n')
         if not common.PROXY_ENABLE:
             if host not in http.dns:
                 http.dns[host] = common.GOOGLE_HOSTS
+            self.sock.send('HTTP/1.1 200 OK\r\n\r\n')
             data = self.sock.recv(1024)
             for i in xrange(5):
                 try:
                     timeout = 5
                     remote = http.create_connection((host, port), timeout)
-                    if remote is not None:
+                    if remote is not None and data:
                         remote.sendall(data)
                         break
-                    else:
+                    elif i == 0:
+                        # only print first create_connection error
                         logging.error('http.create_connection((host=%r, port=%r), %r) timeout', host, port, timeout)
                 except socket.error as e:
                     if e[0] == 9:
@@ -1570,21 +1594,22 @@ class GAEProxyHandler(object):
                     else:
                         raise
             if hasattr(remote, 'fileno'):
-                http.forward_socket(self.sock, remote, bufsize=self.bufsize, pongcallback=None)
+                http.green_forward_socket(self.sock, remote, bufsize=self.bufsize)
         else:
             hostip = random.choice(common.GOOGLE_HOSTS)
             remote = http.create_connection_withproxy((hostip, int(port)), proxy=common.proxy)
             if not remote:
                 logging.error('GAEProxyHandler proxy connect remote (%r, %r) failed', host, port)
                 return
-            http.forward_socket(self.sock, remote, bufsize=self.bufsize)
+            self.sock.send('HTTP/1.1 200 OK\r\n\r\n')
+            http.green_forward_socket(self.sock, remote, bufsize=self.bufsize)
 
     def handle_connect_urlfetch(self):
         """deploy fake cert to client"""
         host, _, port = self.path.rpartition(':')
         port = int(port)
         certfile = CertUtil.get_cert(host)
-        logging.info('%s:%s "%s %s:%d HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, host, port)
+        logging.info('%s:%s "GAE %s %s:%d HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, host, port)
         self.__realsock = None
         self.__realrfile = None
         self.sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
@@ -1713,7 +1738,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + message_html)
                 return
 
-            logging.info('%s:%s "%s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
+            logging.info('%s:%s "PAAS %s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
             if response.app_status in (400, 405):
                 http.crlf = 0
 
@@ -1795,7 +1820,7 @@ class LightProxyHandler(object):
     def handle_method(self):
         """Direct http forward"""
         try:
-            logging.info('%s:%s "%s %s HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, self.path)
+            logging.info('%s:%s "PAAS %s %s HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, self.path)
             content_length = int(self.headers.get('Content-Length', 0))
             payload = self.rfile.read(content_length) if content_length else None
             server_ip, _, server_port = common.LIGHT_SERVER.rpartition(':')
@@ -1806,9 +1831,9 @@ class LightProxyHandler(object):
             if payload:
                 server_ssl_sock.sendall(payload)
             if self.method == 'CONNECT':
-                http.forward_socket(self.sock, server_sock)
+                http.green_forward_socket(self.sock, server_sock)
             else:
-                http.forward_socket(self.sock, server_ssl_sock)
+                http.green_forward_socket(self.sock, server_ssl_sock)
         except socket.error as e:
             if e[0] not in (10053, errno.EPIPE):
                 raise
