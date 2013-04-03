@@ -1194,6 +1194,8 @@ class RangeFetch(object):
                         response = self.urlfetch(self.method, self.url, headers, self.payload, fetchserver, password=self.password)
                 except gevent.queue.Empty:
                     continue
+                except socket.error:
+                    logging.warning("Response SSLError in __fetchlet")
                 if not response:
                     logging.warning('RangeFetch %s return %r', headers['Range'], response)
                     range_queue.put((start, end, None))
