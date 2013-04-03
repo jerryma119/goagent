@@ -324,7 +324,7 @@ class CertUtil(object):
     @staticmethod
     def get_cert(commonname, certdir='certs', keyfile='CA.crt', sans=[]):
         if commonname.count('.') >= 2 and len(commonname.split('.')[-2]) > 4:
-            commonname = re.sub(r'^[^\.]+', '', commonname)
+            commonname = '.'+commonname.partition('.')[-1]
         certfile = os.path.join(certdir, commonname + '.crt')
         if os.path.exists(certfile):
             return certfile
@@ -861,7 +861,8 @@ class HTTP(object):
 
     def request(self, method, url, payload=None, headers={}, fullurl=False, bufsize=1048576, crlf=None, return_sock=None):
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-        if not re.search(r':\d+$', netloc):
+        if netloc.rfind(':') <= netloc.rfind(']'):
+            # no port number
             host = netloc
             port = 443 if scheme == 'https' else 80
         else:
@@ -1250,6 +1251,7 @@ class GAEProxyHandler(object):
     firstrun = None
     firstrun_lock = gevent.coros.Semaphore()
     urlfetch = staticmethod(gae_urlfetch)
+    normcookie = __import__('functools').partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
 
     def __init__(self, sock, address):
         self.sock = sock
@@ -1545,7 +1547,7 @@ class GAEProxyHandler(object):
                 return rangefetch.fetch()
 
             if 'Set-Cookie' in response.msg:
-                response.msg['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.msg['Set-Cookie'])
+                response.msg['Set-Cookie'] = self.normcookie(response.msg['Set-Cookie'])
             wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding')))
 
             while 1:
