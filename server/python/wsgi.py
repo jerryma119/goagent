@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.1.14'
+__version__ = '2.1.15'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -47,7 +47,7 @@ def message_html(title, banner, detail=''):
     ERROR_TEMPLATE = '''
 <html><head>
 <meta http-equiv="content-type" content="text/html;charset=utf-8">
-<title>{{title}}</title>
+<title>{{ title }}</title>
 <style><!--
 body {font-family: arial,sans-serif}
 div.nav {margin-top: 1ex}
@@ -58,15 +58,14 @@ div.nav A {font-size: 10pt; color: black}
 A.l:link {color: #6f6f6f}
 A.u:link {color: green}
 //--></style>
-
 </head>
 <body text=#000000 bgcolor=#ffffff>
 <table border=0 cellpadding=2 cellspacing=0 width=100%>
 <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
 <tr><td>&nbsp;</td></tr></table>
 <blockquote>
-<H1>{{banner}}</H1>
-{{detail}}
+<H1>{{ banner }}</H1>
+{{ detail }}
 <!--
 <script type="text/javascript" src="http://www.qq.com/404/search_children.js" charset="utf-8"></script>
 //-->
@@ -78,7 +77,7 @@ A.u:link {color: green}
     kwargs = dict(title=title, banner=banner, detail=detail)
     template = ERROR_TEMPLATE
     for keyword, value in kwargs.items():
-        template = template.replace('{{%s}}' % keyword, value)
+        template = template.replace('{{ %s }}' % keyword, value)
     return template
 
 
@@ -195,12 +194,13 @@ def gae_application(environ, start_response):
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
 
     data = response.content
-    if 'content-encoding' not in response.headers and len(response.content) < URLFETCH_DEFLATE_MAXSIZE and response.headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+    response_headers = response.headers
+    if 'content-encoding' not in response_headers and len(response.content) < URLFETCH_DEFLATE_MAXSIZE and response_headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         if 'deflate' in accept_encoding:
-            response.headers['Content-Encoding'] = 'deflate'
+            response_headers['Content-Encoding'] = 'deflate'
             data = zlib.compress(data)[2:-4]
         elif 'gzip' in accept_encoding:
-            response.headers['Content-Encoding'] = 'gzip'
+            response_headers['Content-Encoding'] = 'gzip'
             compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
             dataio = cStringIO.StringIO()
             dataio.write('\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff')
@@ -208,10 +208,10 @@ def gae_application(environ, start_response):
             dataio.write(compressobj.flush())
             dataio.write(struct.pack('<LL', zlib.crc32(data) & 0xFFFFFFFFL, len(data) & 0xFFFFFFFFL))
             data = dataio.getvalue()
-    response.headers['Content-Length'] = str(len(data))
-    response_headers = zlib.compress('\n'.join('%s:%s' % (k.title(), v) for k, v in response.headers.items() if not k.startswith('x-google-')))[2:-4]
+    response_headers['Content-Length'] = str(len(data))
+    response_headers_data = zlib.compress('\n'.join('%s:%s' % (k.title(), v) for k, v in response_headers.items() if not k.startswith('x-google-')))[2:-4]
     start_response('200 OK', [('Content-Type', 'image/gif')])
-    yield struct.pack('!hh', int(response.status_code), len(response_headers))+response_headers
+    yield struct.pack('!hh', int(response.status_code), len(response_headers_data))+response_headers_data
     yield data
 
 
