@@ -1595,7 +1595,7 @@ class GAEProxyHandler(object):
                     else:
                         raise
             if hasattr(remote, 'fileno'):
-                http.green_forward_socket(self.sock, remote, bufsize=self.bufsize)
+                http.forward_socket(self.sock, remote, bufsize=self.bufsize)
         else:
             hostip = random.choice(common.GOOGLE_HOSTS)
             remote = http.create_connection_withproxy((hostip, int(port)), proxy=common.proxy)
@@ -1603,7 +1603,7 @@ class GAEProxyHandler(object):
                 logging.error('GAEProxyHandler proxy connect remote (%r, %r) failed', host, port)
                 return
             self.sock.send('HTTP/1.1 200 OK\r\n\r\n')
-            http.green_forward_socket(self.sock, remote, bufsize=self.bufsize)
+            http.forward_socket(self.sock, remote, bufsize=self.bufsize)
 
     def handle_connect_urlfetch(self):
         """deploy fake cert to client"""
@@ -1832,9 +1832,9 @@ class LightProxyHandler(object):
             if payload:
                 server_ssl_sock.sendall(payload)
             if self.method == 'CONNECT':
-                http.green_forward_socket(self.sock, server_sock)
+                http.forward_socket(self.sock, server_sock)
             else:
-                http.green_forward_socket(self.sock, server_ssl_sock)
+                http.forward_socket(self.sock, server_ssl_sock)
         except socket.error as e:
             if e[0] not in (10053, errno.EPIPE):
                 raise
@@ -2073,6 +2073,10 @@ def pre_start():
         if gevent.version_info[0] == 0:
             logging.critical('GoAgent DNSServer needs python-gevent 1.0, Please disable DNS Server or upgarde gevent version.')
             sys.exit()
+    if 'uvent.loop' in sys.modules and gevent.__version__ != '1.0fake':
+        if isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
+            logging.info('Uvent enabled, patch forward_socket')
+            http.forward_socket = http.green_forward_socket
 
 
 def main():
