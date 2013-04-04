@@ -13,7 +13,29 @@ import ctypes
 import platform
 
 def main_linux():
-    pass
+    filename = os.path.abspath(__file__)
+    dirname = os.path.dirname(filename)
+    #you can change it to 'proxy.py' if you like :)
+    scriptname = 'goagent-gtk.py'
+    DESKTOP_FILE = '''\
+[Desktop Entry]
+Type=Application
+Categories=Network;Proxy;
+Exec=/usr/bin/env python "%s/%s"
+Icon=%s/goagent-logo.png
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Name=GoAgent GTK
+Comment=GoAgent GTK Launcher
+''' % (dirname , scriptname , dirname)
+    #sometimes maybe  /etc/xdg/autostart , ~/.kde/Autostart/ , ~/.config/openbox/autostart 
+    for dirname in map(os.path.expanduser, ['~/.config/autostart']):
+        if os.path.isdir(dirname):
+            filename = os.path.join(dirname, 'goagent-gtk.desktop')
+            with open(filename, 'w') as fp:
+                fp.write(DESKTOP_FILE)
+           # os.chmod(filename, 0755)
 
 def main_macos():
     if os.getuid() != 0:
