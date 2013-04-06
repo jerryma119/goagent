@@ -233,6 +233,8 @@ class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
 
     ca_vendor = 'GoAgent'
+    ca_keyfile = 'CA.crt'
+    ca_certdir = 'certs'
     ca_lock = threading.Lock()
 
     @staticmethod
@@ -263,15 +265,15 @@ class CertUtil(object):
         return key, ca
 
     @staticmethod
-    def dump_ca(keyfile='CA.crt'):
+    def dump_ca():
         key, ca = CertUtil.create_ca()
-        with open(keyfile, 'wb') as fp:
+        with open(CertUtil.ca_keyfile, 'wb') as fp:
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca))
             fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
 
     @staticmethod
-    def _get_cert(commonname, certdir='certs', keyfile='CA.crt', sans=[]):
-        with open(keyfile, 'rb') as fp:
+    def _get_cert(commonname, sans=[]):
+        with open(CertUtil.ca_keyfile, 'rb') as fp:
             content = fp.read()
             key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, content)
             ca = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, content)
@@ -315,26 +317,26 @@ class CertUtil(object):
         cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
-        certfile = os.path.join(certdir, commonname + '.crt')
+        certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
         with open(certfile, 'wb') as fp:
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, cert))
             fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, pkey))
         return certfile
 
     @staticmethod
-    def get_cert(commonname, certdir='certs', keyfile='CA.crt', sans=[]):
+    def get_cert(commonname, sans=[]):
         if commonname.count('.') >= 2 and len(commonname.split('.')[-2]) > 4:
             commonname = '.'+commonname.partition('.')[-1]
-        certfile = os.path.join(certdir, commonname + '.crt')
+        certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
         if os.path.exists(certfile):
             return certfile
         elif OpenSSL is None:
-            return keyfile
+            return CertUtil.ca_keyfile
         else:
             with CertUtil.ca_lock:
                 if os.path.exists(certfile):
                     return certfile
-                return CertUtil._get_cert(commonname, certdir, keyfile, sans)
+                return CertUtil._get_cert(commonname, sans)
 
     @staticmethod
     def import_ca(certfile):
@@ -383,8 +385,8 @@ class CertUtil(object):
     @staticmethod
     def check_ca():
         #Check CA exists
-        capath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'CA.crt')
-        certdir = os.path.join(os.path.dirname(__file__), 'certs')
+        capath = os.path.join(os.path.dirname(os.path.abspath(__file__)), CertUtil.ca_keyfile)
+        certdir = os.path.join(os.path.dirname(__file__), CertUtil.ca_certdir)
         if not os.path.exists(capath):
             if not OpenSSL:
                 logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
@@ -395,9 +397,9 @@ class CertUtil(object):
                 else:
                     os.remove(certdir)
                     os.mkdir(certdir)
-            CertUtil.dump_ca('CA.crt')
-        if glob.glob('certs/*.key'):
-            for filename in glob.glob('certs/*.key'):
+            CertUtil.dump_ca(CertUtil.ca_keyfile)
+        if glob.glob('%s/*.key' % CertUtil.ca_certdir):
+            for filename in glob.glob('%s/*.key' % CertUtil.ca_certdir):
                 try:
                     os.remove(filename)
                     os.remove(os.path.splitext(filename)[0]+'.crt')
