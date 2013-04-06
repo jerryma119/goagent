@@ -2086,6 +2086,8 @@ def pre_start():
         if gevent.version_info[0] == 0:
             logging.critical('GoAgent DNSServer needs python-gevent 1.0, Please disable DNS Server or upgarde gevent version.')
             sys.exit()
+    if not OpenSSL:
+        logging.warning('python-openssl not found, please install it!')
     if 'uvent.loop' in sys.modules and gevent.__version__ != '1.0fake':
         if isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
             logging.info('Uvent enabled, patch forward_socket')
