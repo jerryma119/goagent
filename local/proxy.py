@@ -396,6 +396,13 @@ class CertUtil(object):
                     os.remove(certdir)
                     os.mkdir(certdir)
             CertUtil.dump_ca('CA.crt')
+        if glob.glob('certs/*.key'):
+            for filename in glob.glob('certs/*.key'):
+                try:
+                    os.remove(filename)
+                    os.remove(os.path.splitext(filename)[0]+'.crt')
+                except EnvironmentError:
+                    pass
         #Check CA imported
         if CertUtil.import_ca(capath) != 0:
             logging.warning('install root certificate failed, Please run as administrator/root/sudo')
