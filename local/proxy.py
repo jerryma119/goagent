@@ -1973,7 +1973,13 @@ class PACServerHandler(GAEProxyHandler):
     def first_run(self):
         if time.time() - os.path.getmtime(self.pacfile) > 24 * 60 * 60:
             default = '%s:%s' % (common.PROXY_HOST, common.PROXY_PORT) if common.PROXY_ENABLE else 'DIRECT'
-            gevent.spawn_later(1, Autoproxy2Pac.update_filename, self.pacfile, common.PAC_GFWLIST, '%s:%s' % ("127.0.0.1", common.LISTEN_PORT), default)
+            listen_ip = common.LISTEN_IP
+            if listen_ip in ('', '0.0.0.0', '::'):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.connect(('8.8.8.8', 53))
+                listen_ip = sock.getsockname()[0]
+                sock.close()
+            gevent.spawn_later(1, Autoproxy2Pac.update_filename, self.pacfile, common.PAC_GFWLIST, '%s:%s' % (listen_ip, common.LISTEN_PORT), default)
         return True
 
     def handle_get(self):
