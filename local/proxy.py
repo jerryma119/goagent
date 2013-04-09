@@ -1951,7 +1951,16 @@ class Autoproxy2Pac(object):
         content = '\r\n'.join(lines)
         function = 'function FindProxyForURLByAutoProxy(url, host) {\r\n%s\r\nreturn "%s";\r\n}' % (jsrule, self.default)
         content = re.sub('(?is)function\\s*FindProxyForURLByAutoProxy\\s*\\(url, host\\)\\s*{.+\r\n}', function, content)
+        content = re.sub(r'''goagent\s*=\s*['"]PROXY [\.\w:]+['"]''', 'goagent = \'PROXY %s\'' % self.proxy, content)
         return content
+
+    @staticmethod
+    def get_listen_ip():
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(('8.8.8.8', 53))
+        listen_ip = sock.getsockname()[0]
+        sock.close()
+        return listen_ip
 
     @classmethod
     def update_filename(cls, filename, url, proxy, default='DIRECT'):
@@ -1975,10 +1984,7 @@ class PACServerHandler(GAEProxyHandler):
             default = '%s:%s' % (common.PROXY_HOST, common.PROXY_PORT) if common.PROXY_ENABLE else 'DIRECT'
             listen_ip = common.LISTEN_IP
             if listen_ip in ('', '0.0.0.0', '::'):
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.connect(('8.8.8.8', 53))
-                listen_ip = sock.getsockname()[0]
-                sock.close()
+                listen_ip = Autoproxy2Pac.get_listen_ip()
             gevent.spawn_later(1, Autoproxy2Pac.update_filename, self.pacfile, common.PAC_GFWLIST, '%s:%s' % (listen_ip, common.LISTEN_PORT), default)
         return True
 
