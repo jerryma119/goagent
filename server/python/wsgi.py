@@ -218,6 +218,103 @@ def gae_application(environ, start_response):
     yield data
 
 
+class LegacyHandler(object):
+    """GoAgent 1.x GAE Fetch Server"""
+    @classmethod
+    def application(cls, environ, start_response):
+        return cls()(environ, start_response)
+
+    def __call__(self, environ, start_response):
+        self.environ = environ
+        self.start_response = start_response
+        return self.process_request()
+
+    def send_response(self, status, headers, content, content_type='image/gif'):
+        headers['Content-Length'] = str(len(content))
+        strheaders = '&'.join('%s=%s' % (k, v.encode('hex')) for k, v in headers.iteritems() if v)
+        #logging.debug('response status=%s, headers=%s, content length=%d', status, headers, len(content))
+        if headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+            data = '1' + zlib.compress('%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content))
+        else:
+            data = '0%s%s%s' % (struct.pack('>3I', status, len(strheaders), len(content)), strheaders, content)
+        self.start_response('200 OK', [('Content-type', content_type)])
+        return [data]
+
+    def send_notify(self, method, url, status, content):
+        logging.warning('%r Failed: url=%r, status=%r', method, url, status)
+        content = '<h2>Python Server Fetch Info</h2><hr noshade="noshade"><p>%s %r</p><p>Return Code: %d</p><p>Message: %s</p>' % (method, url, status, content)
+        return self.send_response(status, {'content-type': 'text/html'}, content)
+
+    def process_request(self):
+        environ = self.environ
+        if environ['REQUEST_METHOD'] == 'GET':
+            redirect_url = 'https://%s/2' % environ['HTTP_HOST']
+            self.start_response('302 Redirect', [('Location', redirect_url)])
+            return [redirect_url]
+
+        data = zlib.decompress(environ['wsgi.input'].read(int(environ['CONTENT_LENGTH'])))
+        request = dict((k, v.decode('hex')) for k, _, v in (x.partition('=') for x in data.split('&')))
+
+        method = request['method']
+        url = request['url']
+        payload = request['payload']
+
+        if __password__ and __password__ != request.get('password', ''):
+            return self.send_notify(method, url, 403, 'Wrong password.')
+
+        if __hostsdeny__ and urlparse.urlparse(url).netloc.endswith(__hostsdeny__):
+            return self.send_notify(method, url, 403, 'Hosts Deny: url=%r' % url)
+
+        fetchmethod = getattr(urlfetch, method, '')
+        if not fetchmethod:
+            return self.send_notify(method, url, 501, 'Invalid Method')
+
+        deadline = URLFETCH_TIMEOUT
+
+        headers = dict((k.title(), v.lstrip()) for k, _, v in (line.partition(':') for line in request['headers'].splitlines()))
+        headers['Connection'] = 'close'
+
+        errors = []
+        for i in xrange(URLFETCH_MAX if 'fetchmax' not in request else int(request['fetchmax'])):
+            try:
+                response = urlfetch.fetch(url, payload, fetchmethod, headers, False, False, deadline, False)
+                break
+            except apiproxy_errors.OverQuotaError as e:
+                time.sleep(4)
+            except urlfetch.DeadlineExceededError as e:
+                errors.append('DeadlineExceededError %s(deadline=%s)' % (e, deadline))
+                logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
+                time.sleep(1)
+            except urlfetch.DownloadError as e:
+                errors.append('DownloadError %s(deadline=%s)' % (e, deadline))
+                logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
+                time.sleep(1)
+            except urlfetch.InvalidURLError as e:
+                return self.send_notify(method, url, 501, 'Invalid URL: %s' % e)
+            except urlfetch.ResponseTooLargeError as e:
+                response = e.response
+                logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
+                m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
+                if m is None:
+                    headers['Range'] = 'bytes=0-%d' % URLFETCH_MAXSIZE
+                else:
+                    headers.pop('Range', '')
+                    headers.pop('range', '')
+                    start = int(m.group(1))
+                    headers['Range'] = 'bytes=%s-%d' % (start, start+URLFETCH_MAXSIZE)
+                deadline = URLFETCH_TIMEOUT * 2
+            except Exception as e:
+                errors.append('Exception %s(deadline=%s)' % (e, deadline))
+        else:
+            return self.send_notify(method, url, 500, 'Python Server: Urlfetch error: %s' % errors)
+
+        headers = response.headers
+        if 'content-length' not in headers:
+            headers['content-length'] = str(len(response.content))
+        headers['connection'] = 'close'
+        return self.send_response(response.status_code, headers, response.content)
+
+
 def paas_application(environ, start_response):
     if environ['REQUEST_METHOD'] == 'GET':
         start_response('302 Found', [('Location', 'https://www.google.com')])
@@ -296,7 +393,7 @@ def paas_application(environ, start_response):
             raise
 
 
-def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, bitmask=None):
+def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, trans=None):
     try:
         timecount = timeout
         while 1:
@@ -309,8 +406,8 @@ def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
             if ins:
                 for sock in ins:
                     data = sock.recv(bufsize)
-                    if bitmask:
-                        data = ''.join(chr(ord(x) ^ bitmask) for x in data)
+                    if trans:
+                        data = data.translate(trans)
                     if data:
                         if sock is remote:
                             local.sendall(data)
