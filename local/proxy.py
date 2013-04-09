@@ -35,7 +35,7 @@ try:
     import gevent.server
     import gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0] >= 1)
-except ImportError:
+except (ImportError, SystemError):
     import platform
     sys.stderr.write('WARNING: python-gevent not installed. Please ')
     if sys.platform.startswith('linux'):
