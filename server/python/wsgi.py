@@ -314,6 +314,48 @@ class LegacyHandler(object):
         headers['connection'] = 'close'
         return self.send_response(response.status_code, headers, response.content)
 
+def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, trans=None):
+    try:
+        timecount = timeout
+        while 1:
+            timecount -= tick
+            if timecount <= 0:
+                break
+            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
+            if errors:
+                break
+            if ins:
+                for sock in ins:
+                    data = sock.recv(bufsize)
+                    if trans:
+                        data = data.translate(trans)
+                    if data:
+                        if sock is remote:
+                            local.sendall(data)
+                            timecount = maxpong or timeout
+                            if pongcallback:
+                                try:
+                                    #remote_addr = '%s:%s'%remote.getpeername()[:2]
+                                    #logging.debug('call remote=%s pongcallback=%s', remote_addr, pongcallback)
+                                    pongcallback()
+                                except Exception as e:
+                                    logging.warning('remote=%s pongcallback=%s failed: %s', remote, pongcallback, e)
+                                finally:
+                                    pongcallback = None
+                        else:
+                            remote.sendall(data)
+                            timecount = maxping or timeout
+                    else:
+                        return
+    except socket.error as e:
+        if e[0] not in (10053, 10054, 10057, errno.EPIPE):
+            raise
+    finally:
+        if local:
+            local.close()
+        if remote:
+            remote.close()
+
 
 def paas_application(environ, start_response):
     if environ['REQUEST_METHOD'] == 'GET':
@@ -393,117 +435,6 @@ def paas_application(environ, start_response):
             raise
 
 
-def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, trans=None):
-    try:
-        timecount = timeout
-        while 1:
-            timecount -= tick
-            if timecount <= 0:
-                break
-            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
-            if errors:
-                break
-            if ins:
-                for sock in ins:
-                    data = sock.recv(bufsize)
-                    if trans:
-                        data = data.translate(trans)
-                    if data:
-                        if sock is remote:
-                            local.sendall(data)
-                            timecount = maxpong or timeout
-                            if pongcallback:
-                                try:
-                                    #remote_addr = '%s:%s'%remote.getpeername()[:2]
-                                    #logging.debug('call remote=%s pongcallback=%s', remote_addr, pongcallback)
-                                    pongcallback()
-                                except Exception as e:
-                                    logging.warning('remote=%s pongcallback=%s failed: %s', remote, pongcallback, e)
-                                finally:
-                                    pongcallback = None
-                        else:
-                            remote.sendall(data)
-                            timecount = maxping or timeout
-                    else:
-                        return
-    except socket.error as e:
-        if e[0] not in (10053, 10054, 10057, errno.EPIPE):
-            raise
-    finally:
-        if local:
-            local.close()
-        if remote:
-            remote.close()
-
-
-def light_handler(sock, address):
-    bufsize = 8192
-    rfile = sock.makefile('rb', 0)
-    wfile = sock.makefile('wb', 0)
-    remote_addr, remote_port = address
-    try:
-        line = rfile.readline(bufsize)
-        if not line:
-            raise socket.error(10053)
-        method, path = line.split()[:2]
-        headers = {}
-        while 1:
-            line = rfile.readline(bufsize)
-            if not line or line == '\r\n':
-                break
-            keyword, _, value = line.partition(':')
-            headers[keyword.title()] = value.strip()
-        logging.info('%s:%s "%s %s HTTP/1.1" - -', remote_addr, remote_port, method, path)
-        if method == 'CONNECT':
-            host, _, port = path.rpartition(':')
-            remote = socket.create_connection((host, int(port)))
-            wfile.write('HTTP/1.1 200 OK\r\n\r\n')
-            forward_socket(sock._sock, remote)
-        else:
-            host = headers.get('Host') or urlparse.urlparse(path).netloc
-            if re.search(r':\d+$', host):
-                host, _, port = host.rpartition(':')
-                port = int(port)
-            else:
-                port = 80
-            if path.startswith('http://'):
-                path = re.sub(r'http://[^/]+', '', path)
-            payload = None
-            if 'Content-Length' in headers:
-                payload = rfile.read(int(headers.get('Content-Length', 0)))
-            conn = httplib.HTTPConnection(host, port=port)
-            conn.request(method, path, body=payload, headers=headers)
-            response = conn.getresponse()
-            version = 'HTTP/1.1' if response.version == 11 else 'HTTP/1.0'
-            data = '%s %s\r\n%s\r\n' % (version, response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.msg.items() if k != 'transfer-encoding'))
-            wfile.write(data)
-            left = int(response.getheader('Content-Length', 0))
-            if left:
-                while 1:
-                    if not left:
-                        break
-                    data = response.read(min(left, bufsize))
-                    if not data:
-                        break
-                    wfile.write(data)
-                    left -= len(data)
-                response.close()
-            else:
-                while 1:
-                    data = response.read(bufsize)
-                    if not data:
-                        break
-                    wfile.write(data)
-                response.close()
-    except socket.error as e:
-        if e[0] not in (10053, errno.EPIPE):
-            raise
-    finally:
-        rfile.close()
-        wfile.close()
-        sock.close()
-
-
 app = gae_application if urlfetch else paas_application
 application = app if sae is None else sae.create_wsgi_app(app)
 
@@ -515,16 +446,6 @@ if __name__ == '__main__':
     import gevent.monkey
     gevent.monkey.patch_all(dns=gevent.version_info[0] >= 1)
 
-    import getopt
-    options = dict(getopt.getopt(sys.argv[1:], 'l:p:a:')[0])
-    host = options.get('-l', '0.0.0.0')
-    port = options.get('-p', '443')
-    app = options.get('-a', 'light')
-
-    if app == 'light':
-        server = gevent.server.StreamServer((host, int(port)), light_handler, keyfile='ca.pem', certfile='ca.pem')
-    else:
-        server = gevent.wsgi.WSGIServer((host, int(port)), paas_application)
-
-    logging.info('serving %s at https://%s:%s/', app.upper(), server.address[0], server.address[1])
+    server = gevent.wsgi.WSGIServer(('', int(sys.argv[1])), application)
+    logging.info('local paas_application serving at %s:%s', server.address[0], server.address[1])
     server.serve_forever()

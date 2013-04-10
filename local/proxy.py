@@ -194,7 +194,7 @@ class Logging(type(sys)):
             self.debug = self.dummy
 
     def log(self, level, fmt, *args, **kwargs):
-        self.__write('%s - - [%s] %s\n' % (level, time.ctime()[4:-5], fmt % args))
+        self.__write('%s - [%s] %s\n' % (level, time.ctime()[4:-5], fmt % args))
 
     def dummy(self, *args, **kwargs):
         pass
@@ -1063,6 +1063,41 @@ http = HTTP(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE or
 http.dns.update(common.HOSTS)
 
 
+def message_html(self, title, banner, detail=''):
+    MESSAGE_TEMPLATE = '''
+    <html><head>
+    <meta http-equiv="content-type" content="text/html;charset=utf-8">
+    <title>{{ title }}</title>
+    <style><!--
+    body {font-family: arial,sans-serif}
+    div.nav {margin-top: 1ex}
+    div.nav A {font-size: 10pt; font-family: arial,sans-serif}
+    span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
+    div.nav A,span.big {font-size: 12pt; color: #0000cc}
+    div.nav A {font-size: 10pt; color: black}
+    A.l:link {color: #6f6f6f}
+    A.u:link {color: green}
+    //--></style>
+    </head>
+    <body text=#000000 bgcolor=#ffffff>
+    <table border=0 cellpadding=2 cellspacing=0 width=100%>
+    <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
+    <tr><td> </td></tr></table>
+    <blockquote>
+    <H1>{{ banner }}</H1>
+    {{ detail }}
+    <p>
+    </blockquote>
+    <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
+    </body></html>
+    '''
+    kwargs = dict(title=title, banner=banner, detail=detail)
+    template = MESSAGE_TEMPLATE
+    for keyword, value in kwargs.items():
+        template = template.replace('{{ %s }}' % keyword, value)
+    return template
+
+
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
@@ -1282,40 +1317,6 @@ class GAEProxyHandler(object):
         finally:
             self.finish()
 
-    def _message_html(self, title, banner, detail=''):
-        MESSAGE_TEMPLATE = '''
-        <html><head>
-        <meta http-equiv="content-type" content="text/html;charset=utf-8">
-        <title>{{title}}</title>
-        <style><!--
-        body {font-family: arial,sans-serif}
-        div.nav {margin-top: 1ex}
-        div.nav A {font-size: 10pt; font-family: arial,sans-serif}
-        span.nav {font-size: 10pt; font-family: arial,sans-serif; font-weight: bold}
-        div.nav A,span.big {font-size: 12pt; color: #0000cc}
-        div.nav A {font-size: 10pt; color: black}
-        A.l:link {color: #6f6f6f}
-        A.u:link {color: green}
-        //--></style>
-        </head>
-        <body text=#000000 bgcolor=#ffffff>
-        <table border=0 cellpadding=2 cellspacing=0 width=100%>
-        <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
-        <tr><td> </td></tr></table>
-        <blockquote>
-        <H1>{{banner}}</H1>
-        {{detail}}
-        <p>
-        </blockquote>
-        <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
-        </body></html>
-        '''
-        kwargs = dict(title=title, banner=banner, detail=detail)
-        template = MESSAGE_TEMPLATE
-        for keyword, value in kwargs.items():
-            template = template.replace('{{%s}}' % keyword, value)
-        return template
-
     def _update_google_iplist(self):
         if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
             google_ipmap = {}
@@ -1523,8 +1524,8 @@ class GAEProxyHandler(object):
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
 
             if response is None:
-                message_html = self._message_html('502 URLFetch failed', 'Local URLFetch %r failed' % self.path, str(errors))
-                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + message_html)
+                html = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % self.path, str(errors))
+                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + html)
                 return
 
             # gateway error, switch to https mode
@@ -1748,8 +1749,8 @@ class PAASProxyHandler(GAEProxyHandler):
                     errors.append(e)
 
             if response is None:
-                message_html = self._message_html('502 PAAS URLFetch failed', 'Local PAAS URLFetch %r failed' % self.path, str(errors))
-                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + message_html)
+                html = message_html('502 PAAS URLFetch failed', 'Local PAAS URLFetch %r failed' % self.path, str(errors))
+                self.sock.sendall('HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + html)
                 return
 
             logging.info('%s:%s "PAAS %s %s HTTP/1.1" %s -', self.remote_addr, self.remote_port, self.method, self.path, response.status)
@@ -1864,6 +1865,160 @@ class LightProxyHandler(object):
             self.sock.close()
         except:
             pass
+
+class LightProxyHandler(object):
+    """a wsgi handler class for PAAS"""
+
+    normcookie = __import__('functools').partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
+
+    def __init__(self, *args, **kwargs):
+        self.urlfetch = paas_urlfetch
+        self.firstrun = None
+        self.firstrun_lock = gevent.coros.Semaphore()
+
+    def __call__(self, environ, start_response):
+        if not self.firstrun:
+            with self.firstrun_lock:
+                if not self.firstrun:
+                    try:
+                        self.firstrun = self.first_run()
+                    except Exception as e:
+                        logging.error('%r first_run raise Exception: %s', self, e)
+        try:
+            return self.application(environ, start_response)
+        except Exception as e:
+            logging.exception('%r Exception: %s', self, e)
+        finally:
+            return ['']
+
+    def first_run(self):
+        if not common.PROXY_ENABLE:
+            fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
+            logging.info('resolve common.PAAS_FETCHSERVER domain=%r to iplist', fetchhost)
+            fethhost_iplist = http.dns_resolve(fetchhost)
+            if len(fethhost_iplist) == 0:
+                logging.error('resolve %s domain return empty! please use ip list to replace domain list!', common.GAE_PROFILE)
+                sys.exit(-1)
+            http.dns[fetchhost] = list(set(fethhost_iplist))
+            logging.info('resolve common.PAAS_FETCHSERVER domain to iplist=%r', fethhost_iplist)
+        return True
+
+    def application(self, environ, start_response):
+        try:
+            getattr(self, 'handle_%s' % environ['REQUEST_METHOD'].lower(), self.handle_method)(environ, start_response)
+        except socket.error as e:
+            if e[0] not in (10053, 10054, errno.EPIPE):
+                raise
+
+    def handle_method(self, environ, start_response):
+        try:
+            remote_addr = environ['REMOTE_ADDR']
+            remote_port = environ.get('REMOTE_PORT', 0)
+            method = environ['REQUEST_METHOD']
+            path = environ['PATH_INFO'] + '?' + environ['QUERY_STRING']
+            headers = dict((x[5:].replace('_', '-').title(), environ[x]) for x in environ if x.startswith('HTTP_'))
+            host = environ.get('HTTP_HOST', '')
+            wsgi_input = environ['wsgi.input']
+            payload = ''
+            if 'CONTENT_LENGTH' in environ:
+                try:
+                    payload = wsgi_input.read(int(environ['CONTENT_LENGTH']))
+                except (EOFError, socket.error) as e:
+                    logging.error('handle_method read payload failed:%s', e)
+                    return
+            response = None
+            errors = []
+            for i in xrange(common.FETCHMAX_LOCAL):
+                try:
+                    kwargs = {}
+                    if common.PAAS_PASSWORD:
+                        kwargs['password'] = common.PAAS_PASSWORD
+                    if common.PAAS_VALIDATE:
+                        kwargs['validate'] = 1
+                    if common.CONFIG.has_option('hosts', host):
+                        kwargs['hostip'] = random.choice(http.dns_resolve(host))
+                    response = self.urlfetch(method, path, headers, payload, common.PAAS_FETCHSERVER, **kwargs)
+                    if response:
+                        break
+                except Exception as e:
+                    errors.append(e)
+
+            if response is None:
+                html = message_html('502 PAAS URLFetch failed', 'PAAS URLFetch %r failed' % path, str(errors))
+                start_response('502', [('Content-Type', 'text/html')])
+                yield html
+                raise StopIteration
+
+            logging.info('%s:%s "PAAS %s %s HTTP/1.1" %s -', remote_addr, remote_port, method, path, response.status)
+            if response.app_status in (400, 405):
+                http.crlf = 0
+
+            if 'Set-Cookie' in response.msg:
+                response.msg['Set-Cookie'] = self.normcookie(response.msg['Set-Cookie'])
+            response_headers = [(k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding']
+            start_response(str(response.status), response_headers)
+
+            while 1:
+                data = response.read(32768)
+                if not data:
+                    break
+                yield data
+            response.close()
+
+        except socket.error as e:
+            # Connection closed before proxy return
+            if e[0] not in (10053, errno.EPIPE):
+                raise
+
+    def handle_connect(self, environ, start_response):
+        return self.handle_connect_urlfetch(environ, start_response)
+
+    def handle_connect_urlfetch(self, environ, start_response):
+        """deploy fake cert to client"""
+        remote_addr = environ['REMOTE_ADDR']
+        remote_port = environ.get('REMOTE_PORT', 0)
+        method = environ['REQUEST_METHOD']
+        path = environ['PATH_INFO'] + '?' + environ['QUERY_STRING']
+        headers = dict((x[5:].replace('_', '-').title(), environ[x]) for x in environ if x.startswith('HTTP_'))
+        host = environ.get('HTTP_HOST', '')
+        wsgi_input = environ['wsgi.input']
+
+        host, _, port = path.rpartition(':')
+        port = int(port)
+        certfile = CertUtil.get_cert(host)
+        logging.info('%s:%s "PAAS %s %s:%d HTTP/1.1" - -', remote_addr, remote_port, method, host, port)
+
+        sock = wsgi_input.rfile._sock
+        sock.sendall('HTTP/1.1 200 OK\r\n\r\n')
+        try:
+            ssl_sock = ssl.wrap_socket(sock, certfile=certfile, keyfile=certfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
+        except Exception as e:
+            if e[0] not in (10053, 10054):
+                logging.error('ssl.wrap_socket(self.sock=%r) failed: %s', self.sock, e)
+            return ['']
+        self.sock = ssl_sock
+        self.rfile = self.sock.makefile('rb', self.bufsize)
+        try:
+            self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
+        except socket.error as e:
+            if e[0] not in (10053, 10054, errno.EPIPE):
+                raise
+        if self.path[0] == '/' and host:
+            self.path = 'https://%s%s' % (self.headers['Host'], self.path)
+        try:
+            self.handle_method()
+        except socket.error as e:
+            if e[0] not in (10053, 10060, errno.EPIPE):
+                raise
+        finally:
+            if self.__realsock:
+                try:
+                    self.__realsock.shutdown(socket.SHUT_WR)
+                except socket.error:
+                    pass
+                self.__realsock.close()
+            if self.__realrfile:
+                self.__realrfile.close()
 
 
 class Autoproxy2Pac(object):
@@ -2125,7 +2280,7 @@ def main():
 
     if common.LIGHT_ENABLE:
         host, port = common.LIGHT_LISTEN.split(':')
-        server = gevent.server.StreamServer((host, int(port)), LightProxyHandler)
+        server = gevent.server.StreamServer((host, int(port)), LightProxyHandler())
         gevent.spawn(server.serve_forever)
 
     if common.PAC_ENABLE:
