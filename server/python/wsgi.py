@@ -314,6 +314,7 @@ class LegacyHandler(object):
         headers['connection'] = 'close'
         return self.send_response(response.status_code, headers, response.content)
 
+
 def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, trans=None):
     try:
         timecount = timeout
@@ -405,7 +406,20 @@ def paas_application(environ, start_response):
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
-    if method != 'CONNECT':
+    if method == 'CONNECT':
+        if not socket:
+            start_response('403 Forbidden', [('Content-Type', 'text/html')])
+            yield message_html('403 Forbidden CONNECT', 'socket not available', detail='`import socket` raised ImportError')
+            raise StopIteration
+        rfile = wsgi_input.rfile
+        sock = rfile._sock
+        host, _, port = url.rpartition(':')
+        port = int(port)
+        remote_sock = socket.create_connection((host, port), timeout=URLFETCH_TIMEOUT)
+        start_response('200 OK', [])
+        forward_socket(sock, remote_sock)
+        yield 'out'
+    else:
         try:
             scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
             HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
