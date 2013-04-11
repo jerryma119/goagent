@@ -111,6 +111,12 @@ def gae_application(environ, start_response):
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
 
+    abbv_headers = {'A': ('Accept', 'text/html,*/*'),
+                    'AL': ('Accept-Language', 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'),
+                    'AE': ('Accept-Encoding', 'gzip,deflate'), }
+    abbv_args = kwargs.get('abbv', '').split(',')
+    headers.update(v for k, v in abbv_headers.iteritems() if k in abbv_args and v[0] not in headers)
+
     #logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
     #logging.info('request headers=%s', headers)
 

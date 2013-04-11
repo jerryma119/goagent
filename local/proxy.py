@@ -119,6 +119,7 @@ import errno
 import time
 import struct
 import zlib
+import functools
 import re
 import traceback
 import random
@@ -524,8 +525,11 @@ class HTTP(object):
 
     MessageClass = dict
     protocol_version = 'HTTP/1.1'
-    skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations'])
     ssl_validate = False
+    skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
+    abbv_headers = {'Accept': ('A', lambda x: '*/*' in x),
+                    'Accept-Language': ('AL', lambda x: x.startswith('zh-CN')),
+                    'Accept-Encoding': ('AE', lambda x: x.startswith('gzip,')), }
 
     def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False):
         self.max_window = max_window
@@ -1107,8 +1111,18 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 payload = zpayload
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
+    metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.iteritems() if v))
     skip_headers = http.skip_headers
-    metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.iteritems() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers))
+    abbv_headers = http.abbv_headers
+    g_abbv = []
+    for keyword in [x for x in headers if x not in skip_headers]:
+        value = headers[keyword]
+        if keyword in abbv_headers and abbv_headers[keyword][1](value):
+            g_abbv.append(abbv_headers[keyword][0])
+        else:
+            metadata += '%s:%s\n' % (keyword, value)
+    if g_abbv:
+        metadata += 'G-Abbv:%s\n' % ','.join(g_abbv)
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
@@ -1297,7 +1311,7 @@ class GAEProxyHandler(object):
     firstrun = None
     firstrun_lock = gevent.coros.Semaphore()
     urlfetch = staticmethod(gae_urlfetch)
-    normcookie = __import__('functools').partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
+    normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
 
     def __init__(self, sock, address):
         self.sock = sock
@@ -1777,94 +1791,6 @@ class PAASProxyHandler(GAEProxyHandler):
     def handle_connect(self):
         return GAEProxyHandler.handle_connect_urlfetch(self)
 
-
-class LightProxyHandler(object):
-
-    MessageClass = dict
-    bufsize = 1024 * 1024
-    firstrun = None
-    firstrun_lock = gevent.coros.Semaphore()
-
-    def __init__(self, sock, address):
-        self.sock = sock
-        self.remote_addr, self.remote_port = self.address = address
-
-        if not self.__class__.firstrun:
-            with self.__class__.firstrun_lock:
-                if not self.__class__.firstrun:
-                    try:
-                        self.__class__.firstrun = self.first_run()
-                    except Exception as e:
-                        logging.error('%r first_run raise Exception: %s', self, e)
-        try:
-            self.handle()
-        except Exception as e:
-            logging.exception('%r Exception: %s', self, e)
-        finally:
-            self.finish()
-
-    def first_run(self):
-        """LightProxyHandler first_run, init domain/iplist map"""
-        return True
-
-    def parse_request(self, bufsize=1048576):
-        line = self.rfile.readline(bufsize)
-        if not line:
-            raise socket.error(10053, 'empty line')
-        method, path = line.split()[:2]
-        headers = self.MessageClass()
-        while 1:
-            line = self.rfile.readline(bufsize)
-            if not line or line == '\r\n':
-                break
-            keyword, _, value = line.partition(':')
-            keyword = keyword.title()
-            value = value.strip()
-            headers[keyword] = value
-        return method, path, 'HTTP/1.1', headers
-
-    def handle(self):
-        self.rfile = self.sock.makefile('rb', 0)
-        try:
-            self.method, self.path, self.version, self.headers = self.parse_request(self.bufsize)
-            getattr(self, 'handle_%s' % self.method.lower(), self.handle_method)()
-        except socket.error as e:
-            if e[0] not in (10053, 10054, errno.EPIPE):
-                raise
-
-    def handle_method(self):
-        """Direct http forward"""
-        try:
-            logging.info('%s:%s "PAAS %s %s HTTP/1.1" - -', self.remote_addr, self.remote_port, self.method, self.path)
-            content_length = int(self.headers.get('Content-Length', 0))
-            payload = self.rfile.read(content_length) if content_length else None
-            server_ip, _, server_port = common.LIGHT_SERVER.rpartition(':')
-            server_sock = socket.create_connection((server_ip, int(server_port)))
-            server_ssl_sock = ssl.wrap_socket(server_sock)
-            data = '%s %s HTTP/1.1\r\n%s\r\n' % (self.method, self.path, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in self.headers.iteritems()))
-            server_ssl_sock.sendall(data)
-            if payload:
-                server_ssl_sock.sendall(payload)
-            if self.method == 'CONNECT':
-                http.forward_socket(self.sock, server_sock)
-            else:
-                http.forward_socket(self.sock, server_ssl_sock)
-        except socket.error as e:
-            if e[0] not in (10053, errno.EPIPE):
-                raise
-        except Exception as e:
-            logging.warn('LightProxyHandler "%s %s" failed:%s', self.method, self.headers.get('Host', ''), e)
-            raise
-
-    def finish(self):
-        try:
-            self.rfile.close()
-        except:
-            pass
-        try:
-            self.sock.close()
-        except:
-            pass
 
 class LightProxyHandler(object):
     """a wsgi handler class for PAAS"""
