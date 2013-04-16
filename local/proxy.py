@@ -1147,7 +1147,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.status = 502
         response.fp = BytesIO('connection aborted. too short headers data=%r' % data)
         return response
-    response.msg = httplib.HTTPMessage(BytesIO(zlib.decompress(data, -15)))
+    response.msg = httplib.HTTPMessage(BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
     return response
 
 

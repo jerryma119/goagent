@@ -97,13 +97,13 @@ def gae_application(environ, start_response):
             yield html.encode('utf8')
         raise StopIteration
 
-    # inflate = lambda x:zlib.decompress(x, -15)
+    # inflate = lambda x:zlib.decompress(x, -zlib.MAX_WBITS)
     wsgi_input = environ['wsgi.input']
     data = wsgi_input.read(2)
     metadata_length, = struct.unpack('!h', data)
     metadata = wsgi_input.read(metadata_length)
 
-    metadata = zlib.decompress(metadata, -15)
+    metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
     headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
     method = headers.pop('G-Method')
     url = headers.pop('G-Url')
@@ -150,7 +150,7 @@ def gae_application(environ, start_response):
     payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
     if 'Content-Encoding' in headers:
         if headers['Content-Encoding'] == 'deflate':
-            payload = zlib.decompress(payload, -15)
+            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
             headers['Content-Length'] = str(len(payload))
             del headers['Content-Encoding']
 
@@ -369,13 +369,13 @@ def paas_application(environ, start_response):
         start_response('302 Found', [('Location', 'https://www.google.com')])
         raise StopIteration
 
-    # inflate = lambda x:zlib.decompress(x, -15)
+    # inflate = lambda x:zlib.decompress(x, -zlib.MAX_WBITS)
     wsgi_input = environ['wsgi.input']
     data = wsgi_input.read(2)
     metadata_length, = struct.unpack('!h', data)
     metadata = wsgi_input.read(metadata_length)
 
-    metadata = zlib.decompress(metadata, -15)
+    metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
     headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
     method = headers.pop('G-Method')
     url = headers.pop('G-Url')
@@ -388,7 +388,7 @@ def paas_application(environ, start_response):
     payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
     if 'Content-Encoding' in headers:
         if headers['Content-Encoding'] == 'deflate':
-            payload = zlib.decompress(payload, -15)
+            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
             headers['Content-Length'] = str(len(payload))
             del headers['Content-Encoding']
 
