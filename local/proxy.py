@@ -15,7 +15,7 @@
 #      Harmony Meow   <harmony.meow@gmail.com>
 #      logostream     <logostream@gmail.com>
 
-__version__ = '2.1.15'
+__version__ = '2.1.16'
 
 import sys
 import os
