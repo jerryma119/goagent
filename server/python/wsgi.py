@@ -112,6 +112,7 @@ def gae_application(environ, start_response):
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
 
     abbv_headers = {'A': ('Accept', 'application/json, text/javascript, text/html, */*; q=0.01'),
+                    'AC': ('Accept-Charset', 'UTF-8,*;q=0.5'),
                     'AL': ('Accept-Language', 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'),
                     'AE': ('Accept-Encoding', 'gzip,deflate'), }
     abbv_args = kwargs.get('abbv', '').split(',')
