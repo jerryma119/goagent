@@ -528,7 +528,7 @@ class HTTP(object):
     protocol_version = 'HTTP/1.1'
     ssl_validate = False
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
-    abbv_headers = {'Accept': ('A', lambda x: '*/*' in x),
+    abbv_headers = {'Accept': ('A', lambda x: 'text/html' in x and '*/*' in x),
                     'Accept-Charset': ('AC', lambda x: x.startswith('UTF-8,')),
                     'Accept-Language': ('AL', lambda x: x.startswith('zh-CN')),
                     'Accept-Encoding': ('AE', lambda x: x.startswith('gzip,')), }
