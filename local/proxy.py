@@ -398,7 +398,7 @@ class CertUtil(object):
                 else:
                     os.remove(certdir)
                     os.mkdir(certdir)
-            CertUtil.dump_ca(CertUtil.ca_keyfile)
+            CertUtil.dump_ca()
         if glob.glob('%s/*.key' % CertUtil.ca_certdir):
             for filename in glob.glob('%s/*.key' % CertUtil.ca_certdir):
                 try:
