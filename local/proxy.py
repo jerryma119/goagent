@@ -528,7 +528,7 @@ class HTTP(object):
     protocol_version = 'HTTP/1.1'
     ssl_validate = False
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
-    abbv_headers = {'Accept': ('A', lambda x: 'text/html' in x and '*/*' in x),
+    abbv_headers = {'Accept': ('A', lambda x: '*/*' in x),
                     'Accept-Charset': ('AC', lambda x: x.startswith('UTF-8,')),
                     'Accept-Language': ('AL', lambda x: x.startswith('zh-CN')),
                     'Accept-Encoding': ('AE', lambda x: x.startswith('gzip,')), }
@@ -1117,16 +1117,20 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     headers.pop('Host', None)
     metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.iteritems() if v))
     skip_headers = http.skip_headers
-    abbv_headers = http.abbv_headers
-    g_abbv = []
-    for keyword in [x for x in headers if x not in skip_headers]:
-        value = headers[keyword]
-        if keyword in abbv_headers and abbv_headers[keyword][1](value):
-            g_abbv.append(abbv_headers[keyword][0])
-        else:
-            metadata += '%s:%s\n' % (keyword, value)
-    if g_abbv:
-        metadata += 'G-Abbv:%s\n' % ','.join(g_abbv)
+    if 'X-Requested-With' not in headers:
+        # not a ajax request, we could abbv the headers
+        abbv_headers = http.abbv_headers
+        g_abbv = []
+        for keyword in [x for x in headers if x not in skip_headers]:
+            value = headers[keyword]
+            if keyword in abbv_headers and abbv_headers[keyword][1](value):
+                g_abbv.append(abbv_headers[keyword][0])
+            else:
+                metadata += '%s:%s\n' % (keyword, value)
+        if g_abbv:
+            metadata += 'G-Abbv:%s\n' % ','.join(g_abbv)
+    else:
+        metadata += ''.join('%s:%s\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
     metadata = zlib.compress(metadata)[2:-4]
     gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
