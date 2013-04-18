@@ -14,6 +14,8 @@
 #      Zhang Youfu    <zhangyoufu@gmail.com>
 #      Harmony Meow   <harmony.meow@gmail.com>
 #      logostream     <logostream@gmail.com>
+#      Felix Yan      <felixonmars@gmail.com>
+#      Mort Yao       <mort.yao@gmail.com>
 
 __version__ = '2.1.16'
 
@@ -1192,7 +1194,7 @@ class RangeFetch(object):
             response_headers['Content-Length'] = str(length)
         else:
             response_headers['Content-Range'] = 'bytes %s-%s/%s' % (start, end, length)
-            response_headers['Content-Length'] = str(length)
+            response_headers['Content-Length'] = str(length-start)
 
         wfile = self.sock.makefile('w', 0)
         logging.info('>>>>>>>>>>>>>>> RangeFetch started(%r) %d-%d', self.url, start, end)
