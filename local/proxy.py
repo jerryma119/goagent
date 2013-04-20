@@ -1119,7 +1119,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     headers.pop('Host', None)
     metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.iteritems() if v))
     skip_headers = http.skip_headers
-    if 'X-Requested-With' not in headers:
+    if False and 'X-Requested-With' not in headers:
         # not a ajax request, we could abbv the headers
         abbv_headers = http.abbv_headers
         g_abbv = []
