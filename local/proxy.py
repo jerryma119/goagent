@@ -16,6 +16,7 @@
 #      logostream     <logostream@gmail.com>
 #      Felix Yan      <felixonmars@gmail.com>
 #      Mort Yao       <mort.yao@gmail.com>
+#      wwqgtxx        <wwqgtxx@gmail.com>
 
 __version__ = '2.1.16'
 
