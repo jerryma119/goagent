@@ -16,7 +16,7 @@
 #      logostream     <logostream@gmail.com>
 #      Felix Yan      <felixonmars@gmail.com>
 #      Mort Yao       <mort.yao@gmail.com>
-#      Wang Wei Qiang       <wwqgtxx@gmail.com>
+#      Wang Wei Qiang <wwqgtxx@gmail.com>
 
 __version__ = '2.1.16'
 
@@ -715,6 +715,37 @@ class HTTP(object):
                     if i == 0:
                         # only output first error
                         logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
+
+    def create_connection_withdata(self, address, timeout=None, source_address=None, data=None):
+        assert isinstance(data, basestring) and data
+        host, port = address
+        result = None
+        addresses = [(x, port) for x in self.dns_resolve(host)]
+        if port == 443:
+            get_connection_time = lambda addr: self.ssl_connection_time.get(addr) or self.tcp_connection_time.get(addr)
+        else:
+            get_connection_time = self.tcp_connection_time.get
+        for i in xrange(self.max_retry):
+            window = min((self.max_window+1)//2 + i, len(addresses))
+            addresses.sort(key=get_connection_time)
+            addrs = addresses[:window] + random.sample(addresses, window)
+            socks = []
+            for addr in adds:
+                sock = socket.socket(socket.AF_INET if ':' not in address[0] else socket.AF_INET6)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
+                sock.setblocking(0)
+                sock.connect_ex(addr)
+                socks.append(sock)
+            # something happens :D
+            (_, outs, _) = select.select([], socks, [], 5)
+            if outs:
+                sock = outs[0]
+                sock.setblocking(1)
+                socks.remove(sock)
+                any(s.close() for s in socks)
+                return sock
 
     def create_connection_withproxy(self, address, timeout=None, source_address=None, proxy=None):
         assert isinstance(proxy, (str, unicode))
