@@ -16,7 +16,7 @@
 #      logostream     <logostream@gmail.com>
 #      Felix Yan      <felixonmars@gmail.com>
 #      Mort Yao       <mort.yao@gmail.com>
-#      wwqgtxx        <wwqgtxx@gmail.com>
+#      Wang Wei Qiang       <wwqgtxx@gmail.com>
 
 __version__ = '2.1.16'
 
@@ -1367,7 +1367,7 @@ class GAEProxyHandler(object):
                         continue
                 else:
                     google_ipmap[domain] = [domain]
-            for dnsserver in ('8.8.8.8', '114.114.114.114'):
+            for dnsserver in ('8.8.8.8', '8.8.4.4', '114.114.114.114', '114.114.115.115'):
                 for domain in need_resolve_remote:
                     logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
                     try:
