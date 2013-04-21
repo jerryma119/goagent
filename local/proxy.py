@@ -45,7 +45,7 @@ except (ImportError, SystemError):
     elif sys.platform == 'darwin' and platform.processor() == 'i386':
         sys.stderr.write('`wget --no-check-certificate --header="Host: goagent.googlecode.com" http://www.google.cn/files/gevent-1.0dev-macosx-intel.egg`\n')
     elif os.name == 'nt':
-        sys.stderr.write('visit `https://github.com/SiteSupport/gevent/downloads`\n')
+        sys.stderr.write('visit `https://github.com/surfly/gevent/downloads`\n')
     else:
         sys.stderr.write('`sudo easy_install gevent`\n')
     import threading
