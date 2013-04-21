@@ -1389,7 +1389,7 @@ class GAEProxyHandler(object):
                 if not re.match(r'\d+\.\d+\.\d+\.\d+', domain):
                     try:
                         iplist = socket.gethostbyname_ex(domain)[-1]
-                        if len(iplist) > 1:
+                        if len(iplist) >=3:
                             google_ipmap[domain] = iplist
                         if len(iplist) < 4:
                             need_resolve_remote.append(domain)
