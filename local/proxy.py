@@ -18,7 +18,7 @@
 #      Mort Yao       <mort.yao@gmail.com>
 #      Wang Wei Qiang <wwqgtxx@gmail.com>
 
-__version__ = '2.1.16'
+__version__ = '2.1.17'
 
 import sys
 import os
