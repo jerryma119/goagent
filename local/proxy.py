@@ -947,6 +947,7 @@ class Common(object):
         self.GAE_PROFILE = self.CONFIG.get('gae', 'profile')
         self.GAE_CRLF = self.CONFIG.getint('gae', 'crlf')
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
+        self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate') if self.CONFIG.has_option('gae', 'obfuscate') else 0
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
@@ -1134,9 +1135,16 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     else:
         metadata += ''.join('%s:%s\n' % (k, v) for k, v in headers.iteritems() if k not in skip_headers)
     metadata = zlib.compress(metadata)[2:-4]
-    gae_payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
     need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
-    response = http.request('POST', fetchserver, gae_payload, {'Content-Length': len(gae_payload)}, crlf=need_crlf)
+    if common.GAE_OBFUSCATE:
+        cookie = base64.b64encode(metadata).strip()
+        if not payload:
+            response = http.request('GET', fetchserver, payload, {'Cookie': cookie}, crlf=need_crlf)
+        else:
+            response = http.request('POST', fetchserver, payload, {'Cookie': cookie, 'Content-Length': len(payload)}, crlf=need_crlf)
+    else:
+        payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+        response = http.request('POST', fetchserver, payload, {'Content-Length': len(payload)}, crlf=need_crlf)
     response.app_status = response.status
     if response.status != 200:
         if response.status in (400, 405):

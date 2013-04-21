@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.1.16'
+__version__ = '2.1.17'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -13,6 +13,7 @@ import re
 import time
 import struct
 import zlib
+import base64
 import logging
 import httplib
 import urlparse
@@ -85,7 +86,8 @@ A.u:link {color: green}
 
 
 def gae_application(environ, start_response):
-    if environ['REQUEST_METHOD'] == 'GET':
+    cookie = environ.get('HTTP_COOKIE', '')
+    if environ['REQUEST_METHOD'] == 'GET' and not cookie:
         if '204' in environ['QUERY_STRING']:
             start_response('204 No Content', [])
             yield ''
@@ -99,11 +101,14 @@ def gae_application(environ, start_response):
 
     # inflate = lambda x:zlib.decompress(x, -zlib.MAX_WBITS)
     wsgi_input = environ['wsgi.input']
-    data = wsgi_input.read(2)
-    metadata_length, = struct.unpack('!h', data)
-    metadata = wsgi_input.read(metadata_length)
+    if cookie:
+        metadata = zlib.decompress(base64.b64decode(cookie), -zlib.MAX_WBITS)
+    else:
+        data = wsgi_input.read(2)
+        metadata_length, = struct.unpack('!h', data)
+        metadata = wsgi_input.read(metadata_length)
+        metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
 
-    metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
     headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
     method = headers.pop('G-Method')
     url = headers.pop('G-Url')
@@ -148,7 +153,7 @@ def gae_application(environ, start_response):
     deadline = URLFETCH_TIMEOUT
     validate_certificate = bool(int(kwargs.get('validate', 0)))
     headers = dict(headers)
-    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
+    payload = wsgi_input.read() if 'Content-Length' in headers else None
     if 'Content-Encoding' in headers:
         if headers['Content-Encoding'] == 'deflate':
             payload = zlib.decompress(payload, -zlib.MAX_WBITS)
