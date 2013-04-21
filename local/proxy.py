@@ -1389,10 +1389,10 @@ class GAEProxyHandler(object):
                 if not re.match(r'\d+\.\d+\.\d+\.\d+', domain):
                     try:
                         iplist = socket.gethostbyname_ex(domain)[-1]
-                        if len(iplist) <= 1:
-                            need_resolve_remote.append(domain)
-                        else:
+                        if len(iplist) > 1:
                             google_ipmap[domain] = iplist
+                        if len(iplist) < 4:
+                            need_resolve_remote.append(domain)
                     except socket.error:
                         need_resolve_remote.append(domain)
                         continue
@@ -1404,12 +1404,10 @@ class GAEProxyHandler(object):
                     try:
                         iplist = DNSUtil.remote_resolve(dnsserver, domain, timeout=3)
                         if iplist:
-                            google_ipmap[domain] = iplist
+                            google_ipmap.setdefault(domain, []).extend(iplist)
                             logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
                     except socket.error as e:
                         logging.exception('resolve remote domain=%r dnsserver=%r failed: %s', domain, dnsserver, e)
-                if len(set(sum(google_ipmap.values(), []))) > 10:
-                    break
             common.GOOGLE_HOSTS = list(set(sum(google_ipmap.values(), [])))
             if len(common.GOOGLE_HOSTS) == 0:
                 logging.error('resolve %s domain return empty! try remote dns resovle!', common.GAE_PROFILE)
