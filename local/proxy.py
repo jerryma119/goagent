@@ -625,7 +625,7 @@ class HTTP(object):
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
             addresses.sort(key=get_connection_time)
-            addrs = addresses[:window] + random.sample(addresses, window)
+            addrs = addresses[:len(addresses)-window] + random.sample(addresses, window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_connection, addr, timeout, queue)
@@ -702,7 +702,7 @@ class HTTP(object):
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
             addresses.sort(key=self.ssl_connection_time.get)
-            addrs = addresses[:window] + random.sample(addresses, window)
+            addrs = addresses[:len(addresses)-window] + random.sample(addresses, window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_ssl_connection, addr, timeout, queue)
@@ -1152,7 +1152,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     headers.pop('Host', None)
     metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.iteritems() if v))
     skip_headers = http.skip_headers
-    if False and 'X-Requested-With' not in headers:
+    if common.GAE_OBFUSCATE and 'X-Requested-With' not in headers:
         # not a ajax request, we could abbv the headers
         abbv_headers = http.abbv_headers
         g_abbv = []
