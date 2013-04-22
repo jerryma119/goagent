@@ -703,7 +703,7 @@ class HTTP(object):
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
             addresses.sort(key=get_connection_time)
-            addrs = addresses[:len(addresses)-window] + random.sample(addresses, window)
+            addrs = addresses[:window] + random.sample(addresses, window)
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_connection, addr, timeout, queue)
@@ -780,7 +780,8 @@ class HTTP(object):
         for i in xrange(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
             addresses.sort(key=self.ssl_connection_time.get)
-            addrs = addresses[:len(addresses)-window] + random.sample(addresses, window)
+            addrs = addresses[:window] + random.sample(addresses, window)
+            print addrs
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_ssl_connection, addr, timeout, queue)
