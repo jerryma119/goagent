@@ -587,7 +587,7 @@ class DNSUtil(object):
                     else:
                         logging.warning('DNSUtil._remote_resolve(dnsserver=%r, %r) return bad tcp data=%r', qname, dnsserver, data)
             except socket.error as e:
-                if e[0] in (10060, 'timed out'):
+                if e[0] in (errno.ETIMEDOUT, 'timed out'):
                     continue
             except Exception as e:
                 raise
@@ -781,7 +781,6 @@ class HTTP(object):
             window = min((self.max_window+1)//2 + i, len(addresses))
             addresses.sort(key=self.ssl_connection_time.get)
             addrs = addresses[:window] + random.sample(addresses, window)
-            print addrs
             queue = gevent.queue.Queue()
             for addr in addrs:
                 gevent.spawn(_create_ssl_connection, addr, timeout, queue)
@@ -888,7 +887,7 @@ class HTTP(object):
                         else:
                             return
         except socket.error as e:
-            if e[0] not in (10053, 10054, 10057, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
                 raise
         finally:
             if local:
@@ -909,7 +908,7 @@ class HTTP(object):
                         data = ''.join(chr(ord(x) ^ bitmask) for x in data)
                     dest.sendall(data)
             except socket.error as e:
-                if e[0] not in ('timed out', 10053, 10054, errno.EBADF, errno.EPIPE, 10057, 10060):
+                if e[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
                     raise
             finally:
                 if local:
@@ -922,7 +921,7 @@ class HTTP(object):
     def parse_request(self, rfile, bufsize=1048576):
         line = rfile.readline(bufsize)
         if not line:
-            raise socket.error(10053, 'empty line')
+            raise socket.error(errno.ECONNABORTED, 'empty line')
         method, path = line.split()[:2]
         headers = self.MessageClass()
         while 1:
@@ -1553,7 +1552,7 @@ class GAEProxyHandler(object):
             self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
             getattr(self, 'handle_%s' % self.method.lower(), self.handle_method)()
         except socket.error as e:
-            if e[0] not in (10053, 10054, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
 
     def handle_method(self):
@@ -1610,10 +1609,10 @@ class GAEProxyHandler(object):
             wfile.write(response.read())
             response.close()
         except socket.error as e:
-            if e[0] in (10054, 10063):
+            if e[0] in (errno.ECONNRESET, 10063):
                 logging.warn('http.request "%s %s" failed:%s, try addto `withgae`', self.method, self.path, e)
                 common.GOOGLE_WITHGAE.add(re.sub(r':\d+$', '', urlparse.urlparse(self.path).netloc))
-            elif e[0] not in (10053, errno.EPIPE):
+            elif e[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
         except Exception as e:
             host = self.headers.get('Host', '')
@@ -1659,7 +1658,7 @@ class GAEProxyHandler(object):
                         break
                 except Exception as e:
                     errors.append(e)
-                    if e[0] in (11004, 10051, 10054, 10060, 'timed out'):
+                    if e[0] in (11004, errno.ENETUNREACH, errno.ECONNRESET, errno.ETIMEDOUT, 'timed out'):
                         # connection reset or timeout, switch to https
                         common.GOOGLE_MODE = 'https'
                         common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
@@ -1711,7 +1710,7 @@ class GAEProxyHandler(object):
             response.close()
         except socket.error as e:
             # Connection closed before proxy return
-            if e[0] not in (10053, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
 
     def handle_connect(self):
@@ -1772,7 +1771,7 @@ class GAEProxyHandler(object):
         try:
             ssl_sock = ssl.wrap_socket(self.sock, certfile=certfile, keyfile=certfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
         except Exception as e:
-            if e[0] not in (10053, 10054):
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                 logging.error('ssl.wrap_socket(self.sock=%r) failed: %s', self.sock, e)
             return
         self.__realsock = self.sock
@@ -1782,14 +1781,14 @@ class GAEProxyHandler(object):
         try:
             self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
         except socket.error as e:
-            if e[0] not in (10053, 10054, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         if self.path[0] == '/' and host:
             self.path = 'https://%s%s' % (self.headers['Host'], self.path)
         try:
             self.handle_method()
         except socket.error as e:
-            if e[0] not in (10053, 10060, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
         finally:
             if self.__realsock:
@@ -1832,7 +1831,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     fetchserver += '?%s' % random.random()
     response = http.request('POST', fetchserver, app_payload, {'Content-Length': len(app_payload)}, crlf=0)
     if not response:
-        raise socket.error(10054, 'urlfetch %r return None' % url)
+        raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
     if 'x-status' in response.msg:
         response.status = int(response.msg['x-status'])
@@ -1912,7 +1911,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
         except socket.error as e:
             # Connection closed before proxy return
-            if e[0] not in (10053, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
 
     def handle_connect(self):
@@ -1960,7 +1959,7 @@ class LightProxyHandler(object):
         try:
             getattr(self, 'handle_%s' % environ['REQUEST_METHOD'].lower(), self.handle_method)(environ, start_response)
         except socket.error as e:
-            if e[0] not in (10053, 10054, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
 
     def handle_method(self, environ, start_response):
@@ -2020,7 +2019,7 @@ class LightProxyHandler(object):
 
         except socket.error as e:
             # Connection closed before proxy return
-            if e[0] not in (10053, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
 
     def handle_connect(self, environ, start_response):
@@ -2046,7 +2045,7 @@ class LightProxyHandler(object):
         try:
             ssl_sock = ssl.wrap_socket(sock, certfile=certfile, keyfile=certfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
         except Exception as e:
-            if e[0] not in (10053, 10054):
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
                 logging.error('ssl.wrap_socket(self.sock=%r) failed: %s', self.sock, e)
             return ['']
         self.sock = ssl_sock
@@ -2054,14 +2053,14 @@ class LightProxyHandler(object):
         try:
             self.method, self.path, self.version, self.headers = http.parse_request(self.rfile)
         except socket.error as e:
-            if e[0] not in (10053, 10054, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         if self.path[0] == '/' and host:
             self.path = 'https://%s%s' % (self.headers['Host'], self.path)
         try:
             self.handle_method()
         except socket.error as e:
-            if e[0] not in (10053, 10060, errno.EPIPE):
+            if e[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
         finally:
             if self.__realsock:
@@ -2260,6 +2259,12 @@ def pre_start():
     if sys.platform == 'cygwin':
         logging.info('cygwin is not officially supported, please continue at your own risk :)')
         #sys.exit(-1)
+    if os.name == 'posix':
+        try:
+            import resource
+            resource.setrlimit(resource.RLIMIT_NOFILE, (8192, -1))
+        except ValueError:
+            pass
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
