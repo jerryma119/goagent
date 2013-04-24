@@ -1369,6 +1369,9 @@ class RangeFetch(object):
             try:
                 if self._stopped:
                     return
+                if data_queue.qsize() > 3000*1048576/self.maxsize:
+                    gevent.sleep(10)
+                    continue
                 try:
                     start, end, response = range_queue.get(timeout=1)
                     headers['Range'] = 'bytes=%d-%d' % (start, end)
