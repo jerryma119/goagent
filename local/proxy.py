@@ -1369,7 +1369,7 @@ class RangeFetch(object):
             try:
                 if self._stopped:
                     return
-                if data_queue.qsize() > 3000*1048576/self.maxsize:
+                if data_queue.qsize() > 180*1048576/self.bufsize:
                     gevent.sleep(10)
                     continue
                 try:
