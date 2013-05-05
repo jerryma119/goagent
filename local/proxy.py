@@ -1625,7 +1625,7 @@ class GAEProxyHandler(object):
     def handle_method_urlfetch(self):
         """GAE http urlfetch"""
         host = self.headers.get('Host', '')
-        donotrange = re.compile('^http(?:s)?:\/\/[^\/]+\/[^?]+\.(?:xml|html|js|jpg|jpeg|png|ico)')
+        donotrange = re.compile('^http(?:s)?:\/\/[^\/]+\/[^?]+\.(?:xml|json|html|js|css|jpg|jpeg|png|gif|ico)')
         if 'Range' in self.headers:
             m = re.search('bytes=(\d+)-', self.headers['Range'])
             start = int(m.group(1) if m else 0)
