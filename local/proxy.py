@@ -1627,12 +1627,13 @@ class GAEProxyHandler(object):
     def handle_method_urlfetch(self):
         """GAE http urlfetch"""
         host = self.headers.get('Host', '')
+        donotrange = re.compile('^http(?:s)?:\/\/[^\/]+\/[^?]+\.(?:xml|json|html|js|css|jpg|jpeg|png|gif|ico)')
         if 'Range' in self.headers:
             m = re.search('bytes=(\d+)-', self.headers['Range'])
             start = int(m.group(1) if m else 0)
             self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
             logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
-        elif host.endswith(common.AUTORANGE_HOSTS_TAIL):
+        elif host.endswith(common.AUTORANGE_HOSTS_TAIL) and not donotrange.match(self.path):
             try:
                 pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
                 logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
