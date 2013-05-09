@@ -1460,7 +1460,7 @@ class GAEProxyHandler(object):
         try:
             self.handle()
         except Exception as e:
-            logging.exception('%r Exception: %s', self, e)
+            logging.error('%r Exception: %r', address, e)
         finally:
             self.finish()
 
