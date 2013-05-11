@@ -168,8 +168,9 @@ class GoAgentAppIndicator:
         self.ind.set_attention_icon('indicator-messages-new')
 
         logo_filename = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'goagent-logo.png')
-        with open(logo_filename, 'wb') as fp:
-            fp.write(base64.b64decode(GOAGENT_LOGO_DATA))
+        if not os.path.isfile(logo_filename):
+            with open(logo_filename, 'wb') as fp:
+                fp.write(base64.b64decode(GOAGENT_LOGO_DATA))
         self.ind.set_icon(logo_filename)
 
         self.menu = gtk.Menu()
@@ -181,6 +182,11 @@ class GoAgentAppIndicator:
 
         item = gtk.MenuItem(u'\u9690\u85cf')
         item.connect('activate', self.on_hide)
+        item.show()
+        self.menu.append(item)
+
+        item = gtk.MenuItem(u'\u505c\u6b62')
+        item.connect('activate', self.on_stop)
         item.show()
         self.menu.append(item)
 
@@ -233,6 +239,11 @@ class GoAgentAppIndicator:
 
     def on_hide(self, widget, data=None):
         self.window.hide_all()
+
+    def on_stop(self, widget, data=None):
+        if self.childexited:
+            self.terminal.disconnect(self.childexited)
+        os.system('kill -9 %s' % self.childpid)
 
     def on_reload(self, widget, data=None):
         if self.childexited:
