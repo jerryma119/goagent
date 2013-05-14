@@ -757,22 +757,6 @@ class HTTPUtil(object):
         threading._start_new_thread(io_copy, (remote.dup(), local.dup()))
         io_copy(local, remote)
 
-    def parse_request(self, rfile, bufsize=8192):
-        line = rfile.readline(bufsize)
-        if not line:
-            raise socket.error(errno.ECONNABORTED, 'empty line')
-        method, path = line.split()[:2]
-        headers = self.MessageClass()
-        while 1:
-            line = rfile.readline(bufsize)
-            if not line or line == b'\r\n':
-                break
-            keyword, _, value = line.partition(b':')
-            keyword = keyword.title()
-            value = value.strip()
-            headers[keyword] = value
-        return method, path, 'HTTP/1.1', headers
-
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None, return_sock=None):
         skip_headers = self.skip_headers
         need_crlf = http_util.crlf
@@ -1110,7 +1094,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.status = 502
         response.fp = io.BytesIO(b'connection aborted. too short headers data=%r' % data)
         return response
-    response.msg = http.client.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+    response.headers = response.msg = http.client.parse_headers(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
     return response
 
 
@@ -1242,7 +1226,7 @@ class RangeFetch(object):
                 if 200 <= response.status < 300:
                     content_range = response.getheader('Content-Range')
                     if not content_range:
-                        logging.warning('RangeFetch "%s %s" return Content-Range=%r: response headers=%r', self.command, self.url, content_range, str(response.msg))
+                        logging.warning('RangeFetch "%s %s" return Content-Range=%r: response headers=%r', self.command, self.url, content_range, str(response.headers))
                         response.close()
                         range_queue.put((start, end, None))
                         continue
@@ -1437,7 +1421,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 return
             if response.status in (400, 405):
                 common.GAE_CRLF = 0
-            logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.msg.get('Content-Length', '-'))
+            logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.headers.get('Content-Length', '-'))
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding'))).encode('latin-1'))
             self.wfile.write(response.read())
             response.close()
@@ -1529,11 +1513,11 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
 
             if response.status == 206:
                 fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
-                rangefetch = RangeFetch(self.sock, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
+                rangefetch = RangeFetch(self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
 
-            if 'Set-Cookie' in response.msg:
-                response.msg['Set-Cookie'] = self.normcookie(response.msg['Set-Cookie'])
+            if 'Set-Cookie' in response.headers:
+                response.headers['Set-Cookie'] = self.normcookie(response.headers['Set-Cookie'])
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding'))).encode('latin-1'))
 
             while 1:
@@ -1565,7 +1549,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             if host not in http_util.dns:
                 http_util.dns[host] = common.GOOGLE_HOSTS
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
-            data = self.sock.recv(1024)
+            data = self.connection.recv(1024)
             for i in range(5):
                 try:
                     timeout = 5
@@ -1583,7 +1567,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     else:
                         raise
             if hasattr(remote, 'fileno'):
-                http_util.forward_socket(self.sock, remote, bufsize=self.bufsize)
+                http_util.forward_socket(self.connection, remote, bufsize=self.bufsize)
         else:
             hostip = random.choice(common.GOOGLE_HOSTS)
             remote = http_util.create_connection_withproxy((hostip, int(port)), proxy=common.proxy)
@@ -1591,7 +1575,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 logging.error('GAEProxyHandler proxy connect remote (%r, %r) failed', host, port)
                 return
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
-            http_util.forward_socket(self.sock, remote, bufsize=self.bufsize)
+            http_util.forward_socket(self.connection, remote, bufsize=self.bufsize)
 
     def do_CONNECT_GAE(self):
         """deploy fake cert to client"""
@@ -1599,21 +1583,30 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         port = int(port)
         certfile = CertUtil.get_cert(host)
         logging.info('%s "GAE %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
-        self.__realsock = None
-        self.__realrfile = None
+        self.__realconnection = None
         self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
         try:
-            ssl_sock = ssl.wrap_socket(self.sock, certfile=certfile, keyfile=certfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
+            ssl_sock = ssl.wrap_socket(self.connection, certfile=certfile, keyfile=certfile, server_side=True, ssl_version=ssl.PROTOCOL_SSLv23)
         except Exception as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
-                logging.error('ssl.wrap_socket(self.sock=%r) failed: %s', self.sock, e)
+                logging.error('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
             return
-        self.__realsock = self.sock
-        self.__realrfile = self.rfile
-        self.sock = ssl_sock
-        self.rfile = self.sock.makefile('rb', self.bufsize)
+        self.__realconnection = self.connection
+        self.connection = ssl_sock
+        self.rfile = self.connection.makefile('rb', self.bufsize)
         try:
-            self.parse_request(self.rfile)
+            self.raw_requestline = self.rfile.readline(65537)
+            if len(self.raw_requestline) > 65536:
+                self.requestline = ''
+                self.request_version = ''
+                self.command = ''
+                self.send_error(414)
+                return
+            if not self.raw_requestline:
+                self.close_connection = 1
+                return
+            if not self.parse_request():
+                return
         except socket.error as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
@@ -1625,14 +1618,14 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
         finally:
-            if self.__realsock:
+            if self.__realconnection:
                 try:
-                    self.__realsock.shutdown(socket.SHUT_WR)
+                    self.__realconnection.shutdown(socket.SHUT_WR)
+                    self.__realconnection.close()
                 except socket.error:
                     pass
-                self.__realsock.close()
-            if self.__realrfile:
-                self.__realrfile.close()
+                finally:
+                    self.__realconnection = None
 
 
 def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
@@ -1657,9 +1650,9 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
-    if 'x-status' in response.msg:
-        response.status = int(response.msg['x-status'])
-        del response.msg['x-status']
+    if 'x-status' in response.headers:
+        response.status = int(response.headers['x-status'])
+        del response.headers['x-status']
     response_read = response.read
     if 'xorchar' in kwargs and 200 <= response.app_status < 400:
         ordchar = ord(kwargs['xorchar'])
@@ -1719,8 +1712,8 @@ class PAASProxyHandler(GAEProxyHandler):
             if response.app_status in (400, 405):
                 http_util.crlf = 0
 
-            if 'Set-Cookie' in response.msg:
-                response.msg['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.msg['Set-Cookie'])
+            if 'Set-Cookie' in response.headers:
+                response.headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.headers['Set-Cookie'])
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding'))).encode('latin-1'))
 
             while 1:
@@ -1994,19 +1987,21 @@ def main():
     CertUtil.check_ca()
     sys.stdout.write(common.info())
 
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
+
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
         server = socketserver.ThreadingTCPServer((host, int(port)), PAASProxyHandler)
-        threading._start_new_thread(server.serve_forever)
+        threading._start_new_thread(server.serve_forever, tuple())
 
     if common.LIGHT_ENABLE:
         host, port = common.LIGHT_LISTEN.split(':')
         server = socketserver.ThreadingTCPServer((host, int(port)), LightProxyHandler())
-        threading._start_new_thread(server.serve_forever)
+        threading._start_new_thread(server.serve_forever, tuple())
 
     if common.PAC_ENABLE:
         server = socketserver.ThreadingTCPServer((common.PAC_IP, common.PAC_PORT), PACServerHandler)
-        threading._start_new_thread(server.serve_forever)
+        threading._start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
         host, port = common.DNS_LISTEN.split(':')
@@ -2014,7 +2009,7 @@ def main():
         server.remote_addresses = common.DNS_REMOTE.split('|')
         server.timeout = common.DNS_TIMEOUT
         server.max_cache_size = common.DNS_CACHESIZE
-        threading._start_new_thread(server.serve_forever)
+        threading._start_new_thread(server.serve_forever, tuple())
 
     server = socketserver.ThreadingTCPServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
     server.serve_forever()
