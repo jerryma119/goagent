@@ -259,7 +259,7 @@ class CertUtil(object):
             try:
                 with open(certfile, 'rb') as fp:
                     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
-                    commonname = (v for k, v in x509.get_subject().get_components() if k == 'O').next()
+                    commonname = next((v for k, v in x509.get_subject().get_components() if k == 'O'))
             except Exception as e:
                 logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
         if sys.platform.startswith('win'):
@@ -269,9 +269,9 @@ class CertUtil(object):
                     begin = b'-----BEGIN CERTIFICATE-----'
                     end = b'-----END CERTIFICATE-----'
                     certdata = base64.b64decode(b''.join(certdata[certdata.find(begin)+len(begin):certdata.find(end)].strip().splitlines()))
-                crypt32_handle = ctypes.windll.kernel32.LoadLibraryW(u'crypt32.dll')
+                crypt32_handle = ctypes.windll.kernel32.LoadLibraryW('crypt32.dll')
                 crypt32 = ctypes.WinDLL(None, handle=crypt32_handle)
-                store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, u'ROOT')
+                store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, 'ROOT')
                 if not store_handle:
                     return -1
                 ret = crypt32.CertAddEncodedCertificateToStore(store_handle, 0x1, certdata, len(certdata), 4, None)
@@ -593,7 +593,7 @@ class HTTPUtil(object):
                 # verify SSL certificate.
                 if self.ssl_validate and host.endswith('.appspot.com'):
                     cert = ssl_sock.getpeercert()
-                    commonname = (v for ((k, v),) in cert['subject'] if k == 'commonName').next()
+                    commonname = next((v for ((k, v),) in cert['subject'] if k == 'commonName'))
                     if '.google' not in commonname and not commonname.endswith('.appspot.com'):
                         raise ssl.SSLError("Host name '%s' doesn't match certificate host '%s'" % (host, commonname))
                 # put ssl socket object to output queobj
@@ -665,7 +665,7 @@ class HTTPUtil(object):
                 return sock
 
     def create_connection_withproxy(self, address, timeout=None, source_address=None, proxy=None):
-        assert isinstance(proxy, (str, unicode))
+        assert isinstance(proxy, str)
         host, port = address
         logging.debug('create_connection_withproxy connect (%r, %r)', host, port)
         scheme, username, password, address = ProxyUtil.parse_proxy(proxy or self.proxy)
@@ -1128,7 +1128,7 @@ class RangeFetch(object):
         response_headers = dict((k.title(), v) for k, v in self.response.getheaders())
         content_range = response_headers['Content-Range']
         #content_length = response_headers['Content-Length']
-        start, end, length = map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
+        start, end, length = list(map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3)))
         if start == 0:
             response_status = 200
             response_headers['Content-Length'] = str(length)
@@ -1291,7 +1291,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                             logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
                     except socket.error as e:
                         logging.exception('resolve remote domain=%r dnsserver=%r failed: %s', domain, dnsserver, e)
-            common.GOOGLE_HOSTS = list(set(sum(google_ipmap.values(), [])))
+            common.GOOGLE_HOSTS = list(set(sum(list(google_ipmap.values()), [])))
             if len(common.GOOGLE_HOSTS) == 0:
                 logging.error('resolve %s domain return empty! try remote dns resovle!', common.GAE_PROFILE)
                 common.GOOGLE_HOSTS = common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|')
@@ -1351,10 +1351,10 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             self._update_google_iplist()
 
     def setup(self):
-        if callable(self.__class__.first_run):
+        if isinstance(self.__class__.first_run, collections.Callable):
             try:
                 with self.__class__.first_run_lock:
-                    if callable(self.__class__.first_run):
+                    if isinstance(self.__class__.first_run, collections.Callable):
                         self.first_run()
                         self.__class__.first_run = None
             except socket.error as e:
@@ -1447,7 +1447,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
         elif host.endswith(common.AUTORANGE_HOSTS_TAIL) and not donotrange.match(self.path):
             try:
-                pattern = (p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)).next()
+                pattern = next((p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)))
                 logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
                 m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
                 start = int(m.group(1) if m else 0)
@@ -1926,7 +1926,7 @@ def pre_start():
         except ValueError:
             pass
     if ctypes and os.name == 'nt':
-        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
+        ctypes.windll.kernel32.SetConsoleTitleW('GoAgent v%s' % __version__)
         if not common.LOVE_TIMESTAMP.strip():
             sys.stdout.write('Double click addto-startup.vbs could add goagent to autorun programs. :)\n')
         if not common.LISTEN_VISIBLE:
@@ -1944,7 +1944,7 @@ def pre_start():
             if time.time() - common.LOVE_TIMESTAMP > 86400 and random.randint(1, 10) > 5:
                 title = ctypes.create_unicode_buffer(1024)
                 ctypes.windll.kernel32.GetConsoleTitleW(ctypes.byref(title), len(title)-1)
-                ctypes.windll.kernel32.SetConsoleTitleW(u'%s %s' % (title.value, random.choice(common.LOVE_TIP)))
+                ctypes.windll.kernel32.SetConsoleTitleW('%s %s' % (title.value, random.choice(common.LOVE_TIP)))
                 with open(common.CONFIG_FILENAME, 'w') as fp:
                     common.CONFIG.set('love', 'timestamp', str(int(time.time())))
                     common.CONFIG.write(fp)
@@ -1956,8 +1956,8 @@ def pre_start():
             tasklist = os.popen('tasklist').read().lower()
             softwares = [x for x in softwares if x.lower()in tasklist]
             if softwares:
-                error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % ','.join(softwares)
-                ctypes.windll.user32.MessageBoxW(None, error, u'GoAgent 建议', 0)
+                error = '某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % ','.join(softwares)
+                ctypes.windll.user32.MessageBoxW(None, error, 'GoAgent 建议', 0)
                 #sys.exit(0)
     if common.GAE_APPIDS[0] == 'goagent' and not common.CRLF_ENABLE:
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
