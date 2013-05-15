@@ -40,6 +40,7 @@ import zlib
 import functools
 import re
 import io
+import copy
 import traceback
 import random
 import base64
@@ -1187,7 +1188,7 @@ class RangeFetch(object):
         self._stopped = True
 
     def __fetchlet(self, range_queue, data_queue):
-        headers = self.headers.copy()
+        headers = copy.copy(self.headers)
         headers['Connection'] = 'close'
         while 1:
             try:
