@@ -1417,7 +1417,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         """Direct http forward"""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
-            payload = self.rfile.read(content_length) if content_length else None
+            payload = self.rfile.read(content_length) if content_length else b''
             response = http_util.request(self.command, self.path, payload, self.headers, crlf=common.GAE_CRLF)
             if not response:
                 logging.warning('http_util.request "%s %s") return %r', self.command, self.path, response)
