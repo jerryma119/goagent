@@ -260,7 +260,7 @@ class CertUtil(object):
             try:
                 with open(certfile, 'rb') as fp:
                     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
-                    commonname = next((v for k, v in x509.get_subject().get_components() if k == 'O'))
+                    commonname = next(v.decode() for k, v in x509.get_subject().get_components() if k == b'O')
             except Exception as e:
                 logging.error('load_certificate(certfile=%r) failed:%s', certfile, e)
         if sys.platform.startswith('win'):
