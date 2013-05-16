@@ -453,7 +453,33 @@ class HTTPUtil(object):
                     'Accept-Charset': ('AC', lambda x: x.startswith('UTF-8,')),
                     'Accept-Language': ('AL', lambda x: x.startswith('zh-CN')),
                     'Accept-Encoding': ('AE', lambda x: x.startswith('gzip,')), }
-
+    cipher_suite = ['ECDHE-ECDSA-AES256-SHA',
+                     'ECDHE-RSA-AES256-SHA',
+                     'DHE-RSA-AES256-SHA',
+                     'DHE-DSS-AES256-SHA',
+                     'ECDH-RSA-AES256-SHA',
+                     'ECDH-ECDSA-AES256-SHA',
+                     'AES256-SHA',
+                     'ECDHE-ECDSA-RC4-SHA',
+                     'ECDHE-ECDSA-AES128-SHA',
+                     'ECDHE-RSA-RC4-SHA',
+                     'ECDHE-RSA-AES128-SHA',
+                     'DHE-RSA-AES128-SHA',
+                     'DHE-DSS-AES128-SHA',
+                     'ECDH-RSA-RC4-SHA',
+                     'ECDH-RSA-AES128-SHA',
+                     'ECDH-ECDSA-RC4-SHA',
+                     'ECDH-ECDSA-AES128-SHA',
+                     'RC4-MD5',
+                     'RC4-SHA',
+                     'AES128-SHA',
+                     'ECDHE-ECDSA-DES-CBC3-SHA',
+                     'ECDHE-RSA-DES-CBC3-SHA',
+                     'EDH-RSA-DES-CBC3-SHA',
+                     'EDH-DSS-DES-CBC3-SHA',
+                     'ECDH-RSA-DES-CBC3-SHA',
+                     'ECDH-ECDSA-DES-CBC3-SHA',
+                     'DES-CBC3-SHA',]
     def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False):
         self.max_window = max_window
         self.max_retry = max_retry
@@ -466,6 +492,12 @@ class HTTPUtil(object):
         self.proxy = proxy
         self.ssl_validate = ssl_validate or self.ssl_validate
         self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        # http://docs.python.org/dev/library/ssl.html
+        # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
+        # http://www.openssl.org/docs/apps/ciphers.html
+        # openssl s_server -accept 443 -key CA.crt -cert CA.crt
+        # set_ciphers as Modern Browsers
+        self.ssl_context.set_ciphers(':'.join(self.cipher_suite))
         if self.ssl_validate:
             self.ssl_context.load_cert_chain('cacert.pem')
 
