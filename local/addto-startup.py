@@ -29,7 +29,7 @@ X-GNOME-Autostart-enabled=true
 Name=GoAgent GTK
 Comment=GoAgent GTK Launcher
 ''' % (dirname , scriptname , dirname)
-    #sometimes maybe  /etc/xdg/autostart , ~/.kde/Autostart/ , ~/.config/openbox/autostart 
+    #sometimes maybe  /etc/xdg/autostart , ~/.kde/Autostart/ , ~/.config/openbox/autostart
     for dirname in map(os.path.expanduser, ['~/.config/autostart']):
         if os.path.isdir(dirname):
             filename = os.path.join(dirname, 'goagent-gtk.desktop')

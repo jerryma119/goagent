@@ -1,4 +1,4 @@
-@start "GoAgent" "%~dp0python27.exe" -B -x "%~dpnx0" && exit /b 0 || pause
+@start "GoAgent" "python.exe" -B -x "%~dpnx0" && exit /b 0 || pause
 import sys
 import os
 import traceback
