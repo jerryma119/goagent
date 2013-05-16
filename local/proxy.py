@@ -1235,7 +1235,7 @@ class RangeFetch(object):
                         range_queue.put((start, end, None))
                         continue
                     content_length = int(response.getheader('Content-Length', 0))
-                    logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', threading.get_ident(), content_length, content_range)
+                    logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', threading.currentThread().ident, content_length, content_range)
                     while 1:
                         try:
                             data = response.read(self.bufsize)
