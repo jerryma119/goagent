@@ -418,7 +418,7 @@ class DNSUtil(object):
                         return data[2:]
                     else:
                         logging.warning('DNSUtil._remote_resolve(dnsserver=%r, %r) return bad tcp data=%r', qname, dnsserver, data)
-            except (socket.error, ssl.SSLError) as e:
+            except OSError as e:
                 if e.args[0] in (errno.ETIMEDOUT, 'timed out'):
                     continue
             except Exception as e:
@@ -556,7 +556,7 @@ class HTTPUtil(object):
                 sock.settimeout(None)
                 # put ssl socket object to output queobj
                 queobj.put(sock)
-            except (socket.error, ssl.SSLError) as e:
+            except OSError as e:
                 # any socket.error, put Excpetions to output queobj.
                 queobj.put(e)
                 # reset a large and random timeout to the address
@@ -584,7 +584,7 @@ class HTTPUtil(object):
                 threading._start_new_thread(_create_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 result = queobj.get()
-                if not isinstance(result, (socket.error, ssl.SSLError)):
+                if not isinstance(result, OSError):
                     threading._start_new_thread(_close_connection, (len(addrs)-i-1, queobj))
                     return result
                 else:
@@ -634,7 +634,7 @@ class HTTPUtil(object):
                         raise ssl.SSLError("Host name '%s' doesn't match certificate host '%s'" % (address[0], commonname))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
-            except (socket.error, ssl.SSLError) as e:
+            except OSError as e:
                 # any socket.error, put Excpetions to output queobj.
                 queobj.put(e)
                 # reset a large and random timeout to the ipaddr
@@ -661,7 +661,7 @@ class HTTPUtil(object):
                 threading._start_new_thread(_create_ssl_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 result = queobj.get()
-                if not isinstance(result, socket.error):
+                if not isinstance(result, OSError):
                     threading._start_new_thread(_close_ssl_connection, (len(addrs)-i-1, queobj))
                     return result
                 else:
@@ -708,7 +708,7 @@ class HTTPUtil(object):
         try:
             try:
                 self.dns_resolve(host)
-            except (socket.error, ssl.SSLError):
+            except OSError:
                 pass
             proxyhost, _, proxyport = address.rpartition(':')
             sock = socket.create_connection((proxyhost, int(proxyport)))
@@ -724,7 +724,7 @@ class HTTPUtil(object):
                 logging.error('create_connection_withproxy return http error code %s', response.status)
                 sock = None
             return sock
-        except (socket.error, ssl.SSLError) as e:
+        except OSError as e:
             logging.error('create_connection_withproxy error %s', e)
             raise
 
@@ -761,7 +761,7 @@ class HTTPUtil(object):
                                 timecount = maxping or timeout
                         else:
                             return
-        except (socket.error, ssl.SSLError) as e:
+        except OSError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
                 raise
         finally:
@@ -782,7 +782,7 @@ class HTTPUtil(object):
                     if bitmask:
                         data = ''.join(chr(ord(x) ^ bitmask) for x in data)
                     dest.sendall(data)
-            except (socket.error, ssl.SSLError) as e:
+            except OSError as e:
                 if e.args[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
                     raise
             finally:
@@ -1214,7 +1214,7 @@ class RangeFetch(object):
             try:
                 self.wfile.write(data)
                 expect_begin += len(data)
-            except (socket.error, ssl.SSLError) as e:
+            except OSError as e:
                 logging.info('RangeFetch client connection aborted(%s).', e)
                 break
         self._stopped = True
@@ -1240,7 +1240,7 @@ class RangeFetch(object):
                         response = self.urlfetch(self.command, self.url, headers, self.payload, fetchserver, password=self.password)
                 except queue.Empty:
                     continue
-                except (socket.error, ssl.SSLError) as e:
+                except OSError as e:
                     logging.warning("Response %r in __fetchlet", e)
                 if not response:
                     logging.warning('RangeFetch %s return %r', headers['Range'], response)
@@ -1275,7 +1275,7 @@ class RangeFetch(object):
                                 break
                             data_queue.put((start, data))
                             start += len(data)
-                        except (socket.error, ssl.SSLError) as e:
+                        except OSError as e:
                             logging.warning('RangeFetch "%s %s" %s failed: %s', self.command, self.url, headers['Range'], e)
                             break
                     if start < end:
@@ -1312,7 +1312,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                             google_ipmap[domain] = iplist
                         if len(iplist) < 4:
                             need_resolve_remote.append(domain)
-                    except (socket.error, ssl.SSLError):
+                    except OSError:
                         need_resolve_remote.append(domain)
                         continue
                 else:
@@ -1325,7 +1325,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         if iplist:
                             google_ipmap.setdefault(domain, []).extend(iplist)
                             logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
-                    except (socket.error, ssl.SSLError) as e:
+                    except OSError as e:
                         logging.exception('resolve remote domain=%r dnsserver=%r failed: %s', domain, dnsserver, e)
             common.GOOGLE_HOSTS = list(set(sum(list(google_ipmap.values()), [])))
             if len(common.GOOGLE_HOSTS) == 0:
@@ -1351,7 +1351,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         ips = socket.gethostbyname_ex(host)[-1]
                         if len(ips) > 1:
                             iplist += ips
-                    except (socket.error, ssl.SSLError) as e:
+                    except OSError as e:
                         logging.error('socket.gethostbyname_ex(host=%r) failed:%s', host, e)
                 prefix = re.sub(r'\d+\.\d+$', '', random.choice(common.GOOGLE_HOSTS))
                 iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
@@ -1367,7 +1367,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         socket.create_connection((host, 443), timeout=2).close()
                         end = time.time()
                         connect_timing += end - start
-                    except (socket.error, ssl.SSLError):
+                    except OSError:
                         # connect failed, need switch
                         connect_timing += 2
                         need_switch = True
@@ -1393,7 +1393,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     if isinstance(self.__class__.first_run, collections.Callable):
                         self.first_run()
                         self.__class__.first_run = None
-            except (socket.error, ssl.SSLError) as e:
+            except OSError as e:
                 logging.error('GAEProxyHandler.first_run() return %r', e)
             except Exception as e:
                 logging.exception('GAEProxyHandler.first_run() return %r', e)
@@ -1461,7 +1461,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding'))).encode('latin-1'))
             self.wfile.write(response.read())
             response.close()
-        except (socket.error, ssl.SSLError) as e:
+        except OSError as e:
             if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
                 logging.warn('http_util.request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
                 common.GOOGLE_WITHGAE.add(re.sub(r':\d+$', '', urllib.parse.urlparse(self.path).netloc))
@@ -1495,7 +1495,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             if 'Content-Length' in self.headers:
                 try:
                     payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
-                except (EOFError, socket.error, ssl.SSLError) as e:
+                except (EOFError, OSError) as e:
                     logging.error('handle_method_urlfetch read payload failed:%s', e)
                     return
             response = None
@@ -1562,7 +1562,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     break
                 self.wfile.write(data)
             response.close()
-        except (socket.error, ssl.SSLError) as e:
+        except OSError as e:
             # Connection closed before proxy return
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
@@ -1596,7 +1596,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     elif i == 0:
                         # only print first create_connection error
                         logging.error('http_util.create_connection((host=%r, port=%r), %r) timeout', host, port, timeout)
-                except (socket.error, ssl.SSLError) as e:
+                except OSError as e:
                     if e.args[0] == 9:
                         logging.error('GAEProxyHandler direct forward remote (%r, %r) failed', host, port)
                         continue
@@ -1646,14 +1646,14 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 return
             if not self.parse_request():
                 return
-        except (socket.error, ssl.SSLError) as e:
+        except OSError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         if self.path[0] == '/' and host:
             self.path = 'https://%s%s' % (self.headers['Host'], self.path)
         try:
             self.do_METHOD()
-        except (socket.error, ssl.SSLError) as e:
+        except OSError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
         finally:
@@ -1661,7 +1661,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 try:
                     self.__realconnection.shutdown(socket.SHUT_WR)
                     self.__realconnection.close()
-                except (socket.error, ssl.SSLError):
+                except OSError:
                     pass
                 finally:
                     self.__realconnection = None
@@ -1722,7 +1722,7 @@ class PAASProxyHandler(GAEProxyHandler):
             if 'Content-Length' in self.headers:
                 try:
                     payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
-                except (EOFError, socket.error, ssl.SSLError) as e:
+                except (EOFError, OSError) as e:
                     logging.error('handle_method read payload failed:%s', e)
                     return
             response = None
@@ -1762,7 +1762,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 self.wfile.write(data)
             response.close()
 
-        except (socket.error, ssl.SSLError) as e:
+        except OSError as e:
             # Connection closed before proxy return
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
@@ -1941,7 +1941,7 @@ class DNSServer(socketserver.ThreadingUDPServer):
                 iplist = DNSUtil._reply_to_iplist(data)
                 self.cache[domain] = data
                 logging.info('DNSServer resolve domain=%r return iplist=%s', qname, iplist)
-            except (socket.error, ssl.SSLError) as e:
+            except OSError as e:
                 logging.error('DNSServer resolve domain=%r to iplist failed:%s', qname, e)
         self._writelock.acquire()
         try:
