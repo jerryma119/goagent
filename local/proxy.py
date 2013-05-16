@@ -1990,7 +1990,7 @@ def main():
     CertUtil.check_ca()
     sys.stdout.write(common.info())
 
-    socketserver.ThreadingTCPServer.allow_reuse_address = True
+    #socketserver.ThreadingTCPServer.allow_reuse_address = True
 
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
