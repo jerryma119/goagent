@@ -27,10 +27,11 @@ import glob
 sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 
 try:
+    import gevent
     import gevent.monkey
     gevent.monkey.patch_all()
 except (ImportError, SystemError):
-    pass
+    gevent = None
 
 import errno
 import time
@@ -1006,7 +1007,7 @@ class Common(object):
     def info(self):
         info = ''
         info += '------------------------------------------------------\n'
-        info += 'GoAgent Version    : %s (python/%s pyopenssl/%s)\n' % (__version__, sys.version[:5], getattr(OpenSSL, '__version__', 'Disabled'))
+        info += 'GoAgent Version    : %s (python/%s gevent/%s pyopenssl/%s)\n' % (__version__, sys.version[:5], getattr(gevent, '__version__', 'Disabled'), getattr(OpenSSL, '__version__', 'Disabled'))
         info += 'Uvent Version      : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
         info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
         info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
@@ -1105,7 +1106,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = zlib.compress(metadata.encode('latin-1'))[2:-4]
     need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
     if common.GAE_OBFUSCATE:
-        cookie = base64.b64encode(metadata).strip()
+        cookie = base64.b64encode(metadata).strip().decode('latin-1')
         if not payload:
             response = http_util.request('GET', fetchserver, payload, {'Cookie': cookie}, crlf=need_crlf)
         else:
