@@ -1123,13 +1123,13 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     data = response.read(4)
     if len(data) < 4:
         response.status = 502
-        response.fp = io.BytesIO(b'connection aborted. too short leadtype data=%r' % data)
+        response.fp = io.BytesIO(b'connection aborted. too short leadtype data=' + data)
         return response
     response.status, headers_length = struct.unpack('!hh', data)
     data = response.read(headers_length)
     if len(data) < headers_length:
         response.status = 502
-        response.fp = io.BytesIO(b'connection aborted. too short headers data=%r' % data)
+        response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
         return response
     response.headers = response.msg = http.client.parse_headers(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
     return response
