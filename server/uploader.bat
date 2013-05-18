@@ -1,1 +1,1 @@
-@"%~dp0..\local\python27.exe" uploader.zip || pause
+@"%~dp0..\local\python33.exe" uploader.zip || pause
