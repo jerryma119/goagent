@@ -500,7 +500,8 @@ class HTTPUtil(object):
         # set_ciphers as Modern Browsers
         self.ssl_context.set_ciphers(':'.join(self.cipher_suite))
         if self.ssl_validate:
-            self.ssl_context.load_cert_chain('cacert.pem')
+            self.ssl_context.verify_mode = ssl.CERT_REQUIRED
+            self.ssl_context.load_verify_locations('cacert.pem')
 
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
         iplist = self.dns.get(host)
@@ -515,25 +516,6 @@ class HTTPUtil(object):
                 iplist = [ip for ip in iplist if re.match(r'\d+\.\d+\.\d+\.\d+', ip)]
             self.dns[host] = iplist = list(set(iplist))
         return iplist
-
-    def wrap_socket(self, sock, **ssl_options):
-        if 'server_hostname' not in ssl_options:
-            return ssl.wrap_socket(sock, **ssl_options)
-        else:
-            if not getattr(ssl, 'HAS_SNI'):
-                del ssl_options['server_hostname']
-                return ssl.wrap_socket(sock, **ssl_options)
-            else:
-                context = ssl.SSLContext(ssl_options.get('ssl_version', ssl.PROTOCOL_SSLv23))
-                if 'certfile' in ssl_options:
-                    context.load_cert_chain(ssl_options['certfile'], ssl_options.get('keyfile', None))
-                if 'cert_reqs' in ssl_options:
-                    context.verify_mode = ssl_options['cert_reqs']
-                if 'ca_certs' in ssl_options:
-                    context.load_verify_locations(ssl_options['ca_certs'])
-                if 'ciphers' in ssl_options:
-                    context.set_ciphers(ssl_options['ciphers'])
-                return context.wrap_socket(sock, **ssl_options)
 
     def create_connection(self, address, timeout=None, source_address=None):
         def _create_connection(address, timeout, queobj):
@@ -1447,7 +1429,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             if response.status in (400, 405):
                 common.GAE_CRLF = 0
             logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.headers.get('Content-Length', '-'))
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding'))).encode('latin-1'))
+            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
             while 1:
                 data = response.read(8192)
                 if not data:
@@ -1533,7 +1515,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
 
             if response.app_status != 200:
                 logging.info('%s "GAE %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
-                self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding'))).encode('latin-1'))
+                self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
                 self.wfile.write(response.read())
                 response.close()
                 return
@@ -1547,7 +1529,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
 
             if 'Set-Cookie' in response.headers:
                 response.headers['Set-Cookie'] = self.normcookie(response.headers['Set-Cookie'])
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding'))).encode('latin-1'))
+            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
 
             while 1:
                 data = response.read(8192)
@@ -1746,7 +1728,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
             if 'Set-Cookie' in response.headers:
                 response.headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.headers['Set-Cookie'])
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'transfer-encoding'))).encode('latin-1'))
+            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
 
             while 1:
                 data = response.read(32768)
