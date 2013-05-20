@@ -1266,6 +1266,17 @@ class RangeFetch(object):
                 raise
 
 
+class LocalProxyServer(socketserver.ThreadingTCPServer):
+    """Local Proxy Server"""
+    allow_reuse_address = True
+
+    def close_request(self, request):
+        try:
+            request.close()
+        except:
+            pass
+
+
 class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
 
     bufsize = 256*1024
@@ -1999,20 +2010,18 @@ def main():
     CertUtil.check_ca()
     sys.stdout.write(common.info())
 
-    #socketserver.ThreadingTCPServer.allow_reuse_address = True
-
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
-        server = socketserver.ThreadingTCPServer((host, int(port)), PAASProxyHandler)
+        server = LocalProxyServer((host, int(port)), PAASProxyHandler)
         threading._start_new_thread(server.serve_forever, tuple())
 
     if common.LIGHT_ENABLE:
         host, port = common.LIGHT_LISTEN.split(':')
-        server = socketserver.ThreadingTCPServer((host, int(port)), LightProxyHandler())
+        server = LocalProxyServer((host, int(port)), LightProxyHandler())
         threading._start_new_thread(server.serve_forever, tuple())
 
     if common.PAC_ENABLE:
-        server = socketserver.ThreadingTCPServer((common.PAC_IP, common.PAC_PORT), PACServerHandler)
+        server = LocalProxyServer((common.PAC_IP, common.PAC_PORT), PACServerHandler)
         threading._start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
@@ -2023,7 +2032,7 @@ def main():
         server.max_cache_size = common.DNS_CACHESIZE
         threading._start_new_thread(server.serve_forever, tuple())
 
-    server = socketserver.ThreadingTCPServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
+    server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
     server.serve_forever()
 
 if __name__ == '__main__':
