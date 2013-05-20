@@ -29,7 +29,7 @@ sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 try:
     import gevent
     import gevent.monkey
-    gevent.monkey.patch_all()
+    gevent.monkey.patch_all(thread=True)
 except (ImportError, SystemError):
     gevent = None
 
@@ -2036,11 +2036,4 @@ def main():
     server.serve_forever()
 
 if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
-    except Exception as e:
-        if ctypes and os.name == 'nt':
-            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
-        raise
+    main()
