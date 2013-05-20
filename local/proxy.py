@@ -1423,12 +1423,14 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             if common.HOSTS_MATCH and any(x(self.path) for x in common.HOSTS_MATCH):
                 realhost = next(common.HOSTS_MATCH[x] for x in common.HOSTS_MATCH if x(self.path)) or re.sub(r':\d+$', '', urllib.parse.urlparse(self.path).netloc)
                 logging.debug('hosts pattern mathed, url=%r realhost=%r', self.path, realhost)
-                response = http_util.request(self.command, self.path, payload, self.headers, realhost=realhost, crlf=1)
+                response = http_util.request(self.command, self.path, payload, self.headers, realhost=realhost, crlf=common.GAE_CRLF)
             else:
                 response = http_util.request(self.command, self.path, payload, self.headers, crlf=common.GAE_CRLF)
+            if not response:
+                return
+            logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.headers.get('Content-Length', '-'))
             if response.status in (400, 405):
                 common.GAE_CRLF = 0
-            logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.headers.get('Content-Length', '-'))
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
             while 1:
                 data = response.read(8192)
