@@ -104,7 +104,7 @@ class Logging(type(sys)):
         return cls(*args, **kwargs)
 
     def basicConfig(self, *args, **kwargs):
-        self.level = kwargs.get('level', self.__class__.INFO)
+        self.level = int(kwargs.get('level', self.__class__.INFO))
         if self.level > self.__class__.DEBUG:
             self.debug = self.dummy
 
