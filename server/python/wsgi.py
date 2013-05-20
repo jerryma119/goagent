@@ -280,7 +280,8 @@ def gae_application(environ, start_response):
         start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
         error_string = '<br />\n'.join(errors)
         if not error_string:
-            error_string = 'Internal Server Error. <p/><a href="javascript:window.location.reload(true);">refresh</a> current page or visit <a href="https://appengine.google.com/" target="_blank">appengine.google.com</a> for error logs'
+            logurl = 'https://appengine.google.com/logs?&app_id=%s' % os.environ['APPLICATION_ID']
+            error_string = 'Internal Server Error. <p/>try <a href="javascript:window.location.reload(true);">refresh</a> or goto <a href="%s" target="_blank">appengine.google.com</a> for details' % logurl
         yield message_html('502 Urlfetch Error', 'Python Urlfetch Error: %r' % method,  error_string)
         raise StopIteration
 
