@@ -944,6 +944,8 @@ class Common(object):
 
         self.AUTORANGE_HOSTS = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
         self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
+        self.AUTORANGE_RULES = re.compile('^http(?:s)?:\/\/[^\/]+\/[^?]+(?:'+self.CONFIG.get('autorange', 'autorange_rules')+')')
+        self.AUTORANGE_SKIP = re.compile('^http(?:s)?:\/\/[^\/]+\/[^?]+(?:'+self.CONFIG.get('autorange', 'autorange_skip')+')')
         self.AUTORANGE_MAXSIZE = self.CONFIG.getint('autorange', 'maxsize')
         self.AUTORANGE_WAITSIZE = self.CONFIG.getint('autorange', 'waitsize')
         self.AUTORANGE_BUFSIZE = self.CONFIG.getint('autorange', 'bufsize')
@@ -1464,13 +1466,20 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_METHOD_GAE(self):
         """GAE http urlfetch"""
         host = self.headers.get('Host', '')
-        donotrange = re.compile('^http(?:s)?:\/\/[^\/]+\/[^?]+\.(?:xml|json|html|js|css|jpg|jpeg|png|gif|ico)')
         if 'Range' in self.headers:
             m = re.search('bytes=(\d+)-', self.headers['Range'])
             start = int(m.group(1) if m else 0)
             self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
             logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
-        elif host.endswith(common.AUTORANGE_HOSTS_TAIL) and not donotrange.match(self.path):
+        elif common.AUTORANGE_RULES.match(self.path):
+            try:
+                logging.debug('Found autorange_rules match url=%r', self.path)
+                m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
+                start = int(m.group(1) if m else 0)
+                self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+            except StopIteration:
+                pass
+        elif host.endswith(common.AUTORANGE_HOSTS_TAIL) and not common.AUTORANGE_SKIP.match(self.path):
             try:
                 pattern = next((p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)))
                 logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
