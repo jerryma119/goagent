@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.6
+(/usr/bin/env python2.6 -x "$0" 2>&1 >/dev/null &);exit
 # coding:utf-8
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
@@ -26,24 +26,28 @@ sy8/p1UjqykB6KINNwbYVSou7Fq6lWHKRhCzEhIzSfUz/ELixpAwXxXDNX3JPe8y0FRErrz4AxI7
 CeL/1jBuIbhi/vC3r7ZuwZLpDGAt2tQXBrjtyLzEY6GWR7Qmj3mT1HEjj6RJakCD/b4+Walzj4Bv
 kFr7SjPQ6Ea2zgjskMv+z/gHq6RKE1cMAqYAAAAASUVORK5CYII="""
 
+import sys
 import subprocess
 import pty
 import os
 import base64
+import ctypes
+import ctypes.util
 
 from PyObjCTools import AppHelper
 from AppKit import NSObject
 from AppKit import NSApplication, NSApp, NSApplicationActivationPolicyProhibited
 from AppKit import NSImage
 from AppKit import NSData
-from AppKit import NSStatusBar,NSVariableStatusItemLength
+from AppKit import NSStatusBar, NSVariableStatusItemLength
 from AppKit import NSMenu, NSMenuItem
-from AppKit import NSWindow, NSRect, NSSize, NSMaxY, NSMakeRect,NSMakeRange
+from AppKit import NSWindow, NSRect, NSSize, NSMaxY, NSMakeRect, NSMakeRange
 from AppKit import NSBackingStoreBuffered, NSTitledWindowMask, NSClosableWindowMask
 from AppKit import NSTextView, NSScrollView
-from AppKit import NSViewWidthSizable, NSViewHeightSizable,NSNoBorder
+from AppKit import NSViewWidthSizable, NSViewHeightSizable, NSNoBorder
 from AppKit import NSWorkspace, NSNotificationCenter, NSWorkspaceWillPowerOffNotification
 #XXXXXX how about just from AppKit import *?
+
 
 class GoAgentOSX(NSObject):
 
@@ -88,8 +92,8 @@ class GoAgentOSX(NSObject):
         self.statusitem.setMenu_(self.menu)
 
         # Console window
-        frame = NSMakeRect(0,0,550,350)
-        self.console_window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(frame, NSClosableWindowMask|NSTitledWindowMask, NSBackingStoreBuffered, False)
+        frame = NSMakeRect(0, 0, 550, 350)
+        self.console_window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(frame, NSClosableWindowMask | NSTitledWindowMask, NSBackingStoreBuffered, False)
         self.console_window.setTitle_(GOAGENT_TITLE)
         self.console_window.setDelegate_(self)
 
@@ -98,7 +102,7 @@ class GoAgentOSX(NSObject):
         self.scroll_view.setBorderType_(NSNoBorder)
         self.scroll_view.setHasVerticalScroller_(True)
         self.scroll_view.setHasHorizontalScroller_(False)
-        self.scroll_view.setAutoresizingMask_(NSViewWidthSizable|NSViewHeightSizable)
+        self.scroll_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
 
         self.console_view = NSTextView.alloc().initWithFrame_(frame)
         self.console_view.setVerticallyResizable_(True)
@@ -115,7 +119,7 @@ class GoAgentOSX(NSObject):
 
     def registerObserver(self):
         nc = NSWorkspace.sharedWorkspace().notificationCenter()
-        nc.addObserver_selector_name_object_(self,'exit:',NSWorkspaceWillPowerOffNotification,None)
+        nc.addObserver_selector_name_object_(self, 'exit:', NSWorkspaceWillPowerOffNotification, None)
 
     def startGoAgent(self):
         cmd = '/usr/bin/env python3 proxy.py'
@@ -133,13 +137,13 @@ class GoAgentOSX(NSObject):
         self.console_view.textStorage().mutableString().appendString_(line)
         need_scroll = NSMaxY(self.console_view.visibleRect()) >= NSMaxY(self.console_view.bounds())
         if need_scroll:
-            range = NSMakeRange(len(self.console_view.textStorage().mutableString()),0)
+            range = NSMakeRange(len(self.console_view.textStorage().mutableString()), 0)
             self.console_view.scrollRangeToVisible_(range)
 
     def readProxyOutput(self):
         while(True):
             line = self.pipe_fd.readline()
-            self.performSelectorOnMainThread_withObject_waitUntilDone_('refreshDisplay:',line, None)
+            self.performSelectorOnMainThread_withObject_waitUntilDone_('refreshDisplay:', line, None)
 
     def show_(self, notification):
         self.console_window.center()
