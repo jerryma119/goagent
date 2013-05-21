@@ -258,6 +258,7 @@ def gae_application(environ, start_response):
             time.sleep(1)
             deadline = URLFETCH_TIMEOUT * 2
         except urlfetch.ResponseTooLargeError as e:
+            errors.append('%r, deadline=%s' % (e, deadline))
             response = e.response
             logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
             m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')

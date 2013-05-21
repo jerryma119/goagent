@@ -942,10 +942,10 @@ class Common(object):
         self.GOOGLE_FORCEHTTPS = tuple('http://'+x for x in self.CONFIG.get(self.GAE_PROFILE, 'forcehttps').split('|') if x)
         self.GOOGLE_WITHGAE = set(x for x in self.CONFIG.get(self.GAE_PROFILE, 'withgae').split('|') if x)
 
-        self.AUTORANGE_HOSTS = tuple(self.CONFIG.get('autorange', 'hosts').split('|'))
-        self.AUTORANGE_HOSTS_TAIL = tuple(x.rpartition('*')[2] for x in self.AUTORANGE_HOSTS)
-        self.AUTORANGE_RULES = re.compile('^http(?:s)?:\/\/[^\/]+\/[^?]+(?:'+self.CONFIG.get('autorange', 'autorange_rules')+')')
-        self.AUTORANGE_SKIP = re.compile('^http(?:s)?:\/\/[^\/]+\/[^?]+(?:'+self.CONFIG.get('autorange', 'autorange_skip')+')')
+        self.AUTORANGE_HOSTS = self.CONFIG.get('autorange', 'hosts').split('|')
+        self.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(x)).match for x in self.AUTORANGE_HOSTS]
+        self.AUTORANGE_ENDSWITH = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
+        self.AUTORANGE_NOENDSWITH = tuple(self.CONFIG.get('autorange', 'noendswith').split('|'))
         self.AUTORANGE_MAXSIZE = self.CONFIG.getint('autorange', 'maxsize')
         self.AUTORANGE_WAITSIZE = self.CONFIG.getint('autorange', 'waitsize')
         self.AUTORANGE_BUFSIZE = self.CONFIG.getint('autorange', 'bufsize')
@@ -1466,23 +1466,15 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_METHOD_GAE(self):
         """GAE http urlfetch"""
         host = self.headers.get('Host', '')
+        path = urllib.parse.urlparse(self.path).path
         if 'Range' in self.headers:
             m = re.search('bytes=(\d+)-', self.headers['Range'])
             start = int(m.group(1) if m else 0)
             self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
             logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
-        elif common.AUTORANGE_RULES.match(self.path):
+        elif (any(x(host) for x in common.AUTORANGE_HOSTS_MATCH) or path.endswith(common.AUTORANGE_ENDSWITH)) and not path.endswith(common.AUTORANGE_NOENDSWITH):
             try:
-                logging.debug('Found autorange_rules match url=%r', self.path)
-                m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
-                start = int(m.group(1) if m else 0)
-                self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
-            except StopIteration:
-                pass
-        elif host.endswith(common.AUTORANGE_HOSTS_TAIL) and not common.AUTORANGE_SKIP.match(self.path):
-            try:
-                pattern = next((p for p in common.AUTORANGE_HOSTS if host.endswith(p) or fnmatch.fnmatch(host, p)))
-                logging.debug('autorange pattern=%r match url=%r', pattern, self.path)
+                logging.info('Found [autorange]endswith match url=%r', self.path)
                 m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
                 start = int(m.group(1) if m else 0)
                 self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
