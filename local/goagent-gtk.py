@@ -142,7 +142,7 @@ def should_visible():
 
 class GoAgentAppIndicator:
 
-    command = ['python', 'proxy.py']
+    command = ['/usr/bin/env', 'python3', 'proxy.py']
     message = u'GoAgent已经启动，单击托盘图标可以最小化'
     fail_message = u'GoAgent启动失败，请查看控制台窗口的错误信息。'
 
