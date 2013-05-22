@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '2.1.17'
+__version__ = '2.1.18'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -31,6 +31,10 @@ try:
     import sae
 except ImportError:
     sae = None
+try:
+    import bae.core.wsgi
+except ImportError:
+    bae = None
 try:
     import socket
     import select
@@ -545,7 +549,12 @@ def paas_application(environ, start_response):
 
 
 app = gae_application if urlfetch else paas_application
-application = app if sae is None else sae.create_wsgi_app(app)
+if bae:
+    application = bae.wsgi.core.WSGIApplication(app)
+elif sae:
+    application = sae.create_wsgi_app(app)
+else:
+    application = app
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
