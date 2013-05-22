@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '1.5'
+__version__ = '1.6'
 
 GOAGENT_LOGO_DATA = """\
 iVBORw0KGgoAAAANSUhEUgAAADcAAAA3CAYAAACo29JGAAAABHNCSVQICAgIfAhkiAAADVdJREFU
@@ -91,7 +91,7 @@ except ImportError:
 try:
     import appindicator
 except ImportError:
-    sys.exit(gtk.MessageDialog(None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, u'请安装 python-appindicator').run())
+    appindicator = None
 try:
     import vte
 except ImportError:
@@ -138,9 +138,10 @@ def should_visible():
     return visible
 
 #gtk.main_quit = lambda: None
+#appindicator = None
 
 
-class GoAgentAppIndicator:
+class GoAgentGTK:
 
     command = ['/usr/bin/env', 'python3', 'proxy.py']
     message = u'GoAgent已经启动，单击托盘图标可以最小化'
@@ -163,46 +164,39 @@ class GoAgentAppIndicator:
         if should_visible():
             self.window.show_all()
 
-        self.ind = appindicator.Indicator('GoAgent', 'indicator-messages', appindicator.CATEGORY_APPLICATION_STATUS)
-        self.ind.set_status(appindicator.STATUS_ACTIVE)
-        self.ind.set_attention_icon('indicator-messages-new')
-
         logo_filename = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'goagent-logo.png')
         if not os.path.isfile(logo_filename):
             with open(logo_filename, 'wb') as fp:
                 fp.write(base64.b64decode(GOAGENT_LOGO_DATA))
-        self.ind.set_icon(logo_filename)
 
-        self.menu = gtk.Menu()
+        if appindicator:
+            self.menu = self.make_menu()
+            self.trayicon = appindicator.Indicator('GoAgent', 'indicator-messages', appindicator.CATEGORY_APPLICATION_STATUS)
+            self.trayicon.set_status(appindicator.STATUS_ACTIVE)
+            self.trayicon.set_attention_icon('indicator-messages-new')
+            self.trayicon.set_icon(logo_filename)
+            self.trayicon.set_menu(self.menu)
+        else:
+            self.trayicon = gtk.StatusIcon()
+            self.trayicon.set_from_file(logo_filename)
+            self.trayicon.connect('popup-menu', lambda i, b, t: self.make_menu().popup(None, None, gtk.status_icon_position_menu, b, t, self.trayicon))
+            self.trayicon.set_tooltip('GoAgent')
+            self.trayicon.set_visible(True)
 
-        item = gtk.MenuItem(u'\u663e\u793a')
-        item.connect('activate', self.on_show)
-        item.show()
-        self.menu.append(item)
-
-        item = gtk.MenuItem(u'\u9690\u85cf')
-        item.connect('activate', self.on_hide)
-        item.show()
-        self.menu.append(item)
-
-        item = gtk.MenuItem(u'\u505c\u6b62')
-        item.connect('activate', self.on_stop)
-        item.show()
-        self.menu.append(item)
-
-        item = gtk.MenuItem(u'\u91cd\u65b0\u8f7d\u5165')
-        item.connect('activate', self.on_reload)
-        item.show()
-        self.menu.append(item)
-
-        item = gtk.MenuItem(u'\u9000\u51fa')
-        item.connect('activate', self.on_quit)
-        item.show()
-        self.menu.append(item)
-
-        self.menu.show()
-
-        self.ind.set_menu(self.menu)
+    def make_menu(self):
+        menu = gtk.Menu()
+        itemlist = [(u'\u663e\u793a', self.on_show),
+                    (u'\u9690\u85cf', self.on_hide),
+                    (u'\u505c\u6b62', self.on_stop),
+                    (u'\u91cd\u65b0\u8f7d\u5165', self.on_reload),
+                    (u'\u9000\u51fa', self.on_quit)]
+        for text, callback in itemlist:
+            item = gtk.MenuItem(text)
+            item.connect('activate', callback)
+            item.show()
+            menu.append(item)
+        menu.show()
+        return menu
 
     def show_notify(self, message=None, timeout=None):
         if pynotify and message:
@@ -269,7 +263,7 @@ def main():
 
     window = gtk.Window()
     terminal = vte.Terminal()
-    GoAgentAppIndicator(window, terminal)
+    GoAgentGTK(window, terminal)
     gtk.main()
 
 if __name__ == '__main__':
