@@ -24,6 +24,7 @@ import sys
 import os
 import glob
 
+sys.version_info[0] >= 3 or sys.exit(sys.stderr.write('please install python 3.3 or later(http://python.org/getit/)\n'))
 sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 
 try:
@@ -975,7 +976,6 @@ class Common(object):
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
 
         self.LOVE_ENABLE = self.CONFIG.getint('love', 'enable')
-        self.LOVE_TIMESTAMP = self.CONFIG.get('love', 'timestamp')
         self.LOVE_TIP = self.CONFIG.get('love', 'tip').encode('utf8').decode('unicode-escape').split('|')
 
         self.HOSTS = dict(self.CONFIG.items('hosts'))
@@ -1563,7 +1563,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             self.do_CONNECT_FWD()
         else:
-            self.do_CONNECT_FAKE()
+            self.do_CONNECT_AGENT()
 
     def do_CONNECT_FWD(self):
         """socket forward for http CONNECT command"""
@@ -1603,12 +1603,12 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
             http_util.forward_socket(self.connection, remote, bufsize=self.bufsize)
 
-    def do_CONNECT_FAKE(self):
+    def do_CONNECT_AGENT(self):
         """deploy fake cert to client"""
         host, _, port = self.path.rpartition(':')
         port = int(port)
         certfile = CertUtil.get_cert(host)
-        logging.info('%s "FAKE %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
+        logging.info('%s "AGENT %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
         self.__realconnection = None
         self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
         try:
@@ -1758,7 +1758,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 raise
 
     def do_CONNECT(self):
-        return GAEProxyHandler.do_CONNECT_FAKE(self)
+        return GAEProxyHandler.do_CONNECT_AGENT(self)
 
 
 class Autoproxy2Pac(object):
@@ -1952,28 +1952,15 @@ def pre_start():
             pass
     if ctypes and os.name == 'nt':
         ctypes.windll.kernel32.SetConsoleTitleW('GoAgent v%s' % __version__)
-        if not common.LOVE_TIMESTAMP.strip():
-            sys.stdout.write('Double click addto-startup.vbs could add goagent to autorun programs. :)\n')
         if not common.LISTEN_VISIBLE:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
         else:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
         if common.LOVE_ENABLE:
-            if common.LOVE_TIMESTAMP.strip():
-                common.LOVE_TIMESTAMP = int(common.LOVE_TIMESTAMP)
-            else:
-                common.LOVE_TIMESTAMP = int(time.time())
-                with open(common.CONFIG_FILENAME, 'w') as fp:
-                    common.CONFIG.set('love', 'timestamp', int(time.time()))
-                    common.CONFIG.write(fp)
-            if time.time() - common.LOVE_TIMESTAMP > 86400 and random.randint(1, 10) > 5:
+            if random.randint(1, 100) > 5:
                 title = ctypes.create_unicode_buffer(1024)
                 ctypes.windll.kernel32.GetConsoleTitleW(ctypes.byref(title), len(title)-1)
                 ctypes.windll.kernel32.SetConsoleTitleW('%s %s' % (title.value, random.choice(common.LOVE_TIP)))
-                with open(common.CONFIG_FILENAME, 'w') as fp:
-                    common.CONFIG.set('love', 'timestamp', str(int(time.time())))
-                    common.CONFIG.write(fp)
-
         blacklist = {'360safe': False,
                      'QQProtect': False, }
         softwares = [k for k, v in blacklist.items() if v]
