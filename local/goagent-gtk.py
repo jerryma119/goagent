@@ -168,6 +168,7 @@ class GoAgentGTK:
         if not os.path.isfile(logo_filename):
             with open(logo_filename, 'wb') as fp:
                 fp.write(base64.b64decode(GOAGENT_LOGO_DATA))
+        self.window.set_icon_from_file(logo_filename)
 
         if appindicator:
             self.menu = self.make_menu()
