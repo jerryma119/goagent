@@ -1563,7 +1563,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             self.do_CONNECT_FWD()
         else:
-            self.do_CONNECT_GAE()
+            self.do_CONNECT_FAKE()
 
     def do_CONNECT_FWD(self):
         """socket forward for http CONNECT command"""
@@ -1603,12 +1603,12 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
             http_util.forward_socket(self.connection, remote, bufsize=self.bufsize)
 
-    def do_CONNECT_GAE(self):
+    def do_CONNECT_FAKE(self):
         """deploy fake cert to client"""
         host, _, port = self.path.rpartition(':')
         port = int(port)
         certfile = CertUtil.get_cert(host)
-        logging.info('%s "GAE %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
+        logging.info('%s "FAKE %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
         self.__realconnection = None
         self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
         try:
@@ -1758,7 +1758,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 raise
 
     def do_CONNECT(self):
-        return GAEProxyHandler.do_CONNECT_GAE(self)
+        return GAEProxyHandler.do_CONNECT_FAKE(self)
 
 
 class Autoproxy2Pac(object):
