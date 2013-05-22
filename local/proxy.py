@@ -1692,6 +1692,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
 class PAASProxyHandler(GAEProxyHandler):
 
     urlfetch = staticmethod(paas_urlfetch)
+    first_run_lock = threading.Lock()
 
     def first_run(self):
         if not common.PROXY_ENABLE:
@@ -1704,6 +1705,27 @@ class PAASProxyHandler(GAEProxyHandler):
             http_util.dns[fetchhost] = list(set(fethhost_iplist))
             logging.info('resolve common.PAAS_FETCHSERVER domain to iplist=%r', fethhost_iplist)
         return True
+
+    def setup(self):
+        if isinstance(self.__class__.first_run, collections.Callable):
+            try:
+                with self.__class__.first_run_lock:
+                    if isinstance(self.__class__.first_run, collections.Callable):
+                        self.first_run()
+                        self.__class__.first_run = None
+            except OSError as e:
+                logging.error('PAASProxyHandler.first_run() return %r', e)
+            except Exception as e:
+                logging.exception('PAASProxyHandler.first_run() return %r', e)
+        self.__class__.setup = http.server.BaseHTTPRequestHandler.setup
+        self.__class__.do_GET = self.__class__.do_METHOD
+        self.__class__.do_PUT = self.__class__.do_METHOD
+        self.__class__.do_POST = self.__class__.do_METHOD
+        self.__class__.do_HEAD = self.__class__.do_METHOD
+        self.__class__.do_DELETE = self.__class__.do_METHOD
+        self.__class__.do_OPTIONS = self.__class__.do_METHOD
+        self.__class__.do_CONNECT = GAEProxyHandler.do_CONNECT_AGENT
+        self.setup()
 
     def do_METHOD(self):
         try:
@@ -1757,8 +1779,6 @@ class PAASProxyHandler(GAEProxyHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
 
-    def do_CONNECT(self):
-        return GAEProxyHandler.do_CONNECT_AGENT(self)
 
 
 class Autoproxy2Pac(object):
