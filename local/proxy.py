@@ -1956,11 +1956,10 @@ def pre_start():
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
         else:
             ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
-        if common.LOVE_ENABLE:
-            if random.randint(1, 100) > 5:
-                title = ctypes.create_unicode_buffer(1024)
-                ctypes.windll.kernel32.GetConsoleTitleW(ctypes.byref(title), len(title)-1)
-                ctypes.windll.kernel32.SetConsoleTitleW('%s %s' % (title.value, random.choice(common.LOVE_TIP)))
+        if common.LOVE_ENABLE and random.randint(1, 100) <= 5:
+            title = ctypes.create_unicode_buffer(1024)
+            ctypes.windll.kernel32.GetConsoleTitleW(ctypes.byref(title), len(title)-1)
+            ctypes.windll.kernel32.SetConsoleTitleW('%s %s' % (title.value, random.choice(common.LOVE_TIP)))
         blacklist = {'360safe': False,
                      'QQProtect': False, }
         softwares = [k for k, v in blacklist.items() if v]
