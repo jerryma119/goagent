@@ -1400,6 +1400,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         host = self.headers.get('Host', '')
         if self.path[0] == '/' and host:
             self.path = 'http://%s%s' % (host, self.path)
+        self.parsed_url = urllib.parse.urlparse(self.path)
 
         if common.USERAGENT_ENABLE:
             self.headers['User-Agent'] = common.USERAGENT_STRING
@@ -1410,7 +1411,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             need_forward = True
         elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
             if self.path.startswith(('http://www.google.com/url', 'http://www.google.com.hk/url', 'https://www.google.com/url', 'https://www.google.com.hk/url')):
-                urls = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get('url')
+                urls = urllib.parse.parse_qs(self.parsed_url.query).get('url')
                 if urls:
                     logging.debug('google search redirect to %s', urls[0])
                     self.wfile.write(('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % urls[0]).encode('latin-1'))
@@ -1435,7 +1436,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             payload = self.rfile.read(content_length) if content_length else b''
             if common.HOSTS_MATCH and any(x(self.path) for x in common.HOSTS_MATCH):
-                realhost = next(common.HOSTS_MATCH[x] for x in common.HOSTS_MATCH if x(self.path)) or re.sub(r':\d+$', '', urllib.parse.urlparse(self.path).netloc)
+                realhost = next(common.HOSTS_MATCH[x] for x in common.HOSTS_MATCH if x(self.path)) or re.sub(r':\d+$', '', self.parsed_url.netloc)
                 logging.debug('hosts pattern mathed, url=%r realhost=%r', self.path, realhost)
                 response = http_util.request(self.command, self.path, payload, self.headers, realhost=realhost, crlf=common.GAE_CRLF)
             else:
@@ -1455,7 +1456,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         except OSError as e:
             if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
                 logging.warn('http_util.request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
-                common.GOOGLE_WITHGAE.add(re.sub(r':\d+$', '', urllib.parse.urlparse(self.path).netloc))
+                common.GOOGLE_WITHGAE.add(re.sub(r':\d+$', '', self.parsed_url.netloc))
             elif e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
         except Exception as e:
@@ -1466,7 +1467,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_METHOD_GAE(self):
         """GAE http urlfetch"""
         host = self.headers.get('Host', '')
-        path = urllib.parse.urlparse(self.path).path
+        path = self.parsed_url.path
         if 'Range' in self.headers:
             m = re.search('bytes=(\d+)-', self.headers['Range'])
             start = int(m.group(1) if m else 0)
