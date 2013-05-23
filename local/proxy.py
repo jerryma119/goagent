@@ -1930,14 +1930,14 @@ class DNSServer(socketserver.ThreadingUDPServer):
     timeout = 6
 
     def __init__(self, server_address, *args, **kwargs):
-        socketserver.ThreadingUDPServer.__init__(self, server_address, self.__class__.RequestHandlerClass, *args, **kwargs)
+        socketserver.ThreadingUDPServer.__init__(self, server_address, self.handle, *args, **kwargs)
         self._writelock = threading.Semaphore()
         self.cache = {}
 
     def handle(self, request, address, server):
         data, server_socket = request
         reqid = data[:2]
-        domain = data[12:data.find('\x00', 12)]
+        domain = data[12:data.find(b'\x00', 12)].decode('latin-1')
         if len(self.cache) > self.max_cache_size:
             self.cache.clear()
         if domain not in self.cache:
