@@ -456,32 +456,33 @@ class HTTPUtil(object):
                     'Accept-Language': ('AL', lambda x: x.startswith('zh-CN')),
                     'Accept-Encoding': ('AE', lambda x: x.startswith('gzip,')), }
     cipher_suite = ['ECDHE-ECDSA-AES256-SHA',
-                     'ECDHE-RSA-AES256-SHA',
-                     'DHE-RSA-AES256-SHA',
-                     'DHE-DSS-AES256-SHA',
-                     'ECDH-RSA-AES256-SHA',
-                     'ECDH-ECDSA-AES256-SHA',
-                     'AES256-SHA',
-                     'ECDHE-ECDSA-RC4-SHA',
-                     'ECDHE-ECDSA-AES128-SHA',
-                     'ECDHE-RSA-RC4-SHA',
-                     'ECDHE-RSA-AES128-SHA',
-                     'DHE-RSA-AES128-SHA',
-                     'DHE-DSS-AES128-SHA',
-                     'ECDH-RSA-RC4-SHA',
-                     'ECDH-RSA-AES128-SHA',
-                     'ECDH-ECDSA-RC4-SHA',
-                     'ECDH-ECDSA-AES128-SHA',
-                     'RC4-MD5',
-                     'RC4-SHA',
-                     'AES128-SHA',
-                     'ECDHE-ECDSA-DES-CBC3-SHA',
-                     'ECDHE-RSA-DES-CBC3-SHA',
-                     'EDH-RSA-DES-CBC3-SHA',
-                     'EDH-DSS-DES-CBC3-SHA',
-                     'ECDH-RSA-DES-CBC3-SHA',
-                     'ECDH-ECDSA-DES-CBC3-SHA',
-                     'DES-CBC3-SHA',]
+                    'ECDHE-RSA-AES256-SHA',
+                    'DHE-RSA-AES256-SHA',
+                    'DHE-DSS-AES256-SHA',
+                    'ECDH-RSA-AES256-SHA',
+                    'ECDH-ECDSA-AES256-SHA',
+                    'AES256-SHA',
+                    'ECDHE-ECDSA-RC4-SHA',
+                    'ECDHE-ECDSA-AES128-SHA',
+                    'ECDHE-RSA-RC4-SHA',
+                    'ECDHE-RSA-AES128-SHA',
+                    'DHE-RSA-AES128-SHA',
+                    'DHE-DSS-AES128-SHA',
+                    'ECDH-RSA-RC4-SHA',
+                    'ECDH-RSA-AES128-SHA',
+                    'ECDH-ECDSA-RC4-SHA',
+                    'ECDH-ECDSA-AES128-SHA',
+                    'RC4-MD5',
+                    'RC4-SHA',
+                    'AES128-SHA',
+                    'ECDHE-ECDSA-DES-CBC3-SHA',
+                    'ECDHE-RSA-DES-CBC3-SHA',
+                    'EDH-RSA-DES-CBC3-SHA',
+                    'EDH-DSS-DES-CBC3-SHA',
+                    'ECDH-RSA-DES-CBC3-SHA',
+                    'ECDH-ECDSA-DES-CBC3-SHA',
+                    'DES-CBC3-SHA']
+
     def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False):
         self.max_window = max_window
         self.max_retry = max_retry
@@ -944,7 +945,7 @@ class Common(object):
         self.GOOGLE_WITHGAE = set(x for x in self.CONFIG.get(self.GAE_PROFILE, 'withgae').split('|') if x)
 
         self.AUTORANGE_HOSTS = self.CONFIG.get('autorange', 'hosts').split('|')
-        self.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(x)).match for x in self.AUTORANGE_HOSTS]
+        self.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in self.AUTORANGE_HOSTS]
         self.AUTORANGE_ENDSWITH = tuple(self.CONFIG.get('autorange', 'endswith').split('|'))
         self.AUTORANGE_NOENDSWITH = tuple(self.CONFIG.get('autorange', 'noendswith').split('|'))
         self.AUTORANGE_MAXSIZE = self.CONFIG.getint('autorange', 'maxsize')
@@ -978,8 +979,8 @@ class Common(object):
         self.LOVE_ENABLE = self.CONFIG.getint('love', 'enable')
         self.LOVE_TIP = self.CONFIG.get('love', 'tip').encode('utf8').decode('unicode-escape').split('|')
 
-        self.HOSTS = dict(self.CONFIG.items('hosts'))
-        self.HOSTS_MATCH = dict((re.compile(k).search, v) for k, v in self.HOSTS.items())
+        self.HOSTS = collections.OrderedDict(self.CONFIG.items('hosts'))
+        self.HOSTS_MATCH = collections.OrderedDict((re.compile(k).search, v) for k, v in self.HOSTS.items())
 
         random.shuffle(self.GAE_APPIDS)
         self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GOOGLE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
@@ -1014,6 +1015,7 @@ class Common(object):
 
 common = Common()
 http_util = HTTPUtil(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE or common.PAAS_VALIDATE, proxy=common.proxy)
+
 
 def message_html(self, title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
@@ -1539,7 +1541,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             logging.info('%s "GAE %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
 
             if response.status == 206:
-                fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % x, common.GAE_FETCHSERVER) for x in common.GAE_APPIDS]
+                fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % appid, common.GAE_FETCHSERVER) for appid in common.GAE_APPIDS]
                 rangefetch = RangeFetch(self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
 
@@ -1779,7 +1781,6 @@ class PAASProxyHandler(GAEProxyHandler):
             # Connection closed before proxy return
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
-
 
 
 class Autoproxy2Pac(object):

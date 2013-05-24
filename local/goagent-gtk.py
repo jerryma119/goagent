@@ -171,12 +171,11 @@ class GoAgentGTK:
         self.window.set_icon_from_file(logo_filename)
 
         if appindicator:
-            self.menu = self.make_menu()
             self.trayicon = appindicator.Indicator('GoAgent', 'indicator-messages', appindicator.CATEGORY_APPLICATION_STATUS)
             self.trayicon.set_status(appindicator.STATUS_ACTIVE)
             self.trayicon.set_attention_icon('indicator-messages-new')
             self.trayicon.set_icon(logo_filename)
-            self.trayicon.set_menu(self.menu)
+            self.trayicon.set_menu(self.make_menu())
         else:
             self.trayicon = gtk.StatusIcon()
             self.trayicon.set_from_file(logo_filename)
