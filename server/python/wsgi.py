@@ -550,7 +550,7 @@ def paas_application(environ, start_response):
 
 app = gae_application if urlfetch else paas_application
 if bae:
-    application = bae.wsgi.core.WSGIApplication(app)
+    application = bae.core.wsgi.WSGIApplication(app)
 elif sae:
     application = sae.create_wsgi_app(app)
 else:
