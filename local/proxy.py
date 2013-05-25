@@ -1688,7 +1688,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     response_read = response.read
     if 'xorchar' in kwargs and 200 <= response.app_status < 400:
         ordchar = ord(kwargs['xorchar'])
-        response.read = lambda n: ''.join(chr(ord(c) ^ ordchar) for c in response_read(n))
+        response.read = lambda n: bytes(c ^ ordchar for c in response_read(n))
     return response
 
 
