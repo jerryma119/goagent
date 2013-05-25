@@ -540,8 +540,6 @@ class HTTPUtil(object):
                 sock.connect(address)
                 # record TCP connection time
                 self.tcp_connection_time[address] = time.time() - start_time
-                # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
-                sock.settimeout(None)
                 # put ssl socket object to output queobj
                 queobj.put(sock)
             except OSError as e:
@@ -600,6 +598,7 @@ class HTTPUtil(object):
                 if ssl.HAS_SNI and address[0].endswith('.appspot.com'):
                     server_hostname = 'www.google.com'
                 ssl_sock = self.ssl_context.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
+                ssl_sock.settimeout(timeout or self.max_timeout)
                 # start connection time record
                 start_time = time.time()
                 # TCP connect
@@ -1493,6 +1492,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 return
         response = None
         errors = []
+        headers_sended = False
         for retry in range(common.FETCHMAX_LOCAL):
             try:
                 content_length = 0
@@ -1529,7 +1529,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     response.close()
                     return
                 # first response, has no retry.
-                if retry == 0:
+                if not headers_sended:
                     logging.info('%s "GAE %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
                     if response.status == 206:
                         fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % appid, common.GAE_FETCHSERVER) for appid in common.GAE_APPIDS]
@@ -1538,6 +1538,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     if 'Set-Cookie' in response.headers:
                         response.headers['Set-Cookie'] = self.normcookie(response.headers['Set-Cookie'])
                     self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
+                    headers_sended = True
                 content_length = int(response.headers.get('Content-Length', 0))
                 if response.headers.get('Content-Range'):
                     content_range = response.headers['Content-Range']
@@ -1547,15 +1548,19 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 while 1:
                     data = response.read(8192)
                     if not data:
+                        response.close()
                         return
                     start += len(data)
                     self.wfile.write(data)
                     if start >= end:
+                        response.close()
                         return
             except Exception as e:
                 errors.append(e)
+                if response:
+                    response.close()
                 if e.args[0] in (errno.ECONNABORTED, errno.EPIPE):
-                    logging.info('GAEProxyHandler.do_METHOD_GAE %r return %r', self.path, e)
+                    logging.info('GAEProxyHandler.do_METHOD_GAE return %r', e)
                 elif e.args[0] in (errno.ECONNRESET, errno.ETIMEDOUT, errno.ENETUNREACH, 11004):
                     # connection reset or timeout, switch to https
                     common.GOOGLE_MODE = 'https'
@@ -1565,8 +1570,10 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         # we can retry range fetch here
                         logging.warn('GAEProxyHandler.do_METHOD_GAE timed out, url=%r, content_length=%r, try again', self.path, content_length)
                         self.headers['Range'] = 'bytes=%d-%d' % (start, end)
+                elif isinstance(e, ssl.SSLError) and 'bad write retry' in e.args[-1]:
+                    logging.warn('GAEProxyHandler.do_METHOD_GAE url=%r return %r, try again', self.path, e)
                 else:
-                    logging.exception('GAEProxyHandler.do_METHOD_GAE %r return %r', self.path, e)
+                    logging.exception('GAEProxyHandler.do_METHOD_GAE %r return %r, try again', self.path, e)
 
     def do_CONNECT(self):
         """handle CONNECT cmmand, socket forward or deploy a fake cert"""
@@ -1604,6 +1611,8 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     else:
                         raise
             if hasattr(remote, 'fileno'):
+                # reset timeout default to avoid long http upload failure, but it will delay timeout retry :(
+                remote.settimeout(None)
                 http_util.forward_socket(self.connection, remote, bufsize=self.bufsize)
         else:
             hostip = random.choice(common.GOOGLE_HOSTS)
