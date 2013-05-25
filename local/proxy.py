@@ -953,7 +953,7 @@ class Common(object):
         self.AUTORANGE_BUFSIZE = self.CONFIG.getint('autorange', 'bufsize')
         self.AUTORANGE_THREADS = self.CONFIG.getint('autorange', 'threads')
 
-        self.FETCHMAX_LOCAL = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 2
+        self.FETCHMAX_LOCAL = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER = self.CONFIG.get('fetchmax', 'server')
 
         if self.CONFIG.has_section('dns'):
@@ -1483,82 +1483,90 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
             except StopIteration:
                 pass
-        try:
-            payload = b''
-            if 'Content-Length' in self.headers:
-                try:
-                    payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
-                except (EOFError, OSError) as e:
-                    logging.error('handle_method_urlfetch read payload failed:%s', e)
+
+        payload = b''
+        if 'Content-Length' in self.headers:
+            try:
+                payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+            except (EOFError, OSError) as e:
+                logging.error('handle_method_urlfetch read payload failed:%s', e)
+                return
+        response = None
+        errors = []
+        for retry in range(common.FETCHMAX_LOCAL):
+            try:
+                content_length = 0
+                kwargs = {}
+                if common.GAE_PASSWORD:
+                    kwargs['password'] = common.GAE_PASSWORD
+                if common.GAE_VALIDATE:
+                    kwargs['validate'] = 1
+                response = self.urlfetch(self.command, self.path, self.headers, payload, common.GAE_FETCHSERVER, **kwargs)
+                if not response and retry == common.FETCHMAX_LOCAL-1:
+                    html = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % self.path, str(errors))
+                    self.wfile.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + html.encode('utf-8'))
                     return
-            response = None
-            errors = []
-            for i in range(common.FETCHMAX_LOCAL):
-                try:
-                    kwargs = {}
-                    if common.GAE_PASSWORD:
-                        kwargs['password'] = common.GAE_PASSWORD
-                    if common.GAE_VALIDATE:
-                        kwargs['validate'] = 1
-                    response = self.urlfetch(self.command, self.path, self.headers, payload, common.GAE_FETCHSERVER, **kwargs)
-                    if response:
-                        break
-                except Exception as e:
-                    errors.append(e)
-                    if e.args[0] in (errno.ECONNRESET, errno.ETIMEDOUT, errno.ENETUNREACH, 11004, 'timed out'):
-                        # connection reset or timeout, switch to https
-                        common.GOOGLE_MODE = 'https'
-                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-                    else:
-                        logging.exception('%r %r return %r', self.urlfetch, self.path, e)
-
-            if response is None:
-                html = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % self.path, str(errors))
-                self.wfile.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + html.encode('utf-8'))
-                return
-
-            # gateway error, switch to https mode
-            if response.app_status in (400, 504) or (response.app_status == 502 and common.GAE_PROFILE == 'google_cn'):
-                common.GOOGLE_MODE = 'https'
-                common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            # appid over qouta, switch to next appid
-            if response.app_status == 503:
-                common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-                http_util.dns[urllib.parse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
-                logging.info('APPID Over Quota,Auto Switch to [%s]' % (common.GAE_APPIDS[0]))
-            # bad request, disable CRLF injection
-            if response.app_status in (400, 405):
-                http_util.crlf = 0
-
-            if response.app_status != 200:
-                logging.info('%s "GAE %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
-                self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
-                self.wfile.write(response.read())
-                response.close()
-                return
-
-            logging.info('%s "GAE %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
-
-            if response.status == 206:
-                fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % appid, common.GAE_FETCHSERVER) for appid in common.GAE_APPIDS]
-                rangefetch = RangeFetch(self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
-                return rangefetch.fetch()
-
-            if 'Set-Cookie' in response.headers:
-                response.headers['Set-Cookie'] = self.normcookie(response.headers['Set-Cookie'])
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
-
-            while 1:
-                data = response.read(8192)
-                if not data:
-                    break
-                self.wfile.write(data)
-            response.close()
-        except OSError as e:
-            # Connection closed before proxy return
-            if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
-                raise
+                # gateway error, switch to https mode
+                if response.app_status in (400, 504) or (response.app_status == 502 and common.GAE_PROFILE == 'google_cn'):
+                    common.GOOGLE_MODE = 'https'
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                    continue
+                # appid over qouta, switch to next appid
+                if response.app_status == 503:
+                    common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                    http_util.dns[urllib.parse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
+                    logging.info('APPID Over Quota,Auto Switch to [%s]' % (common.GAE_APPIDS[0]))
+                    continue
+                # bad request, disable CRLF injection
+                if response.app_status in (400, 405):
+                    http_util.crlf = 0
+                    continue
+                if response.app_status != 200 and retry == common.FETCHMAX_LOCAL-1:
+                    logging.info('%s "GAE %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
+                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
+                    self.wfile.write(response.read())
+                    response.close()
+                    return
+                # first response, has no retry.
+                if retry == 0:
+                    logging.info('%s "GAE %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
+                    if response.status == 206:
+                        fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % appid, common.GAE_FETCHSERVER) for appid in common.GAE_APPIDS]
+                        rangefetch = RangeFetch(self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
+                        return rangefetch.fetch()
+                    if 'Set-Cookie' in response.headers:
+                        response.headers['Set-Cookie'] = self.normcookie(response.headers['Set-Cookie'])
+                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
+                content_length = int(response.headers.get('Content-Length', 0))
+                if response.headers.get('Content-Range'):
+                    content_range = response.headers['Content-Range']
+                    start, end, length = list(map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3)))
+                else:
+                    start, end, length = 0, content_length-1, content_length
+                while 1:
+                    data = response.read(8192)
+                    if not data:
+                        return
+                    start += len(data)
+                    self.wfile.write(data)
+                    if start >= end:
+                        return
+            except Exception as e:
+                errors.append(e)
+                if e.args[0] in (errno.ECONNABORTED, errno.EPIPE):
+                    logging.info('GAEProxyHandler.do_METHOD_GAE %r return %r', self.path, e)
+                elif e.args[0] in (errno.ECONNRESET, errno.ETIMEDOUT, errno.ENETUNREACH, 11004):
+                    # connection reset or timeout, switch to https
+                    common.GOOGLE_MODE = 'https'
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                elif e.args[0] == errno.ETIMEDOUT or isinstance(e.args[0], str) and 'timed out' in e.args[0]:
+                    if content_length:
+                        # we can retry range fetch here
+                        logging.warn('GAEProxyHandler.do_METHOD_GAE timed out, url=%r, content_length=%r, try again', self.path, content_length)
+                        self.headers['Range'] = 'bytes=%d-%d' % (start, end)
+                else:
+                    logging.exception('GAEProxyHandler.do_METHOD_GAE %r return %r', self.path, e)
 
     def do_CONNECT(self):
         """handle CONNECT cmmand, socket forward or deploy a fake cert"""
