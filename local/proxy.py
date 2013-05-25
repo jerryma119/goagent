@@ -1768,7 +1768,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
             if 'Set-Cookie' in response.headers:
                 response.headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.headers['Set-Cookie'])
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
+            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode('latin-1'))
 
             while 1:
                 data = response.read(32768)
