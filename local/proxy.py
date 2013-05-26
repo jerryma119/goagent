@@ -1492,7 +1492,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 return
         response = None
         errors = []
-        headers_sended = False
+        headers_sent = False
         for retry in range(common.FETCHMAX_LOCAL):
             try:
                 content_length = 0
@@ -1529,7 +1529,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     response.close()
                     return
                 # first response, has no retry.
-                if not headers_sended:
+                if not headers_sent:
                     logging.info('%s "GAE %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
                     if response.status == 206:
                         fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % appid, common.GAE_FETCHSERVER) for appid in common.GAE_APPIDS]
@@ -1538,7 +1538,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     if 'Set-Cookie' in response.headers:
                         response.headers['Set-Cookie'] = self.normcookie(response.headers['Set-Cookie'])
                     self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
-                    headers_sended = True
+                    headers_sent = True
                 content_length = int(response.headers.get('Content-Length', 0))
                 if response.headers.get('Content-Range'):
                     content_range = response.headers['Content-Range']
