@@ -979,7 +979,8 @@ class Common(object):
         self.LOVE_TIP = self.CONFIG.get('love', 'tip').encode('utf8').decode('unicode-escape').split('|')
 
         self.HOSTS = collections.OrderedDict(self.CONFIG.items('hosts'))
-        self.HOSTS_MATCH = collections.OrderedDict((re.compile(k).search, v) for k, v in self.HOSTS.items())
+        self.HOSTS_MATCH = collections.OrderedDict((re.compile(k).search, v) for k, v in self.HOSTS.items() if not re.search(r'\d+$', k))
+        self.HOSTS_CONNECT_MATCH = collections.OrderedDict((re.compile(k).search, v) for k, v in self.HOSTS.items() if re.search(r'\d+$', k))
 
         random.shuffle(self.GAE_APPIDS)
         self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GOOGLE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
@@ -1579,7 +1580,10 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_CONNECT(self):
         """handle CONNECT cmmand, socket forward or deploy a fake cert"""
         host = self.path.rpartition(':')[0]
-        if host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+        if common.HOSTS_CONNECT_MATCH and any(x(self.path) for x in common.HOSTS_CONNECT_MATCH):
+            self.do_CONNECT_FWD()
+        elif host.endswith(common.GOOGLE_SITES) and host not in common.GOOGLE_WITHGAE:
+            http_util.dns[host] = common.GOOGLE_HOSTS
             self.do_CONNECT_FWD()
         else:
             self.do_CONNECT_AGENT()
@@ -1591,8 +1595,6 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         logging.info('%s "FWD %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
         #http_headers = ''.join('%s: %s\r\n' % (k, v) for k, v in self.headers.items())
         if not common.PROXY_ENABLE:
-            if host not in http_util.dns:
-                http_util.dns[host] = common.GOOGLE_HOSTS
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
             data = self.connection.recv(1024)
             for i in range(5):
@@ -1616,7 +1618,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 remote.settimeout(None)
                 http_util.forward_socket(self.connection, remote, bufsize=self.bufsize)
         else:
-            hostip = random.choice(common.GOOGLE_HOSTS)
+            hostip = random.choice(http_util.dns_resolve(host))
             remote = http_util.create_connection_withproxy((hostip, int(port)), proxy=common.proxy)
             if not remote:
                 logging.error('GAEProxyHandler proxy connect remote (%r, %r) failed', host, port)
