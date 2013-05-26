@@ -1560,7 +1560,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 if response:
                     response.close()
                 if e.args[0] in (errno.ECONNABORTED, errno.EPIPE):
-                    logging.info('GAEProxyHandler.do_METHOD_GAE return %r', e)
+                    logging.debug('GAEProxyHandler.do_METHOD_GAE return %r', e)
                 elif e.args[0] in (errno.ECONNRESET, errno.ETIMEDOUT, errno.ENETUNREACH, 11004):
                     # connection reset or timeout, switch to https
                     common.GOOGLE_MODE = 'https'
@@ -1572,6 +1572,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         self.headers['Range'] = 'bytes=%d-%d' % (start, end)
                 elif isinstance(e, ssl.SSLError) and 'bad write retry' in e.args[-1]:
                     logging.warn('GAEProxyHandler.do_METHOD_GAE url=%r return %r, try again', self.path, e)
+                    return
                 else:
                     logging.exception('GAEProxyHandler.do_METHOD_GAE %r return %r, try again', self.path, e)
 
