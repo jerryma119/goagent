@@ -1571,7 +1571,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         logging.warn('GAEProxyHandler.do_METHOD_GAE timed out, url=%r, content_length=%r, try again', self.path, content_length)
                         self.headers['Range'] = 'bytes=%d-%d' % (start, end)
                 elif isinstance(e, ssl.SSLError) and 'bad write retry' in e.args[-1]:
-                    logging.warn('GAEProxyHandler.do_METHOD_GAE url=%r return %r, try again', self.path, e)
+                    logging.info('GAEProxyHandler.do_METHOD_GAE url=%r return %r, abort.', self.path, e)
                     return
                 else:
                     logging.exception('GAEProxyHandler.do_METHOD_GAE %r return %r, try again', self.path, e)
