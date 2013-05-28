@@ -1814,9 +1814,10 @@ class Autoproxy2Pac(object):
         response = opener.open(self.url)
         content = response.read()
         response.close()
-        if self.encoding:
-            if self.encoding == 'base64':
-                content = base64.b64decode(content)
+        # if self.encoding:
+        #     if self.encoding == 'base64':
+        #         content = base64.b64decode(content)
+        content = base64.b64decode(content)
         return content.decode(self.encoding)
 
     def _rule2js(self, ruleList, indent=4):
@@ -1916,6 +1917,7 @@ class PACServerHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         filename = os.path.normpath('./' + self.path)
+        self.first_run()
         if os.path.isfile(filename):
             if filename.endswith('.pac'):
                 mimetype = 'application/x-ns-proxy-autoconfig'
