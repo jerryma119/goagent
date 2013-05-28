@@ -1475,7 +1475,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             start = int(m.group(1) if m else 0)
             self.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
             logging.info('autorange range=%r match url=%r', self.headers['Range'], self.path)
-        elif (any(x(host) for x in common.AUTORANGE_HOSTS_MATCH) or path.endswith(common.AUTORANGE_ENDSWITH)) and not path.endswith(common.AUTORANGE_NOENDSWITH):
+        elif 'range=' not in self.parsed_url.query and (any(x(host) for x in common.AUTORANGE_HOSTS_MATCH) or path.endswith(common.AUTORANGE_ENDSWITH)) and not path.endswith(common.AUTORANGE_NOENDSWITH):
             try:
                 logging.info('Found [autorange]endswith match url=%r', self.path)
                 m = re.search('bytes=(\d+)-', self.headers.get('Range', ''))
