@@ -211,7 +211,7 @@ class CertUtil(object):
             subj.commonName = commonname
             subj.organizationName = commonname
             sans = [commonname] + [x for x in sans if x != commonname]
-        #req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans)).encode('latin-1')])
+        #req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans)).encode()])
         req.set_pubkey(pkey)
         req.sign(pkey, 'sha1')
 
@@ -387,7 +387,7 @@ class DNSUtil(object):
         for i in range(DNSUtil.max_retry):
             data = os.urandom(2)
             data += b'\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00'
-            data += ''.join(chr(len(x))+x for x in qname.split('.')).encode('ascii')
+            data += ''.join(chr(len(x))+x for x in qname.split('.')).encode()
             data += b'\x00\x00\x01\x00\x01'
             address_family = socket.AF_INET6 if ':' in dnsserver else socket.AF_INET
             sock = None
@@ -702,7 +702,7 @@ class HTTPUtil(object):
             hostname = random.choice(self.dns.get(host) or [host if not host.endswith('.appspot.com') else 'www.google.com'])
             request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
             if username and password:
-                request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode('latin-1')).strip().decode('latin-1')
+                request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode()).strip().decode()
             request_data += '\r\n'
             sock.sendall(request_data)
             response = http.client.HTTPResponse(sock)
@@ -798,9 +798,9 @@ class HTTPUtil(object):
         request_data += '\r\n'
 
         if isinstance(payload, bytes):
-            sock.sendall(request_data.encode('latin-1') + payload)
+            sock.sendall(request_data.encode() + payload)
         elif hasattr(payload, 'read'):
-            sock.sendall(request_data.encode('latin-1'))
+            sock.sendall(request_data.encode())
             while 1:
                 data = payload.read(bufsize)
                 if not data:
@@ -1080,10 +1080,10 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
             metadata += 'G-Abbv:%s\n' % ','.join(g_abbv)
     else:
         metadata += ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers)
-    metadata = zlib.compress(metadata.encode('latin-1'))[2:-4]
+    metadata = zlib.compress(metadata.encode())[2:-4]
     need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
     if common.GAE_OBFUSCATE:
-        cookie = base64.b64encode(metadata).strip().decode('latin-1')
+        cookie = base64.b64encode(metadata).strip().decode()
         if not payload:
             response = http_util.request('GET', fetchserver, payload, {'Cookie': cookie}, crlf=need_crlf)
         else:
@@ -1151,7 +1151,7 @@ class RangeFetch(object):
             response_headers['Content-Length'] = str(length-start)
 
         logging.info('>>>>>>>>>>>>>>> RangeFetch started(%r) %d-%d', self.url, start, end)
-        self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))).encode('latin-1'))
+        self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response_status, ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items()))).encode())
 
         data_queue = queue.PriorityQueue()
         range_queue = queue.PriorityQueue()
@@ -1416,10 +1416,10 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 urls = urllib.parse.parse_qs(self.parsed_url.query).get('url')
                 if urls:
                     logging.debug('google search redirect to %s', urls[0])
-                    self.wfile.write(('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % urls[0]).encode('latin-1'))
+                    self.wfile.write(('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % urls[0]).encode())
                     return
             elif self.path.startswith(common.GOOGLE_FORCEHTTPS):
-                self.wfile.write(('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % self.path.replace('http://', 'https://', 1)).encode('latin-1'))
+                self.wfile.write(('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % self.path.replace('http://', 'https://', 1)).encode())
                 return
             else:
                 if host not in http_util.dns:
@@ -1448,7 +1448,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
             logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.headers.get('Content-Length', '-'))
             if response.status in (400, 405):
                 common.GAE_CRLF = 0
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
+            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode())
             while 1:
                 data = response.read(8192)
                 if not data:
@@ -1525,7 +1525,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     continue
                 if response.app_status != 200 and retry == common.FETCHMAX_LOCAL-1:
                     logging.info('%s "GAE %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
-                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
+                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode())
                     self.wfile.write(response.read())
                     response.close()
                     return
@@ -1538,7 +1538,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         return rangefetch.fetch()
                     if 'Set-Cookie' in response.headers:
                         response.headers['Set-Cookie'] = self.normcookie(response.headers['Set-Cookie'])
-                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode('latin-1'))
+                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode())
                     headers_sent = True
                 content_length = int(response.headers.get('Content-Length', 0))
                 accept_ranges = response.headers.get('Accept-Ranges')
@@ -1696,7 +1696,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if common.PAAS_VALIDATE:
         kwargs['validate'] = 1
     metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
-    metadata = zlib.compress(metadata.encode('latin-1'))[2:-4]
+    metadata = zlib.compress(metadata.encode())[2:-4]
     app_payload = b''.join((struct.pack('!h', len(metadata)), metadata, payload))
     fetchserver += '?%s' % random.random()
     response = http_util.request('POST', fetchserver, app_payload, {'Content-Length': len(app_payload)}, crlf=0)
@@ -1789,7 +1789,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
             if 'Set-Cookie' in response.headers:
                 response.headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.headers['Set-Cookie'])
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode('latin-1'))
+            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode())
 
             while 1:
                 data = response.read(32768)
@@ -1939,7 +1939,7 @@ class PACServerHandler(http.server.BaseHTTPRequestHandler):
         with open(filename, 'rb') as fp:
             data = fp.read()
         if data:
-            self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode('latin-1'))
+            self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
             self.wfile.write(data)
 
 
@@ -1961,7 +1961,7 @@ class DNSServer(socketserver.ThreadingUDPServer):
     def handle(self, request, address, server):
         data, server_socket = request
         reqid = data[:2]
-        domain = data[12:data.find(b'\x00', 12)].decode('latin-1')
+        domain = data[12:data.find(b'\x00', 12)].decode()
         if len(self.cache) > self.max_cache_size:
             self.cache.clear()
         if domain not in self.cache:
