@@ -24,7 +24,7 @@ import sys
 import os
 import glob
 
-sys.version_info >= (2, 7) or sys.exit(sys.stderr.write('please install python 3.3 or later(http://python.org/getit/)\n'))
+sys.version_info[0] == 2 and reload(sys).setdefaultencoding('utf-8')
 sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 
 try:
