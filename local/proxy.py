@@ -18,7 +18,7 @@
 #      Mort Yao       <mort.yao@gmail.com>
 #      Wang Wei Qiang <wwqgtxx@gmail.com>
 
-__version__ = '3.0.1'
+__version__ = '3.0.2'
 
 import sys
 import os
@@ -572,10 +572,13 @@ class HTTPUtil(object):
         if self.ssl_context:
             return self.ssl_context.wrap_socket(*args, **kwargs)
         else:
-            if self.ssl_validate:
+            if self.ssl_validate and 'cert_reqs' not in kwargs:
                 kwargs['cert_reqs'] = ssl.CERT_REQUIRED
                 kwargs['ca_certs'] = 'cacert.pem'
-            kwargs['ciphers'] = self.ssl_ciphers
+            if self.ssl_obfuscate and 'ssl_version' not in kwargs:
+                kwargs['ssl_version'] = ssl.PROTOCOL_TLSv1
+            if 'ciphers' not in kwargs:
+                kwargs['ciphers'] = self.ssl_ciphers
             return ssl.wrap_socket(*args, **kwargs)
 
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
