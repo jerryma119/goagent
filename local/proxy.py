@@ -540,6 +540,7 @@ class HTTPUtil(object):
     def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False, ssl_obfuscate=False):
         # http://docs.python.org/dev/library/ssl.html
         # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
+        # http://src.chromium.org/svn/trunk/src/net/third_party/nss/ssl/sslenum.c
         # http://www.openssl.org/docs/apps/ciphers.html
         # openssl s_server -accept 443 -key CA.crt -cert CA.crt
         # set_ciphers as Modern Browsers
@@ -1463,6 +1464,16 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         self.__class__.do_DELETE = self.__class__.do_METHOD
         self.__class__.do_OPTIONS = self.__class__.do_METHOD
         self.setup()
+
+    def finish(self):
+        """make python2 BaseHTTPRequestHandler happy"""
+        try:
+            if not self.wfile.closed:
+                self.wfile.flush()
+            self.wfile.close()
+        except (socket.error, ssl.SSLError, OSError):
+            pass
+        self.rfile.close()
 
     def address_string(self):
         return '%s:%s' % self.client_address[:2]
