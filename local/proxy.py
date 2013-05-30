@@ -24,7 +24,7 @@ import sys
 import os
 import glob
 
-sys.version_info[0] >= 3 or sys.exit(sys.stderr.write('please install python 3.3 or later(http://python.org/getit/)\n'))
+sys.version_info >= (2, 7) or sys.exit(sys.stderr.write('please install python 3.3 or later(http://python.org/getit/)\n'))
 sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 
 try:
@@ -48,17 +48,36 @@ import traceback
 import random
 import base64
 import hashlib
-import queue
 import threading
 import socket
 import ssl
 import select
-import socketserver
-import http.server
-import http.client
-import urllib.request
-import urllib.parse
-import configparser
+try:
+    import queue
+except ImportError:
+    import Queue as queue
+try:
+    import socketserver
+except ImportError:
+    import SocketServer as socketserver
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
+try:
+    import http.server
+    import http.client
+except ImportError:
+    http = type(sys)('http')
+    http.server = __import__('BaseHTTPServer')
+    http.client = __import__('httplib')
+try:
+    import urllib.request
+    import urllib.parse
+except ImportError:
+    import urllib
+    urllib.request = __import__('urllib2')
+    urllib.parse = __import__('urlparse')
 try:
     import ctypes
 except ImportError:
@@ -420,7 +439,7 @@ class DNSUtil(object):
                         return data[2:]
                     else:
                         logging.warning('DNSUtil._remote_resolve(dnsserver=%r, %r) return bad tcp data=%r', qname, dnsserver, data)
-            except OSError as e:
+            except (socket.error, ssl.SSLError) as e:
                 if e.args[0] in (errno.ETIMEDOUT, 'timed out'):
                     continue
             except Exception as e:
@@ -449,41 +468,47 @@ class HTTPUtil(object):
 
     MessageClass = dict
     protocol_version = 'HTTP/1.1'
-    ssl_validate = False
     skip_headers = frozenset(['Vary', 'Via', 'X-Forwarded-For', 'Proxy-Authorization', 'Proxy-Connection', 'Upgrade', 'X-Chrome-Variations', 'Connection', 'Cache-Control'])
     abbv_headers = {'Accept': ('A', lambda x: '*/*' in x),
                     'Accept-Charset': ('AC', lambda x: x.startswith('UTF-8,')),
                     'Accept-Language': ('AL', lambda x: x.startswith('zh-CN')),
                     'Accept-Encoding': ('AE', lambda x: x.startswith('gzip,')), }
-    cipher_suite = ['ECDHE-ECDSA-AES256-SHA',
-                    'ECDHE-RSA-AES256-SHA',
-                    'DHE-RSA-AES256-SHA',
-                    'DHE-DSS-AES256-SHA',
-                    'ECDH-RSA-AES256-SHA',
-                    'ECDH-ECDSA-AES256-SHA',
-                    'AES256-SHA',
-                    'ECDHE-ECDSA-RC4-SHA',
-                    'ECDHE-ECDSA-AES128-SHA',
-                    'ECDHE-RSA-RC4-SHA',
-                    'ECDHE-RSA-AES128-SHA',
-                    'DHE-RSA-AES128-SHA',
-                    'DHE-DSS-AES128-SHA',
-                    'ECDH-RSA-RC4-SHA',
-                    'ECDH-RSA-AES128-SHA',
-                    'ECDH-ECDSA-RC4-SHA',
-                    'ECDH-ECDSA-AES128-SHA',
-                    'RC4-MD5',
-                    'RC4-SHA',
-                    'AES128-SHA',
-                    'ECDHE-ECDSA-DES-CBC3-SHA',
-                    'ECDHE-RSA-DES-CBC3-SHA',
-                    'EDH-RSA-DES-CBC3-SHA',
-                    'EDH-DSS-DES-CBC3-SHA',
-                    'ECDH-RSA-DES-CBC3-SHA',
-                    'ECDH-ECDSA-DES-CBC3-SHA',
-                    'DES-CBC3-SHA']
+    ssl_validate = False
+    ssl_obfuscate = False
+    ssl_ciphers = ':'.join(['ECDHE-ECDSA-AES256-SHA',
+                            'ECDHE-RSA-AES256-SHA',
+                            'DHE-RSA-AES256-SHA',
+                            'DHE-DSS-AES256-SHA',
+                            'ECDH-RSA-AES256-SHA',
+                            'ECDH-ECDSA-AES256-SHA',
+                            'AES256-SHA',
+                            'ECDHE-ECDSA-RC4-SHA',
+                            'ECDHE-ECDSA-AES128-SHA',
+                            'ECDHE-RSA-RC4-SHA',
+                            'ECDHE-RSA-AES128-SHA',
+                            'DHE-RSA-AES128-SHA',
+                            'DHE-DSS-AES128-SHA',
+                            'ECDH-RSA-RC4-SHA',
+                            'ECDH-RSA-AES128-SHA',
+                            'ECDH-ECDSA-RC4-SHA',
+                            'ECDH-ECDSA-AES128-SHA',
+                            'RC4-MD5',
+                            'RC4-SHA',
+                            'AES128-SHA',
+                            'ECDHE-ECDSA-DES-CBC3-SHA',
+                            'ECDHE-RSA-DES-CBC3-SHA',
+                            'EDH-RSA-DES-CBC3-SHA',
+                            'EDH-DSS-DES-CBC3-SHA',
+                            'ECDH-RSA-DES-CBC3-SHA',
+                            'ECDH-ECDSA-DES-CBC3-SHA',
+                            'DES-CBC3-SHA'])
 
-    def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False):
+    def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False, ssl_obfuscate=False):
+        # http://docs.python.org/dev/library/ssl.html
+        # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
+        # http://www.openssl.org/docs/apps/ciphers.html
+        # openssl s_server -accept 443 -key CA.crt -cert CA.crt
+        # set_ciphers as Modern Browsers
         self.max_window = max_window
         self.max_retry = max_retry
         self.max_timeout = max_timeout
@@ -494,17 +519,29 @@ class HTTPUtil(object):
         self.crlf = 0
         self.proxy = proxy
         self.ssl_validate = ssl_validate or self.ssl_validate
-        self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-        # http://docs.python.org/dev/library/ssl.html
-        # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
-        # http://www.openssl.org/docs/apps/ciphers.html
-        # openssl s_server -accept 443 -key CA.crt -cert CA.crt
-        # set_ciphers as Modern Browsers
-        ciphers = random.sample(self.cipher_suite, random.randint(len(self.cipher_suite)//2, len(self.cipher_suite)))
-        self.ssl_context.set_ciphers(':'.join(ciphers))
-        if self.ssl_validate:
-            self.ssl_context.verify_mode = ssl.CERT_REQUIRED
-            self.ssl_context.load_verify_locations('cacert.pem')
+        self.ssl_obfuscate = ssl_obfuscate or self.ssl_obfuscate
+        if self.ssl_obfuscate:
+            self.ssl_ciphers = ':'.join(x for x in self.ssl_ciphers.split(':') if random.random() > 0.5)
+        if hasattr(ssl, 'SSLContext'):
+            self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+            self.ssl_context.set_ciphers(self.ssl_ciphers)
+            if self.ssl_validate:
+                self.ssl_context.verify_mode = ssl.CERT_REQUIRED
+                self.ssl_context.load_verify_locations('cacert.pem')
+        else:
+            self.ssl_context = None
+
+    def wrap_socket(self, *args, **kwargs):
+        if not getattr(ssl, 'HAS_SNI', False):
+            kwargs.pop('server_hostname', None)
+        if self.ssl_context:
+            return self.ssl_context.wrap_socket(*args, **kwargs)
+        else:
+            if self.ssl_validate:
+                kwargs['cert_reqs'] = ssl.CERT_REQUIRED
+                kwargs['ca_certs'] = 'cacert.pem'
+            kwargs['ciphers'] = self.ssl_ciphers
+            return ssl.wrap_socket(*args, **kwargs)
 
     def dns_resolve(self, host, dnsserver='', ipv4_only=True):
         iplist = self.dns.get(host)
@@ -542,7 +579,7 @@ class HTTPUtil(object):
                 self.tcp_connection_time[address] = time.time() - start_time
                 # put ssl socket object to output queobj
                 queobj.put(sock)
-            except OSError as e:
+            except (socket.error, ssl.SSLError) as e:
                 # any socket.error, put Excpetions to output queobj.
                 queobj.put(e)
                 # reset a large and random timeout to the address
@@ -570,7 +607,7 @@ class HTTPUtil(object):
                 threading._start_new_thread(_create_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 result = queobj.get()
-                if not isinstance(result, OSError):
+                if not isinstance(result, (socket.error, ssl.SSLError)):
                     threading._start_new_thread(_close_connection, (len(addrs)-i-1, queobj))
                     return result
                 else:
@@ -594,10 +631,8 @@ class HTTPUtil(object):
                 # set a short timeout to trigger timeout retry more quickly.
                 sock.settimeout(timeout or self.max_timeout)
                 # pick up the certificate
-                server_hostname = None
-                if ssl.HAS_SNI and address[0].endswith('.appspot.com'):
-                    server_hostname = 'www.google.com'
-                ssl_sock = self.ssl_context.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
+                server_hostname = 'www.google.com' if address[0].endswith('.appspot.com') else None
+                ssl_sock = self.wrap_socket(sock, do_handshake_on_connect=False, server_hostname=server_hostname)
                 ssl_sock.settimeout(timeout or self.max_timeout)
                 # start connection time record
                 start_time = time.time()
@@ -621,7 +656,7 @@ class HTTPUtil(object):
                         raise ssl.SSLError("Host name '%s' doesn't match certificate host '%s'" % (address[0], commonname))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
-            except OSError as e:
+            except (socket.error, ssl.SSLError) as e:
                 # any socket.error, put Excpetions to output queobj.
                 queobj.put(e)
                 # reset a large and random timeout to the ipaddr
@@ -648,7 +683,7 @@ class HTTPUtil(object):
                 threading._start_new_thread(_create_ssl_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 result = queobj.get()
-                if not isinstance(result, OSError):
+                if not isinstance(result, (socket.error, ssl.SSLError)):
                     threading._start_new_thread(_close_ssl_connection, (len(addrs)-i-1, queobj))
                     return result
                 else:
@@ -695,7 +730,7 @@ class HTTPUtil(object):
         try:
             try:
                 self.dns_resolve(host)
-            except OSError:
+            except (socket.error, ssl.SSLError):
                 pass
             proxyhost, _, proxyport = address.rpartition(':')
             sock = socket.create_connection((proxyhost, int(proxyport)))
@@ -711,7 +746,7 @@ class HTTPUtil(object):
                 logging.error('create_connection_withproxy return http error code %s', response.status)
                 sock = None
             return sock
-        except OSError as e:
+        except (socket.error, ssl.SSLError) as e:
             logging.error('create_connection_withproxy error %s', e)
             raise
 
@@ -748,7 +783,7 @@ class HTTPUtil(object):
                                 timecount = maxping or timeout
                         else:
                             return
-        except OSError as e:
+        except (socket.error, ssl.SSLError) as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
                 raise
         finally:
@@ -769,7 +804,7 @@ class HTTPUtil(object):
                     if bitmask:
                         data = ''.join(chr(ord(x) ^ bitmask) for x in data)
                     dest.sendall(data)
-            except OSError as e:
+            except (socket.error, ssl.SSLError) as e:
                 if e.args[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
                     raise
             finally:
@@ -1079,7 +1114,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         if g_abbv:
             metadata += 'G-Abbv:%s\n' % ','.join(g_abbv)
     else:
-        metadata += ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers)
+        metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
     metadata = zlib.compress(metadata.encode())[2:-4]
     need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
     if common.GAE_OBFUSCATE:
@@ -1108,7 +1143,10 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.status = 502
         response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
         return response
-    response.headers = response.msg = http.client.parse_headers(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+    if sys.hexversion > 0x3000000:
+        response.headers = response.msg = http.client.parse_headers(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+    else:
+        response.headers = response.msg = http.client.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
     return response
 
 
@@ -1192,7 +1230,7 @@ class RangeFetch(object):
             try:
                 self.wfile.write(data)
                 expect_begin += len(data)
-            except OSError as e:
+            except (socket.error, ssl.SSLError) as e:
                 logging.info('RangeFetch client connection aborted(%s).', e)
                 break
         self._stopped = True
@@ -1218,7 +1256,7 @@ class RangeFetch(object):
                         response = self.urlfetch(self.command, self.url, headers, self.payload, fetchserver, password=self.password)
                 except queue.Empty:
                     continue
-                except OSError as e:
+                except (socket.error, ssl.SSLError) as e:
                     logging.warning("Response %r in __fetchlet", e)
                 if not response:
                     logging.warning('RangeFetch %s return %r', headers['Range'], response)
@@ -1240,7 +1278,7 @@ class RangeFetch(object):
                 if 200 <= response.status < 300:
                     content_range = response.getheader('Content-Range')
                     if not content_range:
-                        logging.warning('RangeFetch "%s %s" return Content-Range=%r: response headers=%r', self.command, self.url, content_range, str(response.headers))
+                        logging.warning('RangeFetch "%s %s" return Content-Range=%r: response headers=%r', self.command, self.url, content_range, response.getheaders())
                         response.close()
                         range_queue.put((start, end, None))
                         continue
@@ -1253,7 +1291,7 @@ class RangeFetch(object):
                                 break
                             data_queue.put((start, data))
                             start += len(data)
-                        except OSError as e:
+                        except (socket.error, ssl.SSLError) as e:
                             logging.warning('RangeFetch "%s %s" %s failed: %s', self.command, self.url, headers['Range'], e)
                             break
                     if start < end:
@@ -1301,7 +1339,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                             google_ipmap[domain] = iplist
                         if len(iplist) < 4:
                             need_resolve_remote.append(domain)
-                    except OSError:
+                    except (socket.error, ssl.SSLError):
                         need_resolve_remote.append(domain)
                         continue
                 else:
@@ -1314,7 +1352,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         if iplist:
                             google_ipmap.setdefault(domain, []).extend(iplist)
                             logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
-                    except OSError as e:
+                    except (socket.error, ssl.SSLError) as e:
                         logging.exception('resolve remote domain=%r dnsserver=%r failed: %s', domain, dnsserver, e)
             common.GOOGLE_HOSTS = list(set(sum(list(google_ipmap.values()), [])))
             if len(common.GOOGLE_HOSTS) == 0:
@@ -1340,7 +1378,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         ips = socket.gethostbyname_ex(host)[-1]
                         if len(ips) > 1:
                             iplist += ips
-                    except OSError as e:
+                    except (socket.error, ssl.SSLError) as e:
                         logging.error('socket.gethostbyname_ex(host=%r) failed:%s', host, e)
                 prefix = re.sub(r'\d+\.\d+$', '', random.choice(common.GOOGLE_HOSTS))
                 iplist = [x for x in iplist if x.startswith(prefix) and re.match(r'\d+\.\d+\.\d+\.\d+', x)]
@@ -1356,7 +1394,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         socket.create_connection((host, 443), timeout=2).close()
                         end = time.time()
                         connect_timing += end - start
-                    except OSError:
+                    except (socket.error, ssl.SSLError):
                         # connect failed, need switch
                         connect_timing += 2
                         need_switch = True
@@ -1382,7 +1420,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     if isinstance(self.__class__.first_run, collections.Callable):
                         self.first_run()
                         self.__class__.first_run = None
-            except OSError as e:
+            except (socket.error, ssl.SSLError) as e:
                 logging.error('GAEProxyHandler.first_run() return %r', e)
             except Exception as e:
                 logging.exception('GAEProxyHandler.first_run() return %r', e)
@@ -1445,7 +1483,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 response = http_util.request(self.command, self.path, payload, self.headers, crlf=common.GAE_CRLF)
             if not response:
                 return
-            logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.headers.get('Content-Length', '-'))
+            logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
             if response.status in (400, 405):
                 common.GAE_CRLF = 0
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode())
@@ -1455,7 +1493,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     break
                 self.wfile.write(data)
             response.close()
-        except OSError as e:
+        except (socket.error, ssl.SSLError) as e:
             if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
                 logging.warn('http_util.request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
                 common.GOOGLE_WITHGAE.add(re.sub(r':\d+$', '', self.parsed_url.netloc))
@@ -1488,7 +1526,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         if 'Content-Length' in self.headers:
             try:
                 payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
-            except (EOFError, OSError) as e:
+            except (EOFError, socket.error, ssl.SSLError) as e:
                 logging.error('handle_method_urlfetch read payload failed:%s', e)
                 return
         response = None
@@ -1536,14 +1574,15 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         fetchservers = [re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % appid, common.GAE_FETCHSERVER) for appid in common.GAE_APPIDS]
                         rangefetch = RangeFetch(self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                         return rangefetch.fetch()
-                    if 'Set-Cookie' in response.headers:
-                        response.headers['Set-Cookie'] = self.normcookie(response.headers['Set-Cookie'])
-                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))).encode())
+                    if response.getheader('Set-Cookie'):
+                        response.headers['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
+                    headers_data = ('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode()
+                    self.wfile.write(headers_data)
                     headers_sent = True
-                content_length = int(response.headers.get('Content-Length', 0))
-                accept_ranges = response.headers.get('Accept-Ranges')
-                if response.headers.get('Content-Range'):
-                    content_range = response.headers['Content-Range']
+                content_length = int(response.getheader('Content-Length', 0))
+                content_range = response.getheader('Content-Range', '')
+                accept_ranges = response.getheader('Accept-Ranges', 'none')
+                if content_range:
                     start, end, length = list(map(int, re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3)))
                 else:
                     start, end, length = 0, content_length-1, content_length
@@ -1608,7 +1647,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     elif i == 0:
                         # only print first create_connection error
                         logging.error('http_util.create_connection((host=%r, port=%r), %r) timeout', host, port, timeout)
-                except OSError as e:
+                except (socket.error, ssl.SSLError) as e:
                     if e.args[0] == 9:
                         logging.error('GAEProxyHandler direct forward remote (%r, %r) failed', host, port)
                         continue
@@ -1660,14 +1699,14 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 return
             if not self.parse_request():
                 return
-        except OSError as e:
+        except (socket.error, ssl.SSLError) as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
         if self.path[0] == '/' and host:
             self.path = 'https://%s%s' % (self.headers['Host'], self.path)
         try:
             self.do_METHOD()
-        except OSError as e:
+        except (socket.error, ssl.SSLError) as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
         finally:
@@ -1675,7 +1714,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                 try:
                     self.__realconnection.shutdown(socket.SHUT_WR)
                     self.__realconnection.close()
-                except OSError:
+                except (socket.error, ssl.SSLError):
                     pass
                 finally:
                     self.__realconnection = None
@@ -1703,8 +1742,8 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
-    if 'x-status' in response.headers:
-        response.status = int(response.headers['x-status'])
+    if response.getheader('x-status'):
+        response.status = int(response.getheader('x-status'))
         del response.headers['x-status']
     response_read = response.read
     if 'xorchar' in kwargs and 200 <= response.app_status < 400:
@@ -1737,7 +1776,7 @@ class PAASProxyHandler(GAEProxyHandler):
                     if isinstance(self.__class__.first_run, collections.Callable):
                         self.first_run()
                         self.__class__.first_run = None
-            except OSError as e:
+            except (socket.error, ssl.SSLError) as e:
                 logging.error('PAASProxyHandler.first_run() return %r', e)
             except Exception as e:
                 logging.exception('PAASProxyHandler.first_run() return %r', e)
@@ -1758,7 +1797,7 @@ class PAASProxyHandler(GAEProxyHandler):
             if 'Content-Length' in self.headers:
                 try:
                     payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
-                except (EOFError, OSError) as e:
+                except (EOFError, socket.error, ssl.SSLError) as e:
                     logging.error('handle_method read payload failed:%s', e)
                     return
             response = None
@@ -1787,8 +1826,8 @@ class PAASProxyHandler(GAEProxyHandler):
             if response.app_status in (400, 405):
                 http_util.crlf = 0
 
-            if 'Set-Cookie' in response.headers:
-                response.headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.headers['Set-Cookie'])
+            if response.getheader('Set-Cookie'):
+                response.headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.getheader('Set-Cookie'))
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode())
 
             while 1:
@@ -1798,7 +1837,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 self.wfile.write(data)
             response.close()
 
-        except OSError as e:
+        except (socket.error, ssl.SSLError) as e:
             # Connection closed before proxy return
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
@@ -1976,7 +2015,7 @@ class DNSServer(socketserver.ThreadingUDPServer):
                 iplist = DNSUtil._reply_to_iplist(data)
                 self.cache[domain] = data
                 logging.info('DNSServer resolve domain=%r return iplist=%s', qname, iplist)
-            except OSError as e:
+            except (socket.error, ssl.SSLError) as e:
                 logging.error('DNSServer resolve domain=%r to iplist failed:%s', qname, e)
         self._writelock.acquire()
         try:
