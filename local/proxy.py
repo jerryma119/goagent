@@ -71,6 +71,7 @@ except ImportError:
     http = type(sys)('http')
     http.server = __import__('BaseHTTPServer')
     http.client = __import__('httplib')
+    http.client.parse_headers = http.client.HTTPMessage
 try:
     import urllib.request
     import urllib.parse
@@ -1176,10 +1177,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.status = 502
         response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
         return response
-    if sys.hexversion > 0x3000000:
-        response.headers = response.msg = http.client.parse_headers(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
-    else:
-        response.headers = response.msg = http.client.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+    response.headers = response.msg = http.client.parse_headers(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
     return response
 
 
