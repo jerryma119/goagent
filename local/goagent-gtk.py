@@ -180,6 +180,7 @@ class GoAgentGTK:
             self.trayicon = gtk.StatusIcon()
             self.trayicon.set_from_file(logo_filename)
             self.trayicon.connect('popup-menu', lambda i, b, t: self.make_menu().popup(None, None, gtk.status_icon_position_menu, b, t, self.trayicon))
+            self.trayicon.connect('activate', self.show_hide_toggle)
             self.trayicon.set_tooltip('GoAgent')
             self.trayicon.set_visible(True)
 
@@ -246,7 +247,13 @@ class GoAgentGTK:
         self.on_show(widget, data)
         self.childpid = self.terminal.fork_command(self.command[0], self.command, os.getcwd())
         self.childexited = self.terminal.connect('child-exited', lambda term: gtk.main_quit())
-
+    
+    def show_hide_toggle(self, widget, data= None):
+        if self.window.get_property('visible'):
+            self.on_hide(widget, data)
+        else:
+            self.on_show(widget, data)
+            
     def on_quit(self, widget, data=None):
         gtk.main_quit()
 
