@@ -508,6 +508,7 @@ class HTTPUtil(object):
                     'Accept-Language': ('AL', lambda x: x.startswith('zh-CN')),
                     'Accept-Encoding': ('AE', lambda x: x.startswith('gzip,')), }
     ssl_has_sni = getattr(ssl, 'HAS_SNI', False)
+    ssl_has_npn = getattr(ssl, 'HAS_NPN', False)
     ssl_validate = False
     ssl_obfuscate = False
     ssl_ciphers = ':'.join(['ECDHE-ECDSA-AES256-SHA',
@@ -563,14 +564,15 @@ class HTTPUtil(object):
         self.proxy = proxy
         self.ssl_validate = ssl_validate or self.ssl_validate
         self.ssl_obfuscate = ssl_obfuscate or self.ssl_obfuscate
-        if self.ssl_obfuscate:
-            self.ssl_ciphers = ':'.join(x for x in self.ssl_ciphers.split(':') if random.random() > 0.5)
+        self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         if hasattr(ssl, 'SSLContext'):
-            self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-            self.ssl_context.set_ciphers(self.ssl_ciphers)
             if self.ssl_validate:
                 self.ssl_context.verify_mode = ssl.CERT_REQUIRED
                 self.ssl_context.load_verify_locations('cacert.pem')
+            if self.ssl_obfuscate:
+                self.ssl_ciphers = ':'.join(x for x in self.ssl_ciphers.split(':') if random.random() > 0.5)
+                self.ssl_context.set_ciphers(self.ssl_ciphers)
+                #self.ssl_context.set_npn_protocols(['http/1.1'])
         else:
             self.ssl_context = None
 
@@ -583,9 +585,9 @@ class HTTPUtil(object):
             if self.ssl_validate and 'cert_reqs' not in kwargs:
                 kwargs['cert_reqs'] = ssl.CERT_REQUIRED
                 kwargs['ca_certs'] = 'cacert.pem'
-            if self.ssl_obfuscate and 'ssl_version' not in kwargs:
+            if 'ssl_version' not in kwargs:
                 kwargs['ssl_version'] = ssl.PROTOCOL_TLSv1
-            if 'ciphers' not in kwargs:
+            if self.ssl_obfuscate and 'ciphers' not in kwargs:
                 kwargs['ciphers'] = self.ssl_ciphers
             return ssl.wrap_socket(*args, **kwargs)
 
@@ -1095,7 +1097,7 @@ class Common(object):
         return info
 
 common = Common()
-http_util = HTTPUtil(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE or common.PAAS_VALIDATE, proxy=common.proxy)
+http_util = HTTPUtil(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE or common.PAAS_VALIDATE, ssl_obfuscate=common.GAE_OBFUSCATE, proxy=common.proxy)
 
 
 def message_html(self, title, banner, detail=''):
