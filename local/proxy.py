@@ -507,27 +507,35 @@ class HTTPUtil(object):
                     'Accept-Charset': ('AC', lambda x: x.startswith('UTF-8,')),
                     'Accept-Language': ('AL', lambda x: x.startswith('zh-CN')),
                     'Accept-Encoding': ('AE', lambda x: x.startswith('gzip,')), }
+    ssl_has_sni = getattr(ssl, 'HAS_SNI', False)
     ssl_validate = False
     ssl_obfuscate = False
     ssl_ciphers = ':'.join(['ECDHE-ECDSA-AES256-SHA',
                             'ECDHE-RSA-AES256-SHA',
+                            'DHE-RSA-CAMELLIA256-SHA',
+                            'DHE-DSS-CAMELLIA256-SHA',
                             'DHE-RSA-AES256-SHA',
                             'DHE-DSS-AES256-SHA',
                             'ECDH-RSA-AES256-SHA',
                             'ECDH-ECDSA-AES256-SHA',
+                            'CAMELLIA256-SHA',
                             'AES256-SHA',
                             'ECDHE-ECDSA-RC4-SHA',
                             'ECDHE-ECDSA-AES128-SHA',
                             'ECDHE-RSA-RC4-SHA',
                             'ECDHE-RSA-AES128-SHA',
+                            'DHE-RSA-CAMELLIA128-SHA',
+                            'DHE-DSS-CAMELLIA128-SHA',
                             'DHE-RSA-AES128-SHA',
                             'DHE-DSS-AES128-SHA',
                             'ECDH-RSA-RC4-SHA',
                             'ECDH-RSA-AES128-SHA',
                             'ECDH-ECDSA-RC4-SHA',
                             'ECDH-ECDSA-AES128-SHA',
-                            'RC4-MD5',
+                            'SEED-SHA',
+                            'CAMELLIA128-SHA',
                             'RC4-SHA',
+                            'RC4-MD5',
                             'AES128-SHA',
                             'ECDHE-ECDSA-DES-CBC3-SHA',
                             'ECDHE-RSA-DES-CBC3-SHA',
@@ -567,7 +575,7 @@ class HTTPUtil(object):
             self.ssl_context = None
 
     def wrap_socket(self, *args, **kwargs):
-        if not getattr(ssl, 'HAS_SNI', False):
+        if not self.ssl_has_sni:
             kwargs.pop('server_hostname', None)
         if self.ssl_context:
             return self.ssl_context.wrap_socket(*args, **kwargs)
