@@ -544,7 +544,8 @@ class HTTPUtil(object):
                             'EDH-DSS-DES-CBC3-SHA',
                             'ECDH-RSA-DES-CBC3-SHA',
                             'ECDH-ECDSA-DES-CBC3-SHA',
-                            'DES-CBC3-SHA'])
+                            'DES-CBC3-SHA',
+                            'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
 
     def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False, ssl_obfuscate=False):
         # http://docs.python.org/dev/library/ssl.html
@@ -564,8 +565,8 @@ class HTTPUtil(object):
         self.proxy = proxy
         self.ssl_validate = ssl_validate or self.ssl_validate
         self.ssl_obfuscate = ssl_obfuscate or self.ssl_obfuscate
-        self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         if hasattr(ssl, 'SSLContext'):
+            self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
             if self.ssl_validate:
                 self.ssl_context.verify_mode = ssl.CERT_REQUIRED
                 self.ssl_context.load_verify_locations('cacert.pem')
