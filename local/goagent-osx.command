@@ -122,7 +122,10 @@ class GoAgentOSX(NSObject):
         nc.addObserver_selector_name_object_(self, 'exit:', NSWorkspaceWillPowerOffNotification, None)
 
     def startGoAgent(self):
-        cmd = '/usr/bin/env python3 proxy.py'
+        if os.system('which python3') == 0:
+            cmd = '/usr/bin/env python3 proxy.py'
+        else:
+            cmd = '/usr/bin/env python proxy.py'
         self.master, self.slave = pty.openpty()
         self.pipe = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE, stdout=self.slave, stderr=self.slave, close_fds=True)
         self.pipe_fd = os.fdopen(self.master)
