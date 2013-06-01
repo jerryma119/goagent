@@ -143,13 +143,16 @@ def should_visible():
 
 class GoAgentGTK:
 
-    command = ['/usr/bin/env', 'python3', 'proxy.py']
+    command = ['/usr/bin/env', 'python', 'proxy.py']
     message = u'GoAgent已经启动，单击托盘图标可以最小化'
     fail_message = u'GoAgent启动失败，请查看控制台窗口的错误信息。'
 
     def __init__(self, window, terminal):
         self.window = window
         self.terminal = terminal
+
+        if os.system('which python3') == 0:
+            self.command[1] = 'python3'
 
         self.window.add(terminal)
         self.childpid = self.terminal.fork_command(self.command[0], self.command, os.getcwd())
@@ -247,13 +250,13 @@ class GoAgentGTK:
         self.on_show(widget, data)
         self.childpid = self.terminal.fork_command(self.command[0], self.command, os.getcwd())
         self.childexited = self.terminal.connect('child-exited', lambda term: gtk.main_quit())
-    
+
     def show_hide_toggle(self, widget, data= None):
         if self.window.get_property('visible'):
             self.on_hide(widget, data)
         else:
             self.on_show(widget, data)
-            
+
     def on_quit(self, widget, data=None):
         gtk.main_quit()
 
