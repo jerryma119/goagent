@@ -1365,6 +1365,14 @@ class LocalProxyServer(socketserver.ThreadingTCPServer):
         except:
             pass
 
+    def finish_request(self, request, client_address):
+        """make python2 SocketServer happy"""
+        try:
+            return socketserver.ThreadingTCPServer.finish_request(self, request, client_address)
+        except (socket.error, ssl.SSLError) as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
+                raise
+
 
 class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
 
