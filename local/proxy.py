@@ -2029,7 +2029,10 @@ class PACServerHandler(http.server.BaseHTTPRequestHandler):
             listen_ip = common.LISTEN_IP
             if listen_ip in ('', '0.0.0.0', '::'):
                 listen_ip = Autoproxy2Pac.get_listen_ip()
-            spawn_later(1, Autoproxy2Pac.update_filename, self.pacfile, common.PAC_GFWLIST, '%s:%s' % (listen_ip, common.LISTEN_PORT), default)
+            if 'gevent.monkey' in sys.modules and hasattr(gevent.get_hub(), 'threadpool'):
+                gevent.get_hub().threadpool.spawn(Autoproxy2Pac.update_filename, self.pacfile, common.PAC_GFWLIST, '%s:%s' % (listen_ip, common.LISTEN_PORT), default)
+            else:
+                threading._start_new_thread(Autoproxy2Pac.update_filename, (self.pacfile, common.PAC_GFWLIST, '%s:%s' % (listen_ip, common.LISTEN_PORT), default))
         return True
 
     def do_GET(self):
