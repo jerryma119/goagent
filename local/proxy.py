@@ -1513,7 +1513,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
 
         """rules match algorithm, need_forward= True or False"""
         need_forward = False
-        if common.HOSTS_MATCH and any(x(self.path) for x in common.HOSTS_MATCH):
+        if common.HOSTS_MATCH and any(x(self.path) for x in common.HOSTS_MATCH) or self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             need_forward = True
         elif host.endswith(common.GOOGLE_SITES) and not host.endswith(common.GOOGLE_WITHGAE):
             if self.path.startswith(('http://www.google.com/url', 'http://www.google.com.hk/url', 'https://www.google.com/url', 'https://www.google.com.hk/url')):
