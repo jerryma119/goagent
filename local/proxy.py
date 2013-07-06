@@ -1599,6 +1599,8 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
         errors = []
         headers_sent = False
         fetchserver = common.GAE_FETCHSERVER
+        if range_in_query and special_range:
+            fetchserver = re.sub(r'//\w+\.appspot\.com', '//%s.appspot.com' % random.choice(common.GAE_APPIDS), fetchserver)
         for retry in range(common.FETCHMAX_LOCAL):
             try:
                 content_length = 0
