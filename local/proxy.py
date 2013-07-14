@@ -1834,13 +1834,18 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
+    if sys.hexversion < 0x3000000:
+        response.headers = response.msg
     if response.getheader('x-status'):
         response.status = int(response.getheader('x-status'))
         del response.headers['x-status']
     response_read = response.read
     if 'xorchar' in kwargs and 200 <= response.app_status < 400:
         ordchar = ord(kwargs['xorchar'])
-        response.read = lambda n: bytes(c ^ ordchar for c in response_read(n))
+        if sys.hexversion < 0x3000000:
+            response.read = lambda n: ''.join(chr(ord(c) ^ ordchar) for c in response_read(n))
+        else:
+            response.read = lambda n: bytes(c ^ ordchar for c in response_read(n))
     return response
 
 
@@ -1919,11 +1924,11 @@ class PAASProxyHandler(GAEProxyHandler):
                 http_util.crlf = 0
 
             if response.getheader('Set-Cookie'):
-                response.headers['Set-Cookie'] = re.sub(', ([^ =]+(?:=|$))', '\\r\\nSet-Cookie: \\1', response.getheader('Set-Cookie'))
+                response.headers['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode())
 
             while 1:
-                data = response.read(32768)
+                data = response.read(8192)
                 if not data:
                     break
                 self.wfile.write(data)
