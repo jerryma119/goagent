@@ -1099,7 +1099,7 @@ common = Common()
 http_util = HTTPUtil(max_window=common.GOOGLE_WINDOW, ssl_validate=common.GAE_VALIDATE or common.PAAS_VALIDATE, ssl_obfuscate=common.GAE_OBFUSCATE, proxy=common.proxy)
 
 
-def message_html(self, title, banner, detail=''):
+def message_html(title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
     <html><head>
     <meta http-equiv="content-type" content="text/html;charset=utf-8">
@@ -1619,6 +1619,20 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                     common.GOOGLE_MODE = 'https'
                     common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                     continue
+                # appid not exists, try remove it from appid
+                if response.app_status == 404:
+                    if len(common.GAE_APPIDS) > 1:
+                        appid = common.GAE_APPIDS.pop(0)
+                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                        http_util.dns[urllib.parse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
+                        logging.warning('APPID %r not exists, remove it.', appid)
+                        continue
+                    else:
+                        appid = common.GAE_APPIDS[0]
+                        logging.error('APPID %r not exists, please ensure your appid in proxy.ini.', appid)
+                        html = message_html('404 Appid Not Exists', 'Appid %r Not Exists' % appid, 'appid %r not exist, please edit your proxy.ini' % appid)
+                        self.wfile.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + html.encode('utf-8'))
+                        return
                 # appid over qouta, switch to next appid
                 if response.app_status == 503:
                     common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
