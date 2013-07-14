@@ -787,7 +787,7 @@ class HTTPUtil(object):
             hostname = random.choice(self.dns.get(host) or [host if not host.endswith('.appspot.com') else 'www.google.com'])
             request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
             if username and password:
-                request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode()).strip().decode()
+                request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode()).decode().strip()
             request_data += '\r\n'
             sock.sendall(request_data)
             response = http.client.HTTPResponse(sock)
@@ -879,7 +879,7 @@ class HTTPUtil(object):
         if self.proxy:
             _, username, password, _ = ProxyUtil.parse_proxy(self.proxy)
             if username and password:
-                request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode('%s:%s' % (username, password))
+                request_data += 'Proxy-Authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (username, password)).encode()).decode().strip()
         request_data += '\r\n'
 
         if isinstance(payload, bytes):
