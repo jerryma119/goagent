@@ -118,7 +118,7 @@ class Logging(type(sys)):
             elif os.name == 'posix':
                 self.__set_error_color = lambda: __write('\033[31m')
                 self.__set_warning_color = lambda: __write('\033[33m')
-                self.__set_debug_color = lambda: __write('\032[33m')
+                self.__set_debug_color = lambda: __write('\033[32m')
                 self.__reset_color = lambda: __write('\033[0m')
 
     @classmethod
