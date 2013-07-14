@@ -101,12 +101,11 @@ class Logging(type(sys)):
 
     def __init__(self, *args, **kwargs):
         self.level = self.__class__.INFO
-        if self.level > self.__class__.DEBUG:
-            self.debug = self.dummy
         self.__write = __write = sys.stderr.write
         self.isatty = getattr(sys.stderr, 'isatty', lambda: False)()
         self.__set_error_color = lambda: None
         self.__set_warning_color = lambda: None
+        self.__set_debug_color = lambda: None
         self.__reset_color = lambda: None
         if self.isatty:
             if os.name == 'nt':
@@ -114,10 +113,12 @@ class Logging(type(sys)):
                 GetStdHandle = ctypes.windll.kernel32.GetStdHandle
                 self.__set_error_color = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x04)
                 self.__set_warning_color = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x06)
+                self.__set_debug_color = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x002)
                 self.__reset_color = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x07)
             elif os.name == 'posix':
                 self.__set_error_color = lambda: __write('\033[31m')
                 self.__set_warning_color = lambda: __write('\033[33m')
+                self.__set_debug_color = lambda: __write('\032[33m')
                 self.__reset_color = lambda: __write('\033[0m')
 
     @classmethod
@@ -136,7 +137,9 @@ class Logging(type(sys)):
         pass
 
     def debug(self, fmt, *args, **kwargs):
+        self.__set_debug_color()
         self.log('DEBUG', fmt, *args, **kwargs)
+        self.__reset_color()
 
     def info(self, fmt, *args, **kwargs):
         self.log('INFO', fmt, *args)
