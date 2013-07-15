@@ -1668,8 +1668,8 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         return rangefetch.fetch()
                     if response.getheader('Set-Cookie'):
                         response.headers['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
-                    headers_data = ('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode()
-                    self.wfile.write(headers_data)
+                    headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))
+                    self.wfile.write(headers_data.encode() if bytes is not str else headers_data)
                     headers_sent = True
                 content_length = int(response.getheader('Content-Length', 0))
                 content_range = response.getheader('Content-Range', '')
