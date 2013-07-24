@@ -1381,7 +1381,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
     first_run_lock = threading.Lock()
     urlfetch = staticmethod(gae_urlfetch)
     normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
-    normcontent = functools.partial(re.compile(r'filename="?(.+)"?').sub, 'filename="\\1"')
+    normcontent = functools.partial(re.compile(r'filename="?(.+?)"?').sub, 'filename="\\1"')
 
     def _update_google_iplist(self):
         if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
