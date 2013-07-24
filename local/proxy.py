@@ -1381,6 +1381,7 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
     first_run_lock = threading.Lock()
     urlfetch = staticmethod(gae_urlfetch)
     normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
+    normcontent = functools.partial(re.compile(r'filename="?(.+)"?').sub, 'filename="\\1"')
 
     def _update_google_iplist(self):
         if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
@@ -1668,7 +1669,13 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         return rangefetch.fetch()
                     if response.getheader('Set-Cookie'):
                         response.headers['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
+                    if response.getheader('Content-Disposition'):
+                        if hasattr(response.headers, 'replace_header'):
+                            response.headers.replace_header('Content-Disposition', self.normcontent(response.getheader('Content-Disposition')))
+                        else:
+                            response.headers['Content-Disposition'] = self.normcontent(response.getheader('Content-Disposition'))
                     headers_data = ('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode()
+                    logging.debug('headers_data=%s', headers_data)
                     self.wfile.write(headers_data)
                     headers_sent = True
                 content_length = int(response.getheader('Content-Length', 0))
