@@ -1674,9 +1674,9 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                             response.headers.replace_header('Content-Disposition', self.normcontent(response.getheader('Content-Disposition')))
                         else:
                             response.headers['Content-Disposition'] = self.normcontent(response.getheader('Content-Disposition'))
-                    headers_data = ('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))).encode()
+                    headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))
                     logging.debug('headers_data=%s', headers_data)
-                    self.wfile.write(headers_data)
+                    self.wfile.write(headers_data.encode() if bytes is not str else headers_data)
                     headers_sent = True
                 content_length = int(response.getheader('Content-Length', 0))
                 content_range = response.getheader('Content-Range', '')
