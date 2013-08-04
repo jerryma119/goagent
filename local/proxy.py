@@ -2067,7 +2067,10 @@ class PACServerHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         filename = os.path.normpath('./' + self.path)
         self.first_run()
-        if os.path.isfile(filename):
+        if self.path.startswith(('http://', 'https://')):
+            self.wfile.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n')
+            logging.info('%s "%s %s HTTP/1.1" 404 -', self.address_string(), self.command, self.path)
+        elif os.path.isfile(filename):
             if filename.endswith('.pac'):
                 mimetype = 'application/x-ns-proxy-autoconfig'
             else:
@@ -2075,7 +2078,6 @@ class PACServerHandler(http.server.BaseHTTPRequestHandler):
             self.send_file(filename, mimetype)
         else:
             self.wfile.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
-            self.wfile.close()
             logging.info('%s "%s %s HTTP/1.1" 404 -', self.address_string(), self.command, self.path)
 
     def send_file(self, filename, mimetype):
