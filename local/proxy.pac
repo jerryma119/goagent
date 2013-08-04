@@ -6,7 +6,8 @@ function FindProxyForURL(url, host) {
     if (
             dnsDomainIs(host, '.googlesyndication.com') ||
             dnsDomainIs(host, '.google-analytics.com') ||
-            dnsDomainIs(host, '.doubleclick.net')
+            dnsDomainIs(host, '.doubleclick.net') ||
+            url == 'http://images.sohu.com/cs/jsfile/js/ct.js'
         )
     {
         return blackhole;
