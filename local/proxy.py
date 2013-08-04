@@ -2068,8 +2068,8 @@ class PACServerHandler(http.server.BaseHTTPRequestHandler):
         filename = os.path.normpath('./' + self.path)
         self.first_run()
         if self.path.startswith(('http://', 'https://')):
-            self.wfile.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n')
-            logging.info('%s "%s %s HTTP/1.1" 404 -', self.address_string(), self.command, self.path)
+            self.wfile.write(b'HTTP/1.1 200\r\nCache-Control: max-age=86400\r\nExpires:Oct, 01 Aug 2100 00:00:00 GMT\r\nConnection: close\r\n\r\n')
+            logging.info('%s "%s %s HTTP/1.1" 200 -', self.address_string(), self.command, self.path)
         elif os.path.isfile(filename):
             if filename.endswith('.pac'):
                 mimetype = 'application/x-ns-proxy-autoconfig'
