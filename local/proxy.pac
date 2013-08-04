@@ -7,6 +7,7 @@ function FindProxyForURL(url, host) {
             dnsDomainIs(host, '.googlesyndication.com') ||
             dnsDomainIs(host, '.google-analytics.com') ||
             dnsDomainIs(host, '.doubleclick.net') ||
+            host == 'biz.weibo.com' ||
             url == 'http://images.sohu.com/cs/jsfile/js/ct.js'
         )
     {
