@@ -11,6 +11,7 @@ function FindProxyForURL(url, host) {
             host == 'a.baidu.com' ||
             host == 'cb.baidu.com' ||
             host == 'cpro.baidu.com' ||
+            host == 'cbjs.baidu.com' ||
             host == 'drmcmm.baidu.com' ||
             host == 'eiv.baidu.com' ||
             host == 'hm.baidu.com' ||
@@ -24,7 +25,9 @@ function FindProxyForURL(url, host) {
             host == 'ucstat.baidu.com' ||
             host == 'unstat.baidu.com' ||
             host == 'utk.baidu.com' ||
+            host == 'cpro.baidustatic.com' ||
             url == 'http://news.baidu.com/js/usertrack.js' ||
+            url == 'http://cdn.tanx.com/t/tanxssp.js' ||
             url == 'http://box.zhangmen.baidu.com/js/ad.js' ||
             url == 'http://images.sohu.com/cs/jsfile/js/ct.js'
         )
