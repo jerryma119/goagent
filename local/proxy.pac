@@ -26,10 +26,17 @@ function FindProxyForURL(url, host) {
             host == 'unstat.baidu.com' ||
             host == 'utk.baidu.com' ||
             host == 'cpro.baidustatic.com' ||
+            host == 'g.163.com' ||
+            host == 'popme.163.com' ||
+            host == 'adgeo.163.com' ||
+            host == 'stat.ws.126.net' ||
+            host == 'img1.126.net' ||
+            host == 'img2.126.net' ||
             url == 'http://news.baidu.com/js/usertrack.js' ||
             url == 'http://cdn.tanx.com/t/tanxssp.js' ||
             url == 'http://box.zhangmen.baidu.com/js/ad.js' ||
-            url == 'http://images.sohu.com/cs/jsfile/js/ct.js'
+            url == 'http://images.sohu.com/cs/jsfile/js/ct.js' ||
+            url.indexOf('http:///r') == 0
         )
     {
         return blackhole;
