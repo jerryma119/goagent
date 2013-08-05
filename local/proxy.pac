@@ -35,7 +35,7 @@ function FindProxyForURL(url, host) {
             url == 'http://news.baidu.com/js/usertrack.js' ||
             url == 'http://cdn.tanx.com/t/tanxssp.js' ||
             url == 'http://box.zhangmen.baidu.com/js/ad.js' ||
-            url == 'http://images.sohu.com/cs/jsfile/js/ct.js
+            url == 'http://images.sohu.com/cs/jsfile/js/ct.js'
         )
     {
         return blackhole;
