@@ -8,6 +8,24 @@ function FindProxyForURL(url, host) {
             dnsDomainIs(host, '.google-analytics.com') ||
             dnsDomainIs(host, '.doubleclick.net') ||
             host == 'biz.weibo.com' ||
+            host == 'a.baidu.com' ||
+            host == 'cb.baidu.com' ||
+            host == 'cpro.baidu.com' ||
+            host == 'drmcmm.baidu.com' ||
+            host == 'eiv.baidu.com' ||
+            host == 'hm.baidu.com' ||
+            host == 'ikcode.baidu.com' ||
+            host == 'nsclick.baidu.com' ||
+            host == 'spcode.baidu.com' ||
+            host == 'tk.baidu.com' ||
+            host == 'tkweb.baidu.com' ||
+            host == 'tongji.baidu.com' ||
+            host == 'tracker.baidu.com' ||
+            host == 'ucstat.baidu.com' ||
+            host == 'unstat.baidu.com' ||
+            host == 'utk.baidu.com' ||
+            url == 'http://news.baidu.com/js/usertrack.js' ||
+            url == 'http://box.zhangmen.baidu.com/js/ad.js' ||
             url == 'http://images.sohu.com/cs/jsfile/js/ct.js'
         )
     {
