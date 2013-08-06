@@ -2051,6 +2051,7 @@ class Autoproxy2Pac(object):
 class PACServerHandler(http.server.BaseHTTPRequestHandler):
 
     pacfile = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
+    onepixel = b'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
 
     def first_run(self):
         if time.time() - os.path.getmtime(self.pacfile) > 24 * 60 * 60:
@@ -2068,7 +2069,12 @@ class PACServerHandler(http.server.BaseHTTPRequestHandler):
         filename = os.path.normpath('./' + self.path)
         self.first_run()
         if self.path.startswith(('http://', 'https://')):
-            self.wfile.write(b'HTTP/1.1 200\r\nCache-Control: max-age=86400\r\nExpires:Oct, 01 Aug 2100 00:00:00 GMT\r\nConnection: close\r\n\r\n')
+            data = b'HTTP/1.1 200\r\nCache-Control: max-age=86400\r\nExpires:Oct, 01 Aug 2100 00:00:00 GMT\r\nConnection: close\r\n'
+            if self.path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
+                data += b'Content-Type: image/gif\r\n\r\n' + self.onepixel
+            else:
+                data += b'\r\n'
+            self.wfile.write(data)
             logging.info('%s "%s %s HTTP/1.1" 200 -', self.address_string(), self.command, self.path)
         elif os.path.isfile(filename):
             if filename.endswith('.pac'):
