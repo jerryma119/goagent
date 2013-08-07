@@ -1638,10 +1638,15 @@ class GAEProxyHandler(http.server.BaseHTTPRequestHandler):
                         return
                 # appid over qouta, switch to next appid
                 if response.app_status == 503:
-                    common.GAE_APPIDS.append(common.GAE_APPIDS.pop(0))
-                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-                    http_util.dns[urllib.parse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
-                    logging.info('APPID Over Quota,Auto Switch to [%s]' % (common.GAE_APPIDS[0]))
+                    if len(common.GAE_APPIDS) > 1:
+                        common.GAE_APPIDS.pop(0)
+                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                        http_util.dns[urllib.parse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
+                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying…' % (common.GAE_APPIDS[0]))
+                        self.do_METHOD_GAE()
+                        return
+                    else:
+                        logging.error('All APPID Over Quota')
                 # bad request, disable CRLF injection
                 if response.app_status in (400, 405):
                     http_util.crlf = 0
