@@ -231,7 +231,7 @@ def gae_application(environ, start_response):
             dataio.write(compressobj.flush())
             dataio.write(struct.pack('<LL', zlib.crc32(data) & 0xFFFFFFFFL, len(data) & 0xFFFFFFFFL))
             data = dataio.getvalue()
-    if 0 != len(data):
+    if data:
          response_headers['Content-Length'] = str(len(data))
     response_headers_data = zlib.compress('\n'.join('%s:%s' % (k.title(), v) for k, v in response_headers.items() if not k.startswith('x-google-')))[2:-4]
     start_response('200 OK', [('Content-Type', 'image/gif')])
