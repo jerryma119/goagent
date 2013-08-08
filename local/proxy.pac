@@ -64,6 +64,7 @@ function FindProxyForURL(url, host) {
             host == 'j.mp' ||
             host == 'ow.ly' ||
             host == 'po.st' ||
+            host == 'fw.cm' ||
             host == 'bbc.in'
         )
     {
