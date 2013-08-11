@@ -361,6 +361,25 @@ class ProxyUtil(object):
         proxies = urllib.request.getproxies()
         return proxies.get('https') or proxies.get('http') or {}
 
+    @staticmethod
+    def set_windows_proxy(proxy):
+        winreg = __import__('winreg' if sys.hexversion > 0x3000000 else '_winreg')
+        INTERNET_OPTION_REFRESH = 37
+        INTERNET_OPTION_SETTINGS_CHANGED = 39
+        SUB_KEY_PATH = 'Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'
+        hKey = winreg.OpenKey(winreg.HKEY_CURRENT_USER, SUB_KEY_PATH, 0, winreg.KEY_READ | winreg.KEY_WRITE)
+        if proxy.endswith('.pac'):
+            winreg.SetValueEx(hKey, 'ProxyEnable', 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(hKey, 'ProxyOverride', 0, winreg.REG_SZ, '<local>')
+            winreg.SetValueEx(hKey, 'AutoConfigURL', 0, winreg.REG_SZ, proxy)
+        else:
+            winreg.SetValueEx(hKey, 'ProxyEnable', 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(hKey, 'ProxyOverride', 0, winreg.REG_SZ, '<local>')
+            winreg.SetValueEx(hKey, 'AutoConfigURL', 0, winreg.REG_SZ, '')
+            winreg.SetValueEx(hKey, 'ProxyServer', 0, winreg.REG_SZ, proxy)
+        ctypes.windll.Wininet.InternetSetOptionW(0, INTERNET_OPTION_REFRESH, 0, 0)
+        ctypes.windll.Wininet.InternetSetOptionW(0, INTERNET_OPTION_SETTINGS_CHANGED, 0, 0)
+
 
 class DNSUtil(object):
     """
