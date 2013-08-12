@@ -2090,7 +2090,7 @@ class PACServerHandler(http.server.BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
-        filename = os.path.normpath('./' + self.path)
+        filename = os.path.normpath('./' + urllib.parse.urlparse(self.path).path)
         self.first_run()
         if self.path.startswith(('http://', 'https://')):
             data = b'HTTP/1.1 200\r\nCache-Control: max-age=86400\r\nExpires:Oct, 01 Aug 2100 00:00:00 GMT\r\nConnection: close\r\n'
