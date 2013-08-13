@@ -215,10 +215,7 @@ def gae_application(environ, start_response):
 
     data = response.content
     response_headers = response.headers
-    if response_headers.get('content-encoding') == 'gzip' and 'deflate' in accept_encoding and len(response.content) < URLFETCH_DEFLATE_MAXSIZE:
-        data = data[10:-8]
-        response_headers['Content-Encoding'] = 'deflate'
-    elif 'content-encoding' not in response_headers and len(response.content) < URLFETCH_DEFLATE_MAXSIZE and response_headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
+    if 'content-encoding' not in response_headers and len(response.content) < URLFETCH_DEFLATE_MAXSIZE and response_headers.get('content-type', '').startswith(('text/', 'application/json', 'application/javascript')):
         if 'deflate' in accept_encoding:
             response_headers['Content-Encoding'] = 'deflate'
             data = zlib.compress(data)[2:-4]
