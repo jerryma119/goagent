@@ -29,6 +29,7 @@ sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 
 try:
     import gevent
+    import gevent.socket
     import gevent.monkey
     gevent.monkey.patch_all()
 except (ImportError, SystemError):
@@ -347,6 +348,88 @@ class CertUtil(object):
         #Check Certs Dir
         if not os.path.exists(certdir):
             os.makedirs(certdir)
+
+
+class SSLConnection(object):
+
+    wait_read = gevent.socket.wait_read if 'gevent.socket' in sys.modules else lambda fd,t: select.select([fd], [], [fd], t)
+    wait_write = gevent.socket.wait_write if 'gevent.socket' in sys.modules else lambda fd,t: select.select([], [fd], [fd], t)
+    wait_readwrite = gevent.socket.wait_readwrite if 'gevent.socket' in sys.modules else lambda fd,t: select.select([fd], [fd], [fd], t)
+
+    def __init__(self, context, sock):
+        self._context = context
+        self._sock = sock
+        self._timeout = sock.gettimeout()
+        self._connection = OpenSSL.SSL.Connection(context, sock)
+
+    def __getattr__(self, attr):
+        if attr not in ('_context', '_sock', '_timeout', '_connection'):
+            return getattr(self._connection, attr)
+
+    def accept(self):
+        sock, addr = self._sock.accept()
+        client = OpenSSL.SSL.Connection(sock._context, sock)
+        return client, addr
+
+    def do_handshake(self):
+        while True:
+            try:
+                self._connection.do_handshake()
+                break
+            except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError, OpenSSL.SSL.WantWriteError):
+                sys.hexversion < 0x3000000 and sys.exc_clear()
+                self.wait_readwrite(self._sock.fileno(), timeout=self._timeout)
+
+    def connect(self, *args, **kwargs):
+        while True:
+            try:
+                self._connection.connect(*args, **kwargs)
+                break
+            except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
+                sys.hexversion < 0x3000000 and sys.exc_clear()
+                self.wait_read(self._sock.fileno(), timeout=self._timeout)
+            except OpenSSL.SSL.WantWriteError:
+                sys.hexversion < 0x3000000 and sys.exc_clear()
+                self.wait_write(self._sock.fileno(), timeout=self._timeout)
+
+    def send(self, data, flags=0):
+        while True:
+            try:
+                self._connection.send(data, flags)
+                break
+            except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
+                sys.hexversion < 0x3000000 and sys.exc_clear()
+                self.wait_read(self._sock.fileno(), timeout=self._timeout)
+            except OpenSSL.SSL.WantWriteError:
+                sys.hexversion < 0x3000000 and sys.exc_clear()
+                self.wait_write(self._sock.fileno(), timeout=self._timeout)
+            except OpenSSL.SSL.SysCallError as e:
+                if e[0] == -1 and not data:
+                    # errors when writing empty strings are expected and can be ignored
+                    return 0
+                raise
+
+    def recv(self, bufsiz, flags=0):
+        pending = self._connection.pending()
+        if pending:
+            return self._connection.recv(min(pending, bufsiz))
+        while True:
+            try:
+                return self._connection.recv(bufsiz, flags)
+            except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
+                sys.hexversion < 0x3000000 and sys.exc_clear()
+                self.wait_read(self._sock.fileno(), timeout=self._timeout)
+            except OpenSSL.SSL.WantWriteError:
+                sys.hexversion < 0x3000000 and sys.exc_clear()
+                self.wait_write(self._sock.fileno(), timeout=self._timeout)
+            except OpenSSL.SSL.ZeroReturnError:
+                return ''
+
+    def read(self, bufsiz, flags=0):
+        return self.recv(bufsiz, flags)
+
+    def write(self, buf, flags=0):
+        return self.sendall(buf, flags)
 
 
 class ProxyUtil(object):
