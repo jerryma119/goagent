@@ -1930,8 +1930,6 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     skip_headers = http_util.skip_headers
-    if 'xorchar' not in kwargs and fetchserver.startswith('http://'):
-        kwargs['xorchar'] = random.choice(kwargs.get('password') or 'goagent')
     if common.PAAS_VALIDATE:
         kwargs['validate'] = 1
     metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
@@ -1942,13 +1940,23 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
-    if response.getheader('x-status'):
-        response.status = int(response.getheader('x-status'))
-        del response.msg['x-status']
-    response_read = response.read
-    if 'xorchar' in kwargs and 200 <= response.app_status < 400:
-        ordchar = ord(kwargs['xorchar'])
-        response.read = lambda n: ''.join(chr(ord(c) ^ ordchar) for c in response_read(n))
+    if response.status != 200:
+        if response.status in (400, 405):
+            # filter by some firewall
+            common.GAE_CRLF = 0
+        return response
+    data = response.read(4)
+    if len(data) < 4:
+        response.status = 502
+        response.fp = io.BytesIO(b'connection aborted. too short leadtype data=' + data)
+        return response
+    response.status, headers_length = struct.unpack('!hh', data)
+    data = response.read(headers_length)
+    if len(data) < headers_length:
+        response.status = 502
+        response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
+        return response
+    response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
     return response
 
 

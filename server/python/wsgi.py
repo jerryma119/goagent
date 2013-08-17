@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '3.0.4'
+__version__ = '3.0.5'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -375,7 +375,6 @@ def paas_application(environ, start_response):
         start_response('302 Found', [('Location', 'https://www.google.com')])
         raise StopIteration
 
-    # inflate = lambda x:zlib.decompress(x, -zlib.MAX_WBITS)
     wsgi_input = environ['wsgi.input']
     data = wsgi_input.read(2)
     metadata_length, = struct.unpack('!h', data)
@@ -385,6 +384,7 @@ def paas_application(environ, start_response):
     headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
     method = headers.pop('G-Method')
     url = headers.pop('G-Url')
+    timeout = URLFETCH_TIMEOUT
 
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
@@ -400,7 +400,7 @@ def paas_application(environ, start_response):
 
     if __password__ and __password__ != kwargs.get('password'):
         random_host = 'g%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
-        conn = httplib.HTTPConnection(random_host, timeout=3)
+        conn = httplib.HTTPConnection(random_host, timeout=timeout)
         conn.request('GET', '/')
         response = conn.getresponse(True)
         status_line = '%s %s' % (response.status, httplib.responses.get(response.status, 'OK'))
@@ -413,9 +413,6 @@ def paas_application(environ, start_response):
         yield message_html('403 Forbidden Host', 'Hosts Deny(%s)' % url, detail='url=%r' % url)
         raise StopIteration
 
-    timeout = URLFETCH_TIMEOUT
-    xorchar = ord(kwargs.get('xorchar') or '\x00')
-
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
     if method == 'CONNECT':
@@ -427,7 +424,7 @@ def paas_application(environ, start_response):
         sock = rfile._sock
         host, _, port = url.rpartition(':')
         port = int(port)
-        remote_sock = socket.create_connection((host, port), timeout=URLFETCH_TIMEOUT)
+        remote_sock = socket.create_connection((host, port), timeout=timeout)
         start_response('200 OK', [])
         forward_socket(sock, remote_sock)
         yield 'out'
@@ -443,20 +440,15 @@ def paas_application(environ, start_response):
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
 
-            headers = [('X-Status', str(response.status))]
-            headers += [(k.title(), v) for k, v in response.msg.items() if k.title() != 'Transfer-Encoding']
-            start_response('200 OK', headers)
-
-            bufsize = 8192
+            headers_data = zlib.compress('\n'.join('%s:%s' % (k.title(), v) for k, v in response.getheaders()))[2:-4]
+            start_response('200 OK', [('Content-Type', 'image/gif')])
+            yield struct.pack('!hh', int(response.status), len(headers_data))+headers_data
             while 1:
-                data = response.read(bufsize)
+                data = response.read(8192)
                 if not data:
                     response.close()
                     break
-                if xorchar:
-                    yield ''.join(chr(ord(x) ^ xorchar) for x in data)
-                else:
-                    yield data
+                yield data
         except httplib.HTTPException:
             raise
 
