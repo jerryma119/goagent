@@ -42,11 +42,11 @@ import zlib
 import functools
 import re
 import io
-import copy
 import fnmatch
 import traceback
 import random
 import base64
+import string
 import hashlib
 import threading
 import socket
@@ -1214,7 +1214,7 @@ def message_html(title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
     <html><head>
     <meta http-equiv="content-type" content="text/html;charset=utf-8">
-    <title>{{ title }}</title>
+    <title>$title</title>
     <style><!--
     body {font-family: arial,sans-serif}
     div.nav {margin-top: 1ex}
@@ -1231,18 +1231,14 @@ def message_html(title, banner, detail=''):
     <tr><td bgcolor=#3366cc><font face=arial,sans-serif color=#ffffff><b>Message</b></td></tr>
     <tr><td> </td></tr></table>
     <blockquote>
-    <H1>{{ banner }}</H1>
-    {{ detail }}
+    <H1>$banner</H1>
+    $detail
     <p>
     </blockquote>
     <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
     </body></html>
     '''
-    kwargs = dict(title=title, banner=banner, detail=detail)
-    template = MESSAGE_TEMPLATE
-    for keyword, value in kwargs.items():
-        template = template.replace('{{ %s }}' % keyword, value)
-    return template
+    return string.Template(MESSAGE_TEMPLATE).substitute(title=title, banner=banner, detail=detail)
 
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
