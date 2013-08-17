@@ -1326,6 +1326,7 @@ class RangeFetch(object):
         if start == 0:
             response_status = 200
             response_headers['Content-Length'] = str(length)
+            del response_headers['Content-Range']
         else:
             response_headers['Content-Range'] = 'bytes %s-%s/%s' % (start, end, length)
             response_headers['Content-Length'] = str(length-start)
@@ -1338,8 +1339,7 @@ class RangeFetch(object):
         range_queue.put((start, end, self.response))
         for begin in range(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
-        for _ in range(self.threads):
-            threading._start_new_thread(self.__fetchlet, (range_queue, data_queue))
+        any(threading._start_new_thread(self.__fetchlet, (range_queue, data_queue)) for _ in range(self.threads))
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 90
         expect_begin = start
@@ -1378,7 +1378,7 @@ class RangeFetch(object):
         self._stopped = True
 
     def __fetchlet(self, range_queue, data_queue):
-        headers = copy.copy(self.headers)
+        headers = dict((k.title(), v) for k, v in self.headers.items())
         headers['Connection'] = 'close'
         while 1:
             try:
@@ -1436,7 +1436,7 @@ class RangeFetch(object):
                         except Exception as e:
                             logging.warning('RangeFetch "%s %s" %s failed: %s', self.command, self.url, headers['Range'], e)
                             break
-                    if start < end:
+                    if start < end + 1:
                         logging.warning('RangeFetch "%s %s" retry %s-%s', self.command, self.url, start, end)
                         response.close()
                         range_queue.put((start, end, None))
