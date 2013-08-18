@@ -381,7 +381,11 @@ def paas_application(environ, start_response):
     metadata = wsgi_input.read(metadata_length)
 
     metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
-    headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
+    headers = {}
+    for line in metadata.splitlines():
+        if line:
+            keyword, value = line.split(':', 1)
+            headers[keyword.title()] = value.strip()
     method = headers.pop('G-Method')
     url = headers.pop('G-Url')
     timeout = URLFETCH_TIMEOUT

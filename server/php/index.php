@@ -6,7 +6,7 @@
 // Contributor:
 //     Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '2.1.13';
+$__version__  = '3.0.5';
 $__password__ = '';
 $__timeout__  = 20;
 
@@ -197,6 +197,7 @@ function decode_request($data) {
         } else if (substr($key, 0, 2) == 'G-') {
             $kwargs[strtolower(substr($key, 2))] = $value;
         } else if ($key) {
+            $key = join('-', array_map('ucfirst', explode('-', $key)));
             $headers[$key] = $value;
         }
     }

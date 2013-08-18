@@ -1103,6 +1103,7 @@ class Common(object):
         self.PAAS_ENABLE = self.CONFIG.getint('paas', 'enable')
         self.PAAS_LISTEN = self.CONFIG.get('paas', 'listen')
         self.PAAS_PASSWORD = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
+        self.PAAS_CRLF = self.CONFIG.getint('paas', 'crlf') if self.CONFIG.has_option('paas', 'crlf') else 1
         self.PAAS_VALIDATE = self.CONFIG.getint('paas', 'validate') if self.CONFIG.has_option('paas', 'validate') else 0
         self.PAAS_FETCHSERVER = self.CONFIG.get('paas', 'fetchserver')
 
@@ -1921,7 +1922,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 
 def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
-    # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
         if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
             zpayload = zlib.compress(payload)[2:-4]
@@ -1936,14 +1936,14 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = b''.join((struct.pack('!h', len(metadata)), metadata, payload))
     fetchserver += '?%s' % random.random()
-    response = http_util.request('POST', fetchserver, app_payload, {'Content-Length': len(app_payload)}, crlf=0)
+    response = http_util.request('POST', fetchserver, app_payload, {'Content-Length': len(app_payload)}, crlf=common.PAAS_CRLF)
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
     if response.status != 200:
         if response.status in (400, 405):
             # filter by some firewall
-            common.GAE_CRLF = 0
+            common.PAAS_CRLF = 0
         return response
     data = response.read(4)
     if len(data) < 4:
