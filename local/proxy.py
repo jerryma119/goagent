@@ -1936,7 +1936,8 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = b''.join((struct.pack('!h', len(metadata)), metadata, payload))
     fetchserver += '?%s' % random.random()
-    response = http_util.request('POST', fetchserver, app_payload, {'Content-Length': len(app_payload)}, crlf=common.PAAS_CRLF)
+    crlf = 0 if fetchserver.startswith('https') else common.PAAS_CRLF
+    response = http_util.request('POST', fetchserver, app_payload, {'Content-Length': len(app_payload)}, crlf=crlf)
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
@@ -2000,11 +2001,12 @@ class PAASProxyHandler(GAEProxyHandler):
 
     def do_METHOD(self):
         try:
-            host = self.headers.get('Host', '')
+            headers = dict((k.title(), v) for k, v in self.headers.items())
+            host = headers.get('Host', '')
             payload = b''
-            if 'Content-Length' in self.headers:
+            if 'Content-Length' in headers:
                 try:
-                    payload = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                    payload = self.rfile.read(int(headers.get('Content-Length', 0)))
                 except NetWorkIOError as e:
                     logging.error('handle_method read payload failed:%s', e)
                     return
@@ -2019,7 +2021,7 @@ class PAASProxyHandler(GAEProxyHandler):
                         kwargs['validate'] = 1
                     if common.CONFIG.has_option('hosts', host):
                         kwargs['hostip'] = random.choice(http_util.dns_resolve(host))
-                    response = self.urlfetch(self.command, self.path, self.headers, payload, common.PAAS_FETCHSERVER, **kwargs)
+                    response = self.urlfetch(self.command, self.path, headers, payload, common.PAAS_FETCHSERVER, **kwargs)
                     if response:
                         break
                 except Exception as e:

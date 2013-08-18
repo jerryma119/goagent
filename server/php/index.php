@@ -248,7 +248,7 @@ function post()
     $headers['Connection'] = 'close';
 
     $urlfetch = new URLFetch();
-    $response = $urlfetch->urlfetch($url, $payload, $method, $headers, False, $deadline, False);
+    $response = $urlfetch->urlfetch($url, $body, $method, $headers, False, $deadline, False);
     $status = $response['status'];
     if (200 <= $status && $status < 400) {
         print_response($status, $response['headers'], $response['content'], isset($headers['Accept-Encoding']) && strpos($headers['Accept-Encoding'], 'gzip'));
