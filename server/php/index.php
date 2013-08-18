@@ -22,13 +22,13 @@ class URLFetch {
     function urlfetch_readheader($ch, $header) {
         $kv = array_map('trim', explode(':', $header, 2));
         if (isset($kv[1])) {
-            $key = strtolower($kv[0]);
+            $key = join('-', array_map('ucfirst', explode('-', $kv[0])));
             $value = $kv[1];
-            if ($key == 'set-cookie') {
-                if (!array_key_exists('set-cookie', $this->headers)) {
-                    $this->headers['set-cookie'] = $value;
+            if ($key == 'Set-Cookie') {
+                if (!array_key_exists('Set-Cookie', $this->headers)) {
+                    $this->headers['Set-Cookie'] = $value;
                 } else {
-                    $this->headers['set-cookie'] .= "\r\nSet-Cookie: " . $value;
+                    $this->headers['Set-Cookie'] .= "\r\nSet-Cookie: " . $value;
                 }
             } else {
                 $this->headers[$key] = $kv[1];
@@ -54,9 +54,9 @@ class URLFetch {
         $this->body_size = 0;
 
         if ($payload) {
-            $headers['content-length'] = strval(strlen($payload));
+            $headers['Content-Length'] = strval(strlen($payload));
         }
-        $headers['connection'] = 'close';
+        $headers['Connection'] = 'close';
 
         $curl_opt = array();
 
@@ -115,7 +115,7 @@ class URLFetch {
         $ch = curl_init($url);
         curl_setopt_array($ch, $curl_opt);
         $ret = curl_exec($ch);
-        $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $errno = curl_errno($ch);
         if ($errno)
         {
@@ -125,18 +125,18 @@ class URLFetch {
         }
         curl_close($ch);
 
-        $this->headers['connection'] = 'close';
-        $content_length = isset($this->headers["content-length"]) ? 1*$this->headers["content-length"] : 0;
+        $this->headers['Connection'] = 'close';
+        $content_length = isset($this->headers['Content-Length']) ? 1*$this->headers['Content-Length'] : 0;
 
-        if ($status_code < 200 && $errno == 23 && $content_length && $this->body_size < $content_length) {
-            $status_code = 206;
+        if ($status < 200 && $errno == 23 && $content_length && $this->body_size < $content_length) {
+            $status = 206;
             $range_end = $this->body_size - 1;
-            $this->headers["content-range"] = "bytes 0-$range_end/$content_length";
-            $this->headers["accept-ranges"] = "bytes";
-            $this->headers["content-length"] = $this->body_size;
+            $this->headers['Content-Range'] = "bytes 0-$range_end/$content_length";
+            $this->headers['Accept-Ranges'] = 'bytes';
+            $this->headers['Content-Length'] = $this->body_size;
         }
 
-        $response = array('status' => $status_code, 'headers' => $this->headers, 'content' => $this->body, 'error' => $error);
+        $response = array('status' => $status, 'headers' => $this->headers, 'content' => $this->body, 'error' => $error);
         return $response;
     }
 }

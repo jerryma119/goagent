@@ -393,15 +393,6 @@ def paas_application(environ, start_response):
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
 
-    headers['Connection'] = 'close'
-
-    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
-    if 'Content-Encoding' in headers:
-        if headers['Content-Encoding'] == 'deflate':
-            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
-            headers['Content-Length'] = str(len(payload))
-            del headers['Content-Encoding']
-
     if __password__ and __password__ != kwargs.get('password'):
         random_host = 'g%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
         conn = httplib.HTTPConnection(random_host, timeout=timeout)
@@ -416,6 +407,14 @@ def paas_application(environ, start_response):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
         yield message_html('403 Forbidden Host', 'Hosts Deny(%s)' % url, detail='url=%r' % url)
         raise StopIteration
+
+    headers['Connection'] = 'close'
+    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
+    if 'Content-Encoding' in headers:
+        if headers['Content-Encoding'] == 'deflate':
+            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
+            headers['Content-Length'] = str(len(payload))
+            del headers['Content-Encoding']
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
 
