@@ -1409,7 +1409,7 @@ class RangeFetch(object):
                     range_queue.put((start, end, None))
                     continue
                 if response.getheader('Location'):
-                    self.url = response.getheader('Location')
+                    self.url = urlparse.urljoin(self.url, response.getheader('Location'))
                     logging.info('RangeFetch Redirect(%r)', self.url)
                     response.close()
                     range_queue.put((start, end, None))
@@ -1599,6 +1599,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host = self.headers.get('Host', '')
         if self.path[0] == '/' and host:
             self.path = 'http://%s%s' % (host, self.path)
+        elif not host and '://' in self.path:
+            host = urlparse.urlparse(self.path).netloc
         self.parsed_url = urlparse.urlparse(self.path)
 
         if common.USERAGENT_ENABLE:
