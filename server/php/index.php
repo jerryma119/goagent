@@ -212,6 +212,7 @@ function decode_request($data) {
 }
 
 function print_response($status, $headers, $content, $support_gzip=true) {
+    $headers['Content-Length'] = strval(strlen($content));
     $strheaders = '';
     foreach ($headers as $key => $value) {
         $strheaders .= $key. ':' . $value . "\n";
