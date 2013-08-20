@@ -1594,12 +1594,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def finish(self):
         """make python2 BaseHTTPRequestHandler happy"""
         try:
-            if not self.wfile.closed:
-                self.wfile.flush()
-            self.wfile.close()
-        except Exception:
-            pass
-        self.rfile.close()
+            BaseHTTPServer.BaseHTTPRequestHandler.finish(self)
+        except socket.error:
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                raise
 
     def address_string(self):
         return '%s:%s' % self.client_address[:2]
