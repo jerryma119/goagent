@@ -2063,7 +2063,7 @@ class PAASProxyHandler(GAEProxyHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
 
-def autoproxy2pac(content, proxy='127.0.0.1:8087', default='DIRECT', indent=4):
+def autoproxy2pac(content, func_name='FindProxyForURLByAutoProxy', proxy='127.0.0.1:8087', default='DIRECT', indent=4):
     """Autoproxy to Pac, based on https://github.com/iamamac/autoproxy2pac"""
     jsCode = []
     # Filter options (those parts start with "$") is not supported
@@ -2110,7 +2110,8 @@ def autoproxy2pac(content, proxy='127.0.0.1:8087', default='DIRECT', indent=4):
                 jsCode.append(jsLine)
             else:
                 jsCode.insert(0, jsLine)
-    return '\n'.join(jsCode)
+    function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsCode), ' '*indent, default)
+    return function
 
 
 class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -2175,9 +2176,9 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content = base64.b64decode(content)
             logging.info('%r downloaded, try convert it with autoproxy2pac', common.PAC_GFWLIST)
             if 'gevent' in sys.modules and time.sleep is getattr(sys.modules['gevent'], 'sleep', None) and hasattr(gevent.get_hub(), 'threadpool'):
-                jsrule = gevent.get_hub().threadpool.apply(autoproxy2pac, (content, proxy, default))
+                jsrule = gevent.get_hub().threadpool.apply(autoproxy2pac, (content, 'FindProxyForURLByAutoProxy', proxy, default))
             else:
-                jsrule = autoproxy2pac(content, proxy, default)
+                jsrule = autoproxy2pac(content, 'FindProxyForURLByAutoProxy', proxy, default)
             logging.info('%r parsed, try write it to %r', common.PAC_GFWLIST, filename)
             content = ''
             if os.path.isfile(filename):
@@ -2190,10 +2191,8 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 lines = lines[:1+lines.index('// AUTO-GENERATED RULES, DO NOT MODIFY!')]
             except ValueError:
                 pass
-            function = '\r\nfunction FindProxyForURLByAutoProxy(url, host) {\r\n%s\r\n    return "%s";\r\n}' % (jsrule, default)
-            content = '\r\n'.join(lines) + function
             with open(filename, 'wb') as fp:
-                fp.write(content)
+                fp.write('\r\n'.join(lines) + '\r\n' + jsrule)
             logging.info('%r updated successfully', filename)
         except Exception as e:
             logging.exception('update_pacfile failed: %r', e)
