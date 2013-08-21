@@ -1595,7 +1595,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """make python2 BaseHTTPRequestHandler happy"""
         try:
             BaseHTTPServer.BaseHTTPRequestHandler.finish(self)
-        except socket.error:
+        except socket.error as e:
             if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
 
