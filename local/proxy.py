@@ -2067,52 +2067,31 @@ class PAASProxyHandler(GAEProxyHandler):
 def autoproxy2pac(content, func_name='FindProxyForURLByAutoProxy', proxy='127.0.0.1:8087', default='DIRECT', indent=4):
     """Autoproxy to Pac, based on https://github.com/iamamac/autoproxy2pac"""
     jsCode = []
-    # Filter options (those parts start with "$") is not supported
     for line in content.splitlines()[1:]:
-        # Ignore the first line ([AutoProxy x.x]), empty lines and comments
         if line and not line.startswith("!"):
             use_proxy = True
-            # Exceptions
             if line.startswith("@@"):
                 line = line[2:]
                 use_proxy = False
-            # Regular expressions
+            return_proxy = 'PROXY %s' % proxy if use_proxy else default
             if line.startswith("/") and line.endswith("/"):
-                jsRegexp = line[1:-1]
-            # Other cases
+                jsLine = 'if (/%s/i.test(url)) return "%s";' % (line[1:-1], return_proxy)
+            elif line.startswith('||'):
+                jsLine = 'if (dnsDomainIs(host, ".%s")) return "%s";' % (line[2:], return_proxy)
+            elif line.startswith('|'):
+                jsLine = 'if (url.indexOf("%s") == 0) return "%s";' % (line[1:], return_proxy)
+            elif '*' in line:
+                jsLine = 'if (shExpMatch(url, "*%s*")) return "%s";' % (line, return_proxy)
             else:
-                # Remove multiple wildcards
-                jsRegexp = re.sub(r"\*+", r"*", line)
-                # Remove anchors following separator placeholder
-                jsRegexp = re.sub(r"\^\|$", r"^", jsRegexp, 1)
-                # Escape special symbols
-                jsRegexp = re.sub(r"(\W)", r"\\\1", jsRegexp)
-                # Replace wildcards by .*
-                jsRegexp = re.sub(r"\\\*", r".*", jsRegexp)
-                # Process separator placeholders
-                jsRegexp = re.sub(r"\\\^", r"(?:[^\w\-.%\u0080-\uFFFF]|$)", jsRegexp)
-                # Process extended anchor at expression start
-                #jsRegexp = re.sub(r"^\\\|\\\|", r"^[\w\-]+:\/+(?!\/)(?:[^\/]+\.)?", jsRegexp, 1)
-                jsRegexp = re.sub(r"^\\\|\\\|", r"^https?:\/\/(?:\w+\.)?", jsRegexp, 1)
-                # Process anchor at expression start
-                jsRegexp = re.sub(r"^\\\|", "^", jsRegexp, 1)
-                # Process anchor at expression end
-                jsRegexp = re.sub(r"\\\|$", "$", jsRegexp, 1)
-                # Remove leading wildcards
-                jsRegexp = re.sub(r"^(\.\*)", "", jsRegexp, 1)
-                # Remove trailing wildcards
-                jsRegexp = re.sub(r"(\.\*)$", "", jsRegexp, 1)
-                if jsRegexp == "":
-                    jsRegexp = ".*"
-                    logging.warning("There is one rule that matches all URL, which is highly *NOT* recommended: %s", line)
-            jsLine = 'if(/%s/i.test(url)) return "%s";' % (jsRegexp, 'PROXY %s' % proxy if use_proxy else default)
-            jsLine = ' '*indent + jsLine
+                jsLine = 'if (url.indexOf("%s") >= 0) return "%s";' % (line, return_proxy)
+            jsLine = ' ' * indent + jsLine
             if use_proxy:
                 jsCode.append(jsLine)
             else:
                 jsCode.insert(0, jsLine)
     function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsCode), ' '*indent, default)
     return function
+
 
 def urlfiter2pac(content, func_name='FindProxyForURLByUrlfiter', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
     """urlfiter.ini to Pac, based on https://github.com/iamamac/autoproxy2pac"""
