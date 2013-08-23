@@ -66,7 +66,7 @@ except ImportError:
     OpenSSL = None
 
 
-NetWorkIOError = (socket.error, ssl.SSLError, OSError, EOFError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError, EOFError)
+NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
 
 class Logging(type(sys)):
@@ -1103,7 +1103,7 @@ class HTTPUtil(object):
         request_data += '\r\n'
 
         if isinstance(payload, bytes):
-            sock.sendall(request_data + payload)
+            sock.sendall(request_data.encode() + payload)
         elif hasattr(payload, 'read'):
             sock.sendall(request_data)
             while 1:
@@ -1702,7 +1702,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """make python2 BaseHTTPRequestHandler happy"""
         try:
             BaseHTTPServer.BaseHTTPRequestHandler.finish(self)
-        except socket.error as e:
+        except NetWorkIOError as e:
             if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
 
