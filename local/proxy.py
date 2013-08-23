@@ -49,6 +49,7 @@ import base64
 import string
 import hashlib
 import threading
+import thread
 import socket
 import ssl
 import select
@@ -681,7 +682,7 @@ def spawn_later(seconds, target, *args, **kwargs):
     def wrap(*args, **kwargs):
         __import__('time').sleep(seconds)
         return target(*args, **kwargs)
-    return __import__('threading')._start_new_thread(wrap, args, kwargs)
+    return __import__('thread').start_new_thread(wrap, args, kwargs)
 
 
 class HTTPUtil(object):
@@ -818,11 +819,11 @@ class HTTPUtil(object):
             addrs = addresses[:window] + random.sample(addresses, window)
             queobj = Queue.Queue()
             for addr in addrs:
-                threading._start_new_thread(_create_connection, (addr, timeout, queobj))
+                thread.start_new_thread(_create_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 result = queobj.get()
                 if not isinstance(result, (socket.error, OSError)):
-                    threading._start_new_thread(_close_connection, (len(addrs)-i-1, queobj))
+                    thread.start_new_thread(_close_connection, (len(addrs)-i-1, queobj))
                     return result
                 else:
                     if i == 0:
@@ -946,11 +947,11 @@ class HTTPUtil(object):
             addrs = addresses[:window] + random.sample(addresses, window)
             queobj = Queue.Queue()
             for addr in addrs:
-                threading._start_new_thread(create_connection, (addr, timeout, queobj))
+                thread.start_new_thread(create_connection, (addr, timeout, queobj))
             for i in range(len(addrs)):
                 result = queobj.get()
                 if not isinstance(result, Exception):
-                    threading._start_new_thread(_close_ssl_connection, (len(addrs)-i-1, queobj))
+                    thread.start_new_thread(_close_ssl_connection, (len(addrs)-i-1, queobj))
                     return result
                 else:
                     if i == 0:
@@ -1078,7 +1079,7 @@ class HTTPUtil(object):
                     local.close()
                 if remote:
                     remote.close()
-        threading._start_new_thread(io_copy, (remote.dup(), local.dup()))
+        thread.start_new_thread(io_copy, (remote.dup(), local.dup()))
         io_copy(local, remote)
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None, return_sock=None):
@@ -1448,7 +1449,7 @@ class RangeFetch(object):
         range_queue.put((start, end, self.response))
         for begin in range(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
-        any(threading._start_new_thread(self.__fetchlet, (range_queue, data_queue)) for _ in range(self.threads))
+        any(thread.start_new_thread(self.__fetchlet, (range_queue, data_queue)) for _ in range(self.threads))
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 90
         expect_begin = start
@@ -2180,14 +2181,6 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_GET(self):
         filename = os.path.normpath('./' + urlparse.urlparse(self.path).path)
-        if self.path.endswith('.pac?flush'):
-            threading._start_new_thread(PacUtil.update_pacfile, args=(self.pacfile,))
-        elif time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
-            os.utime(filename, (time.time(), time.time()))
-            if time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
-                threading._start_new_thread(PacUtil.update_pacfile, args=(self.pacfile,))
-            else:
-                logging.info('%r is updating by other thread, ignore', filename)
         if self.path.startswith(('http://', 'https://')):
             data = b'HTTP/1.1 200\r\nCache-Control: max-age=86400\r\nExpires:Oct, 01 Aug 2100 00:00:00 GMT\r\nConnection: close\r\n'
             if self.path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
@@ -2198,9 +2191,17 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.info('%s "%s %s HTTP/1.1" 200 -', self.address_string(), self.command, self.path)
         elif os.path.isfile(filename):
             if filename.endswith('.pac'):
-                mimetype = 'application/x-ns-proxy-autoconfig'
+                mimetype = 'text/plain'
             else:
                 mimetype = 'application/octet-stream'
+            if self.path.endswith('.pac?flush'):
+                thread.start_new_thread(PacUtil.update_pacfile, args=(self.pacfile,))
+            elif time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
+                os.utime(filename, (time.time(), time.time()))
+                if time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
+                    thread.start_new_thread(PacUtil.update_pacfile, args=(self.pacfile,))
+                else:
+                    logging.info('%r is updating by other thread, ignore', filename)
             self.send_file(filename, mimetype)
         else:
             self.wfile.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
@@ -2322,16 +2323,16 @@ def main():
     if common.PAAS_ENABLE:
         host, port = common.PAAS_LISTEN.split(':')
         server = LocalProxyServer((host, int(port)), PAASProxyHandler)
-        threading._start_new_thread(server.serve_forever, tuple())
+        thread.start_new_thread(server.serve_forever, tuple())
 
     if common.LIGHT_ENABLE:
         host, port = common.LIGHT_LISTEN.split(':')
         server = LocalProxyServer((host, int(port)), LightProxyHandler())
-        threading._start_new_thread(server.serve_forever, tuple())
+        thread.start_new_thread(server.serve_forever, tuple())
 
     if common.PAC_ENABLE:
         server = LocalProxyServer((common.PAC_IP, common.PAC_PORT), PACServerHandler)
-        threading._start_new_thread(server.serve_forever, tuple())
+        thread.start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
         host, port = common.DNS_LISTEN.split(':')
@@ -2339,7 +2340,7 @@ def main():
         server.remote_addresses = common.DNS_REMOTE.split('|')
         server.timeout = common.DNS_TIMEOUT
         server.max_cache_size = common.DNS_CACHESIZE
-        threading._start_new_thread(server.serve_forever, tuple())
+        thread.start_new_thread(server.serve_forever, tuple())
 
     server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
     server.serve_forever()
