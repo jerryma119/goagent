@@ -1574,6 +1574,13 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
         except Exception:
             pass
 
+    def finish_request(self, request, client_address):
+        try:
+            self.RequestHandlerClass(request, client_address, self)
+        except NetWorkIOError as e:
+            if e[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                raise
+
     def handle_error(self, *args):
         """make ThreadingTCPServer happy"""
         etype, value, tb = sys.exc_info()
