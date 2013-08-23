@@ -2,10 +2,6 @@
 function FindProxyForURL(url, host) {
     var blackhole = 'PROXY 127.0.0.1:8086';
     var goagent = 'PROXY 127.0.0.1:8087';
-    if (FindProxyForURLByUrlfiter(url, host) != 'DIRECT')
-    {
-        return blackhole;
-    }
     if (dnsDomainIs(host, '.google.com') ||
         dnsDomainIs(host, '.google-analytics.com') ||
         dnsDomainIs(host, '.googleapis.com') ||
@@ -33,7 +29,12 @@ function FindProxyForURL(url, host) {
     {
         return goagent;
     }
-    return FindProxyForURLByAutoProxy(url, host);
+    if (FindProxyForURLByUrlfiter(url, host) != 'DIRECT')
+    {
+        return blackhole;
+    } else {
+        return FindProxyForURLByAutoProxy(url, host);
+    }
 }
 
 // AUTO-GENERATED RULES, DO NOT MODIFY!
