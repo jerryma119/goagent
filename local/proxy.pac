@@ -7,25 +7,16 @@ function FindProxyForURL(url, host) {
         dnsDomainIs(host, '.googleapis.com') ||
         dnsDomainIs(host, '.googlecode.com') ||
         dnsDomainIs(host, '.googleusercontent.com') ||
-        dnsDomainIs(host, '.gstatic.com') ||
         dnsDomainIs(host, '.wikipedia.org') ||
-        dnsDomainIs(host, '.twimg.com') ||
-        dnsDomainIs(host, '.tweetdeck.com') ||
-        dnsDomainIs(host, '.ytimg.com') ||
-        dnsDomainIs(host, '.fbcdn.net') ||
         dnsDomainIs(host, '.sf.net') ||
         dnsDomainIs(host, '.sourceforge.net') ||
         shExpMatch(host, '*.google.com.*') ||
-        host == 't.co' ||
-        host == 'bit.ly' ||
-        host == 'goo.gl' ||
-        host == 'fb.me' ||
+        host == 'fw.cm' ||
         host == 'wp.me' ||
         host == 'j.mp' ||
         host == 'ow.ly' ||
         host == 'po.st' ||
-        host == 'fw.cm' ||
-        host == 'bbc.in' )
+        host == 'goo.gl')
     {
         return goagent;
     }
