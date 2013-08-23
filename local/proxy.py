@@ -470,15 +470,15 @@ class PacUtil(object):
         except ValueError:
             pass
         try:
-            logging.info('try download %r to update_pacfile(%r)', common.PAC_URLFITER, filename)
-            urlfiter_content = opener.open(common.PAC_URLFITER).read()
-            logging.info('%r downloaded, try convert it with urlfiter2pac', common.PAC_URLFITER)
+            logging.info('try download %r to update_pacfile(%r)', common.PAC_URLFILTER, filename)
+            urlfiter_content = opener.open(common.PAC_URLFILTER).read()
+            logging.info('%r downloaded, try convert it with urlfiter2pac', common.PAC_URLFILTER)
             if 'gevent' in sys.modules and time.sleep is getattr(sys.modules['gevent'], 'sleep', None) and hasattr(gevent.get_hub(), 'threadpool'):
                 jsrule = gevent.get_hub().threadpool.apply(PacUtil.urlfiter2pac, (urlfiter_content, 'FindProxyForURLByUrlfiter', pacproxy, default))
             else:
                 jsrule = PacUtil.urlfiter2pac(urlfiter_content, 'FindProxyForURLByUrlfiter', pacproxy, default)
             content += '\r\n' + jsrule + '\r\n'
-            logging.info('%r downloaded and parsed', common.PAC_URLFITER)
+            logging.info('%r downloaded and parsed', common.PAC_URLFILTER)
         except Exception as e:
             logging.exception('update_pacfile failed: %r', e)
         try:
@@ -511,7 +511,7 @@ class PacUtil(object):
                 if line.startswith('/') and line.endswith('/'):
                     jsLine = 'if (/%s/i.test(url)) return "%s";' % (line[1:-1], return_proxy)
                 elif line.startswith('||'):
-                    jsLine = 'if (dnsDomainIs(host, ".%s")) return "%s";' % (line[2:], return_proxy)
+                    jsLine = 'if (host == "%s" || dnsDomainIs(host, ".%s")) return "%s";' % (line[2:], line[2:], return_proxy)
                 elif line.startswith('|'):
                     jsLine = 'if (url.indexOf("%s") == 0) return "%s";' % (line[1:], return_proxy)
                 elif '*' in line:
@@ -1210,7 +1210,7 @@ class Common(object):
         self.PAC_PORT = self.CONFIG.getint('pac', 'port')
         self.PAC_FILE = self.CONFIG.get('pac', 'file').lstrip('/')
         self.PAC_GFWLIST = self.CONFIG.get('pac', 'gfwlist')
-        self.PAC_URLFITER = self.CONFIG.get('pac', 'urlfiter')
+        self.PAC_URLFILTER = self.CONFIG.get('pac', 'urlfilter')
         self.PAC_EXPIRED = self.CONFIG.getint('pac', 'expired')
 
         self.PAAS_ENABLE = self.CONFIG.getint('paas', 'enable')
