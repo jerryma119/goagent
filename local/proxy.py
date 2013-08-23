@@ -2074,14 +2074,16 @@ def autoproxy2pac(content, func_name='FindProxyForURLByAutoProxy', proxy='127.0.
                 line = line[2:]
                 use_proxy = False
             return_proxy = 'PROXY %s' % proxy if use_proxy else default
-            if line.startswith("/") and line.endswith("/"):
+            if line.startswith('/') and line.endswith('/'):
                 jsLine = 'if (/%s/i.test(url)) return "%s";' % (line[1:-1], return_proxy)
             elif line.startswith('||'):
                 jsLine = 'if (dnsDomainIs(host, ".%s")) return "%s";' % (line[2:], return_proxy)
             elif line.startswith('|'):
                 jsLine = 'if (url.indexOf("%s") == 0) return "%s";' % (line[1:], return_proxy)
             elif '*' in line:
-                jsLine = 'if (shExpMatch(url, "*%s*")) return "%s";' % (line, return_proxy)
+                jsLine = 'if (shExpMatch(url, "*%s*")) return "%s";' % (line.strip('*'), return_proxy)
+            elif '/' not in line:
+                jsLine = 'if (host.indexOf("%s") >= 0) return "%s";' % (line, return_proxy)
             else:
                 jsLine = 'if (url.indexOf("%s") >= 0) return "%s";' % (line, return_proxy)
             jsLine = ' ' * indent + jsLine
@@ -2102,7 +2104,9 @@ def urlfiter2pac(content, func_name='FindProxyForURLByUrlfiter', proxy='127.0.0.
             if line.startswith("@@"):
                 line = line[2:]
                 use_proxy = False
-            jsLine = '%sif(shExpMatch(url, "%s")) return "%s";' % (' '*indent, line, 'PROXY %s' % proxy if use_proxy else default)
+            return_proxy = 'PROXY %s' % proxy if use_proxy else default
+            jsLine = 'if(shExpMatch(url, "%s")) return "%s";' % (line, return_proxy)
+            jsLine = ' ' * indent + jsLine
             if use_proxy:
                 jsCode.append(jsLine)
             else:
