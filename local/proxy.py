@@ -471,12 +471,12 @@ class PacUtil(object):
             pass
         try:
             logging.info('try download %r to update_pacfile(%r)', common.PAC_URLFILTER, filename)
-            urlfiter_content = opener.open(common.PAC_URLFILTER).read()
-            logging.info('%r downloaded, try convert it with urlfiter2pac', common.PAC_URLFILTER)
+            urlfilter_content = opener.open(common.PAC_URLFILTER).read()
+            logging.info('%r downloaded, try convert it with urlfilter2pac', common.PAC_URLFILTER)
             if 'gevent' in sys.modules and time.sleep is getattr(sys.modules['gevent'], 'sleep', None) and hasattr(gevent.get_hub(), 'threadpool'):
-                jsrule = gevent.get_hub().threadpool.apply(PacUtil.urlfiter2pac, (urlfiter_content, 'FindProxyForURLByUrlfiter', pacproxy, default))
+                jsrule = gevent.get_hub().threadpool.apply(PacUtil.urlfilter2pac, (urlfilter_content, 'FindProxyForURLByUrlfiter', pacproxy, default))
             else:
-                jsrule = PacUtil.urlfiter2pac(urlfiter_content, 'FindProxyForURLByUrlfiter', pacproxy, default)
+                jsrule = PacUtil.urlfilter2pac(urlfilter_content, 'FindProxyForURLByUrlfiter', pacproxy, default)
             content += '\r\n' + jsrule + '\r\n'
             logging.info('%r downloaded and parsed', common.PAC_URLFILTER)
         except Exception as e:
@@ -529,8 +529,8 @@ class PacUtil(object):
         return function
 
     @staticmethod
-    def urlfiter2pac(content, func_name='FindProxyForURLByUrlfiter', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
-        """urlfiter.ini to Pac, based on https://github.com/iamamac/autoproxy2pac"""
+    def urlfilter2pac(content, func_name='FindProxyForURLByUrlfiter', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
+        """urlfilter.ini to Pac, based on https://github.com/iamamac/autoproxy2pac"""
         jsCode = []
         for line in content[content.index('[exclude]'):].splitlines()[1:]:
             if line and not line.startswith(';'):
