@@ -500,7 +500,7 @@ class PacUtil(object):
     @staticmethod
     def autoproxy2pac(content, func_name='FindProxyForURLByAutoProxy', proxy='127.0.0.1:8087', default='DIRECT', indent=4):
         """Autoproxy to Pac, based on https://github.com/iamamac/autoproxy2pac"""
-        jsCode = []
+        jsLines = []
         for line in content.splitlines()[1:]:
             if line and not line.startswith("!"):
                 use_proxy = True
@@ -511,7 +511,10 @@ class PacUtil(object):
                 if line.startswith('/') and line.endswith('/'):
                     jsLine = 'if (/%s/i.test(url)) return "%s";' % (line[1:-1], return_proxy)
                 elif line.startswith('||'):
-                    jsLine = 'if (host == "%s" || dnsDomainIs(host, ".%s")) return "%s";' % (line[2:], line[2:], return_proxy)
+                    domain = line[2:]
+                    if 'host.indexOf(".%s") >= 0' % domain in jsLines[-1] or 'host.indexOf("%s") >= 0' % domain in jsLines[-1]:
+                        jsLines.pop()
+                    jsLine = 'if (host == "%s" || dnsDomainIs(host, ".%s")) return "%s";' % (domain, domain, return_proxy)
                 elif line.startswith('|'):
                     jsLine = 'if (url.indexOf("%s") == 0) return "%s";' % (line[1:], return_proxy)
                 elif '*' in line:
@@ -522,10 +525,10 @@ class PacUtil(object):
                     jsLine = 'if (url.indexOf("%s") >= 0) return "%s";' % (line, return_proxy)
                 jsLine = ' ' * indent + jsLine
                 if use_proxy:
-                    jsCode.append(jsLine)
+                    jsLines.append(jsLine)
                 else:
-                    jsCode.insert(0, jsLine)
-        function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsCode), ' '*indent, default)
+                    jsLines.insert(0, jsLine)
+        function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
         return function
 
     @staticmethod
