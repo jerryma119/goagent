@@ -1371,6 +1371,13 @@ def message_html(title, banner, detail=''):
     return string.Template(MESSAGE_TEMPLATE).substitute(title=title, banner=banner, detail=detail)
 
 
+def response_replace_header(response, name, value):
+    if sys.hexversion < 0x3000000:
+        response.msg[name] = value
+    else:
+        response.header.replace_header(name, value)
+
+
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
@@ -1890,7 +1897,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     continue
                 if response.app_status != 200 and retry == common.FETCHMAX_LOCAL-1:
                     logging.info('%s "GAE %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
-                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))))
+                    self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))))
                     self.wfile.write(response.read())
                     response.close()
                     return
@@ -1902,9 +1909,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         rangefetch = RangeFetch(self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                         return rangefetch.fetch()
                     if response.getheader('Set-Cookie'):
-                        response.msg['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
+                        response_replace_header(response, 'Set-Cookie', self.normcookie(response.getheader('Set-Cookie')))
                     if response.getheader('Content-Disposition') and '"' not in response.getheader('Content-Disposition'):
-                        response.msg['Content-Disposition'] = self.normattachment(response.getheader('Content-Disposition'))
+                        response_replace_header(response, 'Content-Disposition', self.normattachment(response.getheader('Content-Disposition')))
                     headers_data = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))
                     logging.debug('headers_data=%s', headers_data)
                     #self.wfile.write(headers_data.encode() if bytes is not str else headers_data)
@@ -2177,7 +2184,7 @@ class PAASProxyHandler(GAEProxyHandler):
                 http_util.crlf = 0
 
             if response.getheader('Set-Cookie'):
-                response.msg['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
+                response_replace_header(response, 'Set-Cookie', self.normcookie(response.getheader('Set-Cookie')))
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))))
 
             while 1:
