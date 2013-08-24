@@ -66,6 +66,7 @@ except ImportError:
     OpenSSL = None
 
 
+HAS_PYPY = hasattr(sys, 'pypy_version_info')
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
 
@@ -1729,6 +1730,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return '%s:%s' % self.client_address[:2]
 
     def do_METHOD(self):
+        if HAS_PYPY:
+            self.path = re.sub(r'(://[^/]+):\d+/', '\\1/', self.path)
         host = self.headers.get('Host', '')
         if self.path[0] == '/' and host:
             self.path = 'http://%s%s' % (host, self.path)
@@ -1780,7 +1783,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
             if response.status in (400, 405):
                 common.GAE_CRLF = 0
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k != 'Transfer-Encoding'))))
+            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))))
             while 1:
                 data = response.read(8192)
                 if not data:
