@@ -535,7 +535,7 @@ class PacUtil(object):
     @staticmethod
     def urlfilter2pac(content, func_name='FindProxyForURLByUrlfiter', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
         """urlfilter.ini to Pac, based on https://github.com/iamamac/autoproxy2pac"""
-        jsCode = []
+        jsLines = []
         for line in content[content.index('[exclude]'):].splitlines()[1:]:
             if line and not line.startswith(';'):
                 use_proxy = True
@@ -543,13 +543,16 @@ class PacUtil(object):
                     line = line[2:]
                     use_proxy = False
                 return_proxy = 'PROXY %s' % proxy if use_proxy else default
-                jsLine = 'if(shExpMatch(url, "%s")) return "%s";' % (line, return_proxy)
+                if '*' in line:
+                    jsLine = 'if (shExpMatch(url, "%s")) return "%s";' % (line, return_proxy)
+                else:
+                    jsLine = 'if (url == "%s") return "%s";' % (line, return_proxy)
                 jsLine = ' ' * indent + jsLine
                 if use_proxy:
-                    jsCode.append(jsLine)
+                    jsLines.append(jsLine)
                 else:
-                    jsCode.insert(0, jsLine)
-        function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsCode), ' '*indent, default)
+                    jsLines.insert(0, jsLine)
+        function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
         return function
 
 
