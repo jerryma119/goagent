@@ -471,9 +471,13 @@ class PacUtil(object):
         except ValueError:
             pass
         try:
-            logging.info('try download %r to update_pacfile(%r)', common.PAC_URLFILTER, filename)
-            urlfilter_content = opener.open(common.PAC_URLFILTER).read()
-            logging.info('%r downloaded, try convert it with urlfilter2pac', common.PAC_URLFILTER)
+            urlfilter_urls = common.PAC_URLFILTER.split('|')
+            urlfilter_content = '\r\n\r\n'.join(['Opera Preferences version 2.1', '[prefs]\r\nprioritize excludelist=1', '[include]\r\n*', '[exclude]'])
+            for urlfilter_url in urlfilter_urls:
+                logging.info('try download %r to update_pacfile(%r)', urlfilter_url, filename)
+                sub_content = opener.open(urlfilter_url).read()
+                urlfilter_content += sub_content[sub_content.index('[exclude]')+9:] + '\r\n'
+            logging.info('%r downloaded, try convert it with urlfilter2pac', urlfilter_urls)
             if 'gevent' in sys.modules and time.sleep is getattr(sys.modules['gevent'], 'sleep', None) and hasattr(gevent.get_hub(), 'threadpool'):
                 jsrule = gevent.get_hub().threadpool.apply(PacUtil.urlfilter2pac, (urlfilter_content, 'FindProxyForURLByUrlfiter', blackhole, default))
             else:
