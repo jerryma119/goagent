@@ -2228,9 +2228,9 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 mimetype = 'application/octet-stream'
             if self.path.endswith('.pac?flush'):
                 thread.start_new_thread(PacUtil.update_pacfile, args=(self.pacfile,))
-            elif time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
+            elif time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED or os.path.getsize(self.pacfile) < 4 * 1024:
                 os.utime(filename, (time.time(), time.time()))
-                if time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
+                if time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED or os.path.getsize(self.pacfile) < 4 * 1024:
                     thread.start_new_thread(PacUtil.update_pacfile, args=(self.pacfile,))
                 else:
                     logging.info('%r is updating by other thread, ignore', filename)
@@ -2329,7 +2329,7 @@ def pre_start():
     if common.PAC_ENABLE:
         pac_ip = ProxyUtil.get_listen_ip() if common.PAC_IP in ('', '::', '0.0.0.0') else common.PAC_IP
         url = 'http://%s:%d/%s' % (pac_ip, common.PAC_PORT, common.PAC_FILE)
-        spawn_later(600, lambda x: urllib2.build_opener(urllib2.ProxyHandler({})).open(x), url)
+        spawn_later(5, lambda x: urllib2.build_opener(urllib2.ProxyHandler({})).open(x), url)
     if common.PAAS_ENABLE:
         if common.PAAS_FETCHSERVER.startswith('http://') and not common.PAAS_PASSWORD:
             logging.warning('Dont forget set your PAAS fetchserver password or use https')
