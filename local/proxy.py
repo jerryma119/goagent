@@ -521,10 +521,10 @@ class PacUtil(object):
                 if line.startswith('/') and line.endswith('/'):
                     jsLine = 'if (/%s/i.test(url)) return "%s";' % (line[1:-1], return_proxy)
                 elif line.startswith('||'):
-                    domain = line[2:]
+                    domain = line[2:].lstrip('.')
                     if 'host.indexOf(".%s") >= 0' % domain in jsLines[-1] or 'host.indexOf("%s") >= 0' % domain in jsLines[-1]:
                         jsLines.pop()
-                    jsLine = 'if (dnsDomainIs(host, "%s")) return "%s";' % (domain, return_proxy)
+                    jsLine = 'if (dnsDomainIs(host, ".%s") || host == "%s") return "%s";' % (domain, domain, return_proxy)
                 elif line.startswith('|'):
                     jsLine = 'if (url.indexOf("%s") == 0) return "%s";' % (line[1:], return_proxy)
                 elif '*' in line:
