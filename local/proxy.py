@@ -1676,7 +1676,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 iplist = []
                 for host in hosts:
                     try:
-                        ips = socket.gethostbyname_ex(host)[-1]
+                        if common.DNS_ENABLE:
+                            ips = DNSUtil.remote_resolve('114.114.114.114', host)
+                        else:
+                            ips = socket.gethostbyname_ex(host)[-1]
                         if len(ips) > 1:
                             iplist += ips
                     except (socket.error, OSError) as e:
