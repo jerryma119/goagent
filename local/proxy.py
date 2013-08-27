@@ -29,6 +29,9 @@ sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 try:
     import gevent
     import gevent.socket
+    import gevent.server
+    import gevent.queue
+    import gevent.event
     import gevent.monkey
     gevent.monkey.patch_all()
 except (ImportError, SystemError):
@@ -64,6 +67,10 @@ try:
     import OpenSSL
 except ImportError:
     OpenSSL = None
+try:
+    import dnslib
+except ImportError:
+    dnslib = None
 
 
 HAS_PYPY = hasattr(sys, 'pypy_version_info')
@@ -2249,46 +2256,93 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
 
-class DNSServer(SocketServer.ThreadingUDPServer):
-    """DNS Proxy over TCP to avoid DNS poisoning"""
-    allow_reuse_address = True
+class DNSServer(getattr(gevent.server, 'DatagramServer', object)):
+    """DNS TCP Proxy based on gevent/dnslib"""
 
-    dnsservers = ['8.8.8.8', '8.8.4.4']
-    max_wait = 1
-    max_retry = 2
-    max_cache_size = 2000
-    timeout = 6
+    blacklist = set(['1.1.1.1',
+                     '255.255.255.255',
+                     # for google+
+                     '74.125.127.102',
+                     '74.125.155.102',
+                     '74.125.39.102',
+                     '74.125.39.113',
+                     '209.85.229.138',
+                     # other ip list
+                     '4.36.66.178',
+                     '8.7.198.45',
+                     '37.61.54.158',
+                     '46.82.174.68',
+                     '59.24.3.173',
+                     '64.33.88.161',
+                     '64.33.99.47',
+                     '64.66.163.251',
+                     '65.104.202.252',
+                     '65.160.219.113',
+                     '66.45.252.237',
+                     '72.14.205.104',
+                     '72.14.205.99',
+                     '78.16.49.15',
+                     '93.46.8.89',
+                     '128.121.126.139',
+                     '159.106.121.75',
+                     '169.132.13.103',
+                     '192.67.198.6',
+                     '202.106.1.2',
+                     '202.181.7.85',
+                     '203.161.230.171',
+                     '203.98.7.65',
+                     '207.12.88.98',
+                     '208.56.31.43',
+                     '209.145.54.50',
+                     '209.220.30.174',
+                     '209.36.73.33',
+                     '209.85.229.138',
+                     '211.94.66.147',
+                     '213.169.251.35',
+                     '216.221.188.182',
+                     '216.234.179.13',
+                     '243.185.187.3',
+                     '243.185.187.39'])
+    dnsservers = ['8.8.8.8', '8.8.4.4', '114.114.114.114', '114.114.115.115']
+    timeout = 2
 
-    def __init__(self, server_address, *args, **kwargs):
-        SocketServer.ThreadingUDPServer.__init__(self, server_address, self.handle, *args, **kwargs)
-        self._writelock = threading.Semaphore()
-        self.cache = {}
+    def __init__(self, *args, **kwargs):
+        super(DNSServer, self).__init__(*args, **kwargs)
+        self.dns_cache = {}
 
-    def handle(self, request, address, server):
-        data, server_socket = request
-        reqid = data[:2]
-        domain = data[12:data.find(b'\x00', 12)].decode()
-        if len(self.cache) > self.max_cache_size:
-            self.cache.clear()
-        if domain not in self.cache:
-            qname = re.sub(r'[\x01-\x29]', '.', domain[1:])
-            try:
-                dnsserver = random.choice(self.dnsservers)
-                logging.info('DNSServer resolve domain=%r by dnsserver=%r to iplist', qname, dnsserver)
-                data = DNSUtil._remote_resolve(dnsserver, qname, self.timeout)
-                if not data:
-                    logging.warning('DNSServer resolve domain=%r return data=%s', qname, data)
+    def _dns_resolver(self, qname, qtype, qdata, dnsserver, result_queue):
+        sock = gevent.socket.socket(socket.AF_INET6 if qtype == dnslib.QTYPE.AAAA else socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(qdata, (dnsserver, 53))
+        sock.sendto(qdata, (dnsserver, 53))
+        for _ in xrange(2):
+            data, _ = sock.recvfrom(512)
+            reply = dnslib.DNSRecord.parse(data)
+            if any(str(x.rdata) in self.blacklist for x in reply.rr):
+                logging.warning('query %r return bad rdata=%r', qname, [str(x.rdata) for x in reply.rr])
+            else:
+                result_queue.put(data)
+                sock.close()
+                break
+
+    def handle(self, data, address):
+        logging.debug('receive from %r data=%r', address, data)
+        request = dnslib.DNSRecord.parse(data)
+        qname = str(request.q.qname)
+        qtype = request.q.qtype
+        reply_data = self.dns_cache.get((qname, qtype))
+        if not reply_data:
+            result_queue = gevent.queue.Queue()
+            for dnsserver in self.dnsservers:
+                gevent.spawn(self._dns_resolver, qname, qtype, data, dnsserver, result_queue)
+            while True:
+                try:
+                    data = result_queue.get(timeout=self.timeout)
+                    reply_data = self.dns_cache[(qname, qtype)] = data
+                    break
+                except gevent.queue.Empty:
+                    logging.warning('query %r timed out', qname)
                     return
-                iplist = DNSUtil._reply_to_iplist(data)
-                self.cache[domain] = data
-                logging.info('DNSServer resolve domain=%r return iplist=%s', qname, iplist)
-            except (socket.error, OSError) as e:
-                logging.error('DNSServer resolve domain=%r to iplist failed:%s', qname, e)
-        self._writelock.acquire()
-        try:
-            server_socket.sendto(reqid + self.cache[domain], address)
-        finally:
-            self._writelock.release()
+        return self.sendto(data[:2] + reply_data[2:], address)
 
 
 def pre_start():
@@ -2330,15 +2384,15 @@ def pre_start():
         pac_ip = ProxyUtil.get_listen_ip() if common.PAC_IP in ('', '::', '0.0.0.0') else common.PAC_IP
         url = 'http://%s:%d/%s' % (pac_ip, common.PAC_PORT, common.PAC_FILE)
         spawn_later(5, lambda x: urllib2.build_opener(urllib2.ProxyHandler({})).open(x), url)
-    if common.PAAS_ENABLE:
-        if common.PAAS_FETCHSERVER.startswith('http://') and not common.PAAS_PASSWORD:
-            logging.warning('Dont forget set your PAAS fetchserver password or use https')
+    if common.DNS_ENABLE:
+        if dnslib is None or gevent.version_info[0] < 1:
+            logging.critical('GoAgent DNSServer requires dnslib and gevent 1.0')
+            sys.exit(-1)
     if not OpenSSL:
         logging.warning('python-openssl not found, please install it!')
-    if 'uvent.loop' in sys.modules and gevent.__version__ != '1.0fake':
-        if isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
-            logging.info('Uvent enabled, patch forward_socket')
-            http_util.forward_socket = http_util.green_forward_socket
+    if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
+        logging.info('Uvent enabled, patch forward_socket')
+        http_util.forward_socket = http_util.green_forward_socket
 
 
 def main():
