@@ -2306,8 +2306,9 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', object)):
                      '216.234.179.13',
                      '243.185.187.3',
                      '243.185.187.39'])
-    dnsservers = ['8.8.8.8', '8.8.4.4', '114.114.114.114', '114.114.115.115']
+    dnsservers = ['8.8.8.8', '114.114.114.114']
     timeout = 2
+    max_cache_size = 2000
 
     def __init__(self, *args, **kwargs):
         super(DNSServer, self).__init__(*args, **kwargs)
@@ -2332,6 +2333,8 @@ class DNSServer(getattr(gevent.server, 'DatagramServer', object)):
         request = dnslib.DNSRecord.parse(data)
         qname = str(request.q.qname)
         qtype = request.q.qtype
+        if len(self.dns_cache) > self.max_cache_size:
+            self.dns_cache.clear()
         reply_data = self.dns_cache.get((qname, qtype))
         if not reply_data:
             result_queue = gevent.queue.Queue()
@@ -2426,7 +2429,7 @@ def main():
     if common.DNS_ENABLE:
         host, port = common.DNS_LISTEN.split(':')
         server = DNSServer((host, int(port)))
-        server.remote_addresses = common.DNS_REMOTE.split('|')
+        server.dnsservers = common.DNS_REMOTE.split('|')
         server.timeout = common.DNS_TIMEOUT
         server.max_cache_size = common.DNS_CACHESIZE
         thread.start_new_thread(server.serve_forever, tuple())
