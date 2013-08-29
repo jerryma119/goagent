@@ -1973,7 +1973,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 http_util.dns.pop(host, None)
             realhost = next(common.HOSTS_CONNECT_MATCH[x] for x in common.HOSTS_CONNECT_MATCH if x(self.path))
             if realhost:
-                http_util.dns[host] = socket.gethostbyname_ex(realhost)[-1]
+                http_util.dns[host] = list(set(sum([socket.gethostbyname_ex(x)[-1] for x in realhost.split('|')], [])))
             self.do_CONNECT_FWD()
         elif host.endswith(common.GOOGLE_SITES) and not host.endswith(common.GOOGLE_WITHGAE):
             http_util.dns[host] = common.GOOGLE_HOSTS
