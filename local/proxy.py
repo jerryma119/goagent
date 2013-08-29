@@ -2259,7 +2259,7 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
 
-class DNSServer(getattr(gevent.server, 'DatagramServer', object)):
+class DNSServer(gevent.server.DatagramServer if gevent else object):
     """DNS TCP Proxy based on gevent/dnslib"""
 
     blacklist = set(['1.1.1.1',
