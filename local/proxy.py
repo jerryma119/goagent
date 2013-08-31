@@ -2392,7 +2392,7 @@ def pre_start():
     if common.PAC_ENABLE:
         pac_ip = ProxyUtil.get_listen_ip() if common.PAC_IP in ('', '::', '0.0.0.0') else common.PAC_IP
         url = 'http://%s:%d/%s' % (pac_ip, common.PAC_PORT, common.PAC_FILE)
-        spawn_later(5, lambda x: urllib2.build_opener(urllib2.ProxyHandler({})).open(x), url)
+        spawn_later(600, lambda x: urllib2.build_opener(urllib2.ProxyHandler({})).open(x), url)
     if common.DNS_ENABLE:
         if dnslib is None or gevent.version_info[0] < 1:
             logging.critical('GoAgent DNSServer requires dnslib and gevent 1.0')
