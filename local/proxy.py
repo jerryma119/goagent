@@ -2213,7 +2213,7 @@ class PAASProxyHandler(GAEProxyHandler):
 
 class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
-    pacfile = os.path.join(os.path.dirname(__file__), common.PAC_FILE)
+    pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
     onepixel = b'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
 
     def address_string(self):
