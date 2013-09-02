@@ -1540,6 +1540,8 @@ class RangeFetch(object):
                     continue
                 except Exception as e:
                     logging.warning("Response %r in __fetchlet", e)
+                    range_queue.put((start, end, None))
+                    continue
                 if not response:
                     logging.warning('RangeFetch %s return %r', headers['Range'], response)
                     range_queue.put((start, end, None))
