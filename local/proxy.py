@@ -480,19 +480,15 @@ class PacUtil(object):
         except ValueError:
             need_update = False
         try:
-            urlfilter_urls = common.PAC_URLFILTER.split('|')
-            urlfilter_content = '\r\n\r\n'.join(['Opera Preferences version 2.1', '[prefs]\r\nprioritize excludelist=1', '[include]\r\n*', '[exclude]'])
-            for urlfilter_url in urlfilter_urls:
-                logging.info('try download %r to update_pacfile(%r)', urlfilter_url, filename)
-                sub_content = opener.open(urlfilter_url).read()
-                urlfilter_content += sub_content[sub_content.index('[exclude]')+9:] + '\r\n'
-            logging.info('%r downloaded, try convert it with urlfilter2pac', urlfilter_urls)
+            logging.info('try download %r to update_pacfile(%r)', common.PAC_ADBLOCK, filename)
+            adblock_content = opener.open(common.PAC_ADBLOCK).read()
+            logging.info('%r downloaded, try convert it with adblock2pac', common.PAC_ADBLOCK)
             if 'gevent' in sys.modules and time.sleep is getattr(sys.modules['gevent'], 'sleep', None) and hasattr(gevent.get_hub(), 'threadpool'):
-                jsrule = gevent.get_hub().threadpool.apply(PacUtil.urlfilter2pac, (urlfilter_content, 'FindProxyForURLByUrlfilter', blackhole, default))
+                jsrule = gevent.get_hub().threadpool.apply(PacUtil.adblock2pac, (adblock_content, 'FindProxyForURLByAdblock', blackhole, default))
             else:
-                jsrule = PacUtil.urlfilter2pac(urlfilter_content, 'FindProxyForURLByUrlfilter', blackhole, default)
+                jsrule = PacUtil.adblock2pac(adblock_content, 'FindProxyForURLByAdblock', blackhole, default)
             content += '\r\n' + jsrule + '\r\n'
-            logging.info('%r downloaded and parsed', common.PAC_URLFILTER)
+            logging.info('%r downloaded and parsed', common.PAC_ADBLOCK)
         except Exception as e:
             need_update = False
             logging.exception('update_pacfile failed: %r', e)
@@ -568,6 +564,66 @@ class PacUtil(object):
                     jsLines.append(jsLine)
                 else:
                     jsLines.insert(0, jsLine)
+        function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
+        return function
+
+    @staticmethod
+    def adblock2pac(content, func_name='FindProxyForURLByAdblock', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
+        """adblock list to Pac, based on https://github.com/iamamac/autoproxy2pac"""
+        jsLines = []
+        for line in content.splitlines()[1:]:
+            if not line or line.startswith('!') or '##' in line or '#@#' in line:
+                continue
+            if '$' in line:
+                continue
+            use_proxy = True
+            use_domain = False
+            use_start = False
+            use_end = False
+            if line.startswith("@@"):
+                line = line[2:]
+                use_proxy = False
+            if '||' == line[:2]:
+                line = line[2:]
+                use_domain = True
+            elif '|' == line[0]:
+                line = line[1:]
+                use_start = True
+            if line[-1] in ('^', '|'):
+                line = line[:-1]
+                use_end = True
+            return_proxy = 'PROXY %s' % proxy if use_proxy else default
+            line = line.replace('^', '*').strip('*')
+            if use_start and use_end:
+                if '*' in line:
+                    jsLine = 'if (shExpMatch(url, "%s")) return "%s";' % (line, return_proxy)
+                else:
+                    jsLine = 'if (url == "%s") return "%s";' % (line, return_proxy)
+            elif use_start:
+                if '*' in line:
+                    jsLine = 'if (shExpMatch(url, "%s*")) return "%s";' % (line, return_proxy)
+                else:
+                    jsLine = 'if (url.indexOf("%s") == 0) return "%s";' % (line, return_proxy)
+            elif use_domain and use_end:
+                if '*' in line:
+                    jsLine = 'if (shExpMatch(host, "%s*")) return "%s";' % (line, return_proxy)
+                else:
+                    jsLine = 'if (host == "%s") return "%s";' % (line, return_proxy)
+            elif use_domain:
+                if line.split('/')[0].count('.') <= 1:
+                    jsLine = 'if (shExpMatch(url, "http://*.%s*")) return "%s";' % (line, return_proxy)
+                else:
+                    if '*' in line:
+                        jsLine = 'if (shExpMatch(url, "http://%s*")) return "%s";' % (line, return_proxy)
+                    else:
+                        jsLine = 'if (url.indexOf("http://%s") == 0) return "%s";' % (line, return_proxy)
+            else:
+                jsLine = 'if (shExpMatch(url, "*%s*")) return "%s";' % (line, return_proxy)
+            jsLine = ' ' * indent + jsLine
+            if use_proxy:
+                jsLines.append(jsLine)
+            else:
+                jsLines.insert(0, jsLine)
         function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
         return function
 
@@ -1233,7 +1289,7 @@ class Common(object):
         self.PAC_PORT = self.CONFIG.getint('pac', 'port')
         self.PAC_FILE = self.CONFIG.get('pac', 'file').lstrip('/')
         self.PAC_GFWLIST = self.CONFIG.get('pac', 'gfwlist')
-        self.PAC_URLFILTER = self.CONFIG.get('pac', 'urlfilter')
+        self.PAC_ADBLOCK = self.CONFIG.get('pac', 'adblock')
         self.PAC_EXPIRED = self.CONFIG.getint('pac', 'expired')
 
         self.PAAS_ENABLE = self.CONFIG.getint('paas', 'enable')
