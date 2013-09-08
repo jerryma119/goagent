@@ -574,13 +574,20 @@ class PacUtil(object):
         for line in content.splitlines()[1:]:
             if not line or line.startswith('!') or '##' in line or '#@#' in line:
                 continue
-            if '$' in line and not line.endswith('$image'):
-                continue
             use_proxy = True
-            use_domain = False
             use_start = False
             use_end = False
-            use_image = False
+            use_domain = False
+            use_postfix = []
+            if '$' in line:
+                posfixs = line.split('$')[-1].split(',')
+                if 'image' in posfixs:
+                    use_postfix += ['.jpg', '.gif']
+                elif 'script' in posfixs:
+                    use_postfix += ['.js']
+                else:
+                    continue
+            line = line.split('$')[0]
             if line.startswith("@@"):
                 line = line[2:]
                 use_proxy = False
@@ -590,9 +597,6 @@ class PacUtil(object):
             elif '|' == line[0]:
                 line = line[1:]
                 use_start = True
-            if line.endswith('$image'):
-                line = line[:-6]
-                use_image = True
             if line[-1] in ('^', '|'):
                 line = line[:-1]
                 use_end = True
@@ -605,8 +609,9 @@ class PacUtil(object):
                     jsLine = 'if (url == "%s") return "%s";' % (line, return_proxy)
             elif use_start:
                 if '*' in line:
-                    if use_image:
-                        jsLine = 'if (shExpMatch(url, "%s*.jpg") || shExpMatch(url, "%s*.gif")) return "%s";' % (line, line, return_proxy)
+                    if use_postfix:
+                        jsCondition = ' || '.join('shExpMatch(url, "%s*%s")' % (line, x) for x in use_postfix)
+                        jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
                     else:
                         jsLine = 'if (shExpMatch(url, "%s*")) return "%s";' % (line, return_proxy)
                 else:
@@ -621,18 +626,21 @@ class PacUtil(object):
                     jsLine = 'if (shExpMatch(url, "http://*.%s*")) return "%s";' % (line, return_proxy)
                 else:
                     if '*' in line:
-                        if use_image:
-                            jsLine = 'if (shExpMatch(url, "http://%s*.jpg") || shExpMatch(url, "http://%s*.gif")) return "%s";' % (line, line, return_proxy)
+                        if use_postfix:
+                            jsCondition = ' || '.join('shExpMatch(url, "http://%s*%s")' % (line, x) for x in use_postfix)
+                            jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
                         else:
                             jsLine = 'if (shExpMatch(url, "http://%s*")) return "%s";' % (line, return_proxy)
                     else:
-                        if use_image:
-                            jsLine = 'if (shExpMatch(url, "http://%s*.jpg") || shExpMatch(url, "http://%s*.gif")) return "%s";' % (line, line, return_proxy)
+                        if use_postfix:
+                            jsCondition = ' || '.join('shExpMatch(url, "http://%s*%s")' % (line, x) for x in use_postfix)
+                            jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
                         else:
                             jsLine = 'if (url.indexOf("http://%s") == 0) return "%s";' % (line, return_proxy)
             else:
-                if use_image:
-                    jsLine = 'if (shExpMatch(url, "*%s*.jpg") || shExpMatch(url, "*%s*.gif")) return "%s";' % (line, line, return_proxy)
+                if use_postfix:
+                    jsCondition = ' || '.join('shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix)
+                    jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
                 else:
                     jsLine = 'if (shExpMatch(url, "*%s*")) return "%s";' % (line, return_proxy)
             jsLine = ' ' * indent + jsLine
