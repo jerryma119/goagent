@@ -581,6 +581,8 @@ class PacUtil(object):
             use_postfix = []
             if '$' in line:
                 posfixs = line.split('$')[-1].split(',')
+                if any('domain' in x for x in posfixs):
+                    continue
                 if 'image' in posfixs:
                     use_postfix += ['.jpg', '.gif']
                 elif 'script' in posfixs:
