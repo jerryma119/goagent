@@ -2322,7 +2322,7 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 mimetype = 'application/octet-stream'
             if self.path.endswith('.pac?flush'):
-                thread.start_new_thread(PacUtil.update_pacfile, args=(self.pacfile,))
+                thread.start_new_thread(PacUtil.update_pacfile, (self.pacfile,))
             elif time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
                 thread.start_new_thread(lambda: os.utime(self.pacfile, (time.time(), time.time())) or PacUtil.update_pacfile(self.pacfile))
             self.send_file(filename, mimetype)
