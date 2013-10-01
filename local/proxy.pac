@@ -12,6 +12,7 @@ function FindProxyForURL(url, host) {
         dnsDomainIs(host, '.wikipedia.org') ||
         dnsDomainIs(host, '.sf.net') ||
         dnsDomainIs(host, '.sourceforge.net') ||
+        host == 'cdnjs.cloudflare.com' ||
         host == 'wp.me' ||
         host == 'ow.ly' ||
         host == 'po.st' ||
