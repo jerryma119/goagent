@@ -35,19 +35,7 @@ import ctypes
 import ctypes.util
 
 from PyObjCTools import AppHelper
-from AppKit import NSObject
-from AppKit import NSApplication, NSApp, NSApplicationActivationPolicyProhibited
-from AppKit import NSImage
-from AppKit import NSData
-from AppKit import NSStatusBar, NSVariableStatusItemLength
-from AppKit import NSMenu, NSMenuItem
-from AppKit import NSWindow, NSRect, NSSize, NSMaxY, NSMakeRect, NSMakeRange
-from AppKit import NSBackingStoreBuffered, NSTitledWindowMask, NSClosableWindowMask
-from AppKit import NSTextView, NSScrollView
-from AppKit import NSViewWidthSizable, NSViewHeightSizable, NSNoBorder
-from AppKit import NSWorkspace, NSNotificationCenter, NSWorkspaceWillPowerOffNotification
-#XXXXXX how about just from AppKit import *?
-
+from AppKit import *
 
 class GoAgentOSX(NSObject):
 
