@@ -2438,13 +2438,13 @@ def pre_start():
     if sys.platform == 'cygwin':
         logging.info('cygwin is not officially supported, please continue at your own risk :)')
         #sys.exit(-1)
-    if os.name == 'posix':
+    elif os.name == 'posix':
         try:
             import resource
             resource.setrlimit(resource.RLIMIT_NOFILE, (8192, -1))
         except ValueError:
             pass
-    if os.name == 'nt':
+    elif os.name == 'nt':
         import ctypes
         ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
         if not common.LISTEN_VISIBLE:
