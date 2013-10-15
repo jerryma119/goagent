@@ -12,7 +12,7 @@ import time
 import ctypes
 import platform
 
-def main_linux():
+def addto_startup_linux():
     filename = os.path.abspath(__file__)
     dirname = os.path.dirname(filename)
     #you can change it to 'proxy.py' if you like :)
@@ -48,7 +48,7 @@ def addto_startup_osx():
             ProgramArguments = list([
                 '/usr/bin/python',
                 os.path.join(os.path.abspath(os.path.dirname(__file__)), 'proxy.py')
-                ])
+                ]),
             RunAtLoad = True,
             UserName = 'root',
             WorkingDirectory = os.path.dirname(__file__),
@@ -80,7 +80,7 @@ def addto_startup_unknown():
     print '*** error: Unknown system'
 
 def main():
-    addto-startup_funcs = {
+    addto_startup_funcs = {
             'Darwin'    : addto_startup_osx,
             'Windows'   : addto_startup_windows,
             'Linux'     : addto_startup_linux,
