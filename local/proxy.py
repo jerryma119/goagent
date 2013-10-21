@@ -2312,7 +2312,7 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         filename = os.path.normpath('./' + urlparse.urlparse(self.path).path)
         if self.path.startswith(('http://', 'https://')):
             data = b'HTTP/1.1 200\r\nCache-Control: max-age=86400\r\nExpires:Oct, 01 Aug 2100 00:00:00 GMT\r\nConnection: close\r\n'
-            if self.path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
+            if filename.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
                 data += b'Content-Type: image/gif\r\n\r\n' + self.onepixel
             else:
                 data += b'\r\n'
