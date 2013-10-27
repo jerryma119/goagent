@@ -855,6 +855,8 @@ class HTTPUtil(object):
         self.ssl_obfuscate = ssl_obfuscate or self.ssl_obfuscate
         if self.ssl_validate or self.ssl_obfuscate:
             self.ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+            if hasattr(OpenSSL.SSL, 'SESS_CACHE_BOTH'):
+                self.ssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
         else:
             self.ssl_context = None
         if self.ssl_validate:
