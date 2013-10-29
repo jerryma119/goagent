@@ -337,17 +337,24 @@ class CertUtil(object):
         if not os.path.exists(certdir):
             os.makedirs(certdir)
 
-gevent_wait_read = gevent.socket.wait_read if 'gevent.socket' in sys.modules else lambda fd,t: select.select([fd], [], [fd], t)
-gevent_wait_write = gevent.socket.wait_write if 'gevent.socket' in sys.modules else lambda fd,t: select.select([], [fd], [fd], t)
-gevent_wait_readwrite = gevent.socket.wait_readwrite if 'gevent.socket' in sys.modules else lambda fd,t: select.select([fd], [fd], [fd], t)
 
 class SSLConnection(object):
+
+    has_gevent = socket.socket is getattr(sys.modules.get('gevent.socket'), 'socket', None)
 
     def __init__(self, context, sock):
         self._context = context
         self._sock = sock
         self._connection = OpenSSL.SSL.Connection(context, sock)
         self._makefile_refs = 0
+        if self.has_gevent:
+            self._wait_read = gevent.socket.wait_read
+            self._wait_write = gevent.socket.wait_write
+            self._wait_readwrite = gevent.socket.wait_readwrite
+        else:
+            self._wait_read = lambda fd,t: select.select([fd], [], [fd], t)
+            self._wait_write = lambda fd,t: select.select([], [fd], [fd], t)
+            self._wait_readwrite = lambda fd,t: select.select([fd], [fd], [fd], t)
 
     def __getattr__(self, attr):
         if attr not in ('_context', '_sock', '_connection', '_makefile_refs'):
@@ -366,7 +373,7 @@ class SSLConnection(object):
                 break
             except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError, OpenSSL.SSL.WantWriteError):
                 sys.exc_clear()
-                gevent_wait_readwrite(self._sock.fileno(), timeout)
+                self._wait_readwrite(self._sock.fileno(), timeout)
 
     def connect(self, *args, **kwargs):
         timeout = self._sock.gettimeout()
@@ -376,10 +383,10 @@ class SSLConnection(object):
                 break
             except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
                 sys.exc_clear()
-                gevent_wait_read(self._sock.fileno(), timeout)
+                self._wait_read(self._sock.fileno(), timeout)
             except OpenSSL.SSL.WantWriteError:
                 sys.exc_clear()
-                gevent_wait_write(self._sock.fileno(), timeout)
+                self._wait_write(self._sock.fileno(), timeout)
 
     def send(self, data, flags=0):
         timeout = self._sock.gettimeout()
@@ -389,10 +396,10 @@ class SSLConnection(object):
                 break
             except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
                 sys.exc_clear()
-                gevent_wait_read(self._sock.fileno(), timeout)
+                self._wait_read(self._sock.fileno(), timeout)
             except OpenSSL.SSL.WantWriteError:
                 sys.exc_clear()
-                gevent_wait_write(self._sock.fileno(), timeout)
+                self._wait_write(self._sock.fileno(), timeout)
             except OpenSSL.SSL.SysCallError as e:
                 if e[0] == -1 and not data:
                     # errors when writing empty strings are expected and can be ignored
@@ -409,10 +416,10 @@ class SSLConnection(object):
                 return self._connection.recv(bufsiz, flags)
             except (OpenSSL.SSL.WantReadError, OpenSSL.SSL.WantX509LookupError):
                 sys.exc_clear()
-                gevent_wait_read(self._sock.fileno(), timeout)
+                self._wait_read(self._sock.fileno(), timeout)
             except OpenSSL.SSL.WantWriteError:
                 sys.exc_clear()
-                gevent_wait_write(self._sock.fileno(), timeout)
+                self._wait_write(self._sock.fileno(), timeout)
             except OpenSSL.SSL.ZeroReturnError:
                 return ''
 
