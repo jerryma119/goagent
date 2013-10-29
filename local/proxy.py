@@ -864,6 +864,15 @@ class HTTPUtil(object):
             self.ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
             if hasattr(OpenSSL.SSL, 'SESS_CACHE_BOTH'):
                 self.ssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
+            else:
+                try:
+                    import ctypes
+                    SSL_CTRL_SET_SESS_CACHE_MODE = 44
+                    SESS_CACHE_BOTH = 0x3
+                    ctx = ctypes.c_void_p.from_address(id(self.ssl_context)+ctypes.sizeof(ctypes.c_int)+ctypes.sizeof(ctypes.c_voidp))
+                    ctypes.cdll.ssleay32.SSL_CTX_ctrl(ctx, SSL_CTRL_SET_SESS_CACHE_MODE, SESS_CACHE_BOTH, None)
+                except Exception as e:
+                    logging.warning('SSL_CTX_set_session_cache_mode failed: %r', e)
         else:
             self.ssl_context = None
         if self.ssl_validate:
