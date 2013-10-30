@@ -39,6 +39,7 @@ except (ImportError, SystemError):
     gevent = None
 
 import errno
+import binascii
 import time
 import struct
 import collections
@@ -862,6 +863,7 @@ class HTTPUtil(object):
         self.ssl_obfuscate = ssl_obfuscate or self.ssl_obfuscate
         if self.ssl_validate or self.ssl_obfuscate:
             self.ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
+            self.ssl_context.set_session_id(binascii.b2a_hex(os.urandom(10)))
             if hasattr(OpenSSL.SSL, 'SESS_CACHE_BOTH'):
                 self.ssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
             else:
