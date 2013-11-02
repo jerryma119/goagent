@@ -1413,6 +1413,10 @@ class Common(object):
 
         DictType = getattr(collections, 'OrderedDict', dict)
         self.HOSTS = DictType(self.CONFIG.items('hosts'))
+        for key, value in self.HOSTS.items():
+            m = re.match(r'\[(\w+)\](\w+)', value)
+            if m:
+                self.HOSTS[key] = self.CONFIG.get(m.group(1), m.group(2))
         self.HOSTS_MATCH = DictType((re.compile(k).search, v) for k, v in self.HOSTS.items() if not re.search(r'\d+$', k))
         self.HOSTS_CONNECT_MATCH = DictType((re.compile(k).search, v) for k, v in self.HOSTS.items() if re.search(r'\d+$', k))
 
@@ -1896,7 +1900,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             payload = self.rfile.read(content_length) if content_length else b''
             if common.HOSTS_MATCH and any(x(self.path) for x in common.HOSTS_MATCH):
-                realhost = next(common.HOSTS_MATCH[x] for x in common.HOSTS_MATCH if x(self.path)) or re.sub(r':\d+$', '', self.parsed_url.netloc)
+                realhosts = next(common.HOSTS_MATCH[x] for x in common.HOSTS_MATCH if x(self.path)) or re.sub(r':\d+$', '', self.parsed_url.netloc)
+                realhost = random.choice(realhosts.split('|'))
                 logging.debug('hosts pattern mathed, url=%r realhost=%r', self.path, realhost)
                 response = http_util.request(self.command, self.path, payload, self.headers, realhost=realhost, crlf=common.GAE_CRLF)
             else:
@@ -2075,9 +2080,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if common.HOSTS_CONNECT_MATCH and any(x(self.path) for x in common.HOSTS_CONNECT_MATCH):
             if host.endswith(common.GOOGLE_SITES) and not host.endswith(common.GOOGLE_WITHGAE):
                 http_util.dns.pop(host, None)
-            realhost = next(common.HOSTS_CONNECT_MATCH[x] for x in common.HOSTS_CONNECT_MATCH if x(self.path))
-            if realhost:
-                http_util.dns[host] = list(set(sum([socket.gethostbyname_ex(x)[-1] for x in realhost.split('|')], [])))
+            realhosts = next(common.HOSTS_CONNECT_MATCH[x] for x in common.HOSTS_CONNECT_MATCH if x(self.path))
+            if realhosts:
+                http_util.dns[host] = list(set(sum([socket.gethostbyname_ex(x)[-1] for x in realhosts.split('|')], [])))
             self.do_CONNECT_FWD()
         elif host.endswith(common.GOOGLE_SITES) and not host.endswith(common.GOOGLE_WITHGAE):
             http_util.dns[host] = common.GOOGLE_HOSTS
