@@ -1214,7 +1214,7 @@ class HTTPUtil(object):
         if crlf:
             need_crlf = 1
         if need_crlf:
-            request_data = 'GET / HTTP/1.1\r\n\r\n\r\n'
+            request_data = 'GET / HTTP/1.1\r\n\r\n\r\n\r\n\r\r'
         else:
             request_data = ''
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
