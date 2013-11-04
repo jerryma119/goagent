@@ -1249,7 +1249,7 @@ class HTTPUtil(object):
         if return_sock:
             return sock
 
-        response = httplib.HTTPResponse(sock)
+        response = httplib.HTTPResponse(sock, buffering=True)
         try:
             response.begin()
         except httplib.BadStatusLine:
