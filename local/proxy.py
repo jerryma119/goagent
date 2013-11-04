@@ -1330,6 +1330,7 @@ class Common(object):
         self.GAE_CRLF = self.CONFIG.getint('gae', 'crlf')
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate') if self.CONFIG.has_option('gae', 'obfuscate') else 0
+        self.GAE_OPTIONS = self.CONFIG.get('gae', 'options') if self.CONFIG.has_option('gae', 'options') else ''
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
@@ -1493,6 +1494,26 @@ def response_replace_header(response, name, value):
         response.header.replace_header(name, value)
 
 
+def rc4crypt(data, key):
+    """RC4 algorithm"""
+    if not key or not data:
+        return data
+    x = 0
+    box = range(256)
+    for i, y in enumerate(box):
+        x = (x + y + ord(key[i % len(key)])) % 256
+        box[i], box[x] = box[x], y
+    x = y = 0
+    out = []
+    out_append = out.append
+    for char in data:
+        x = (x + 1) % 256
+        y = (y + box[x]) % 256
+        box[x], box[y] = box[y], box[x]
+        out_append(chr(ord(char) ^ box[(box[x] + box[y]) % 256]))
+    return ''.join(out)
+
+
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
@@ -1508,17 +1529,32 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     metadata = 'G-Method:%s\nG-Url:%s\n%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v))
     skip_headers = http_util.skip_headers
     metadata += ''.join('%s:%s\n' % (k.title(), v) for k, v in headers.items() if k not in skip_headers)
-    metadata = zlib.compress(metadata)[2:-4]
-    need_crlf = 0 if fetchserver.startswith('https') else common.GAE_CRLF
+    # prepare GAE request
+    request_method = 'POST'
+    request_headers = {}
     if common.GAE_OBFUSCATE:
-        cookie = base64.b64encode(metadata).strip().decode()
-        if not payload:
-            response = http_util.request('GET', fetchserver, payload, {'Cookie': cookie}, crlf=need_crlf)
+        if 'rc4' in common.GAE_OPTIONS:
+            request_headers['X-GOA-Options'] = 'rc4'
+            cookie = base64.b64encode(rc4crypt(zlib.compress(metadata)[2:-4], kwargs.get('password'))).strip()
+            payload = rc4crypt(payload, kwargs.get('password'))
         else:
-            response = http_util.request('POST', fetchserver, payload, {'Cookie': cookie, 'Content-Length': str(len(payload))}, crlf=need_crlf)
+            cookie = base64.b64encode(zlib.compress(metadata)[2:-4]).strip()
+        request_headers['Cookie'] = cookie
+        if payload:
+            request_headers['Content-Length'] = str(len(payload))
+        else:
+            request_method = 'GET'
     else:
-        payload = b''.join((struct.pack('!h', len(metadata)), metadata, payload))
-        response = http_util.request('POST', fetchserver, payload, {'Content-Length': str(len(payload))}, crlf=need_crlf)
+        if 'rc4' in common.GAE_OPTIONS:
+            request_headers['X-GOA-Options'] = 'rc4'
+            metadata = rc4crypt(metadata, kwargs.get('password'))
+            payload = rc4crypt(payload, kwargs.get('password'))
+        metadata = zlib.compress(metadata)[2:-4]
+        payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+        request_headers['Content-Length'] = str(len(payload))
+    # post data
+    need_crlf = 0 if common.GOOGLE_MODE == 'https' else common.GAE_CRLF
+    response = http_util.request(request_method, fetchserver, payload, request_headers, crlf=need_crlf)
     response.app_status = response.status
     if response.status != 200:
         if response.status in (400, 405):

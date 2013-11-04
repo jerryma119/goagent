@@ -82,8 +82,29 @@ def message_html(title, banner, detail=''):
     return string.Template(MESSAGE_TEMPLATE).substitute(title=title, banner=banner, detail=detail)
 
 
+def rc4crypt(data, key):
+    """RC4 algorithm"""
+    if not key or not data:
+        return data
+    x = 0
+    box = range(256)
+    for i, y in enumerate(box):
+        x = (x + y + ord(key[i % len(key)])) % 256
+        box[i], box[x] = box[x], y
+    x = y = 0
+    out = []
+    out_append = out.append
+    for char in data:
+        x = (x + 1) % 256
+        y = (y + box[x]) % 256
+        box[x], box[y] = box[y], box[x]
+        out_append(chr(ord(char) ^ box[(box[x] + box[y]) % 256]))
+    return ''.join(out)
+
+
 def gae_application(environ, start_response):
     cookie = environ.get('HTTP_COOKIE', '')
+    options = environ.get('HTTP_X_GOA_OPTIONS', '')
     if environ['REQUEST_METHOD'] == 'GET' and not cookie:
         if '204' in environ['QUERY_STRING']:
             start_response('204 No Content', [])
@@ -98,12 +119,21 @@ def gae_application(environ, start_response):
 
     # inflate = lambda x:zlib.decompress(x, -zlib.MAX_WBITS)
     wsgi_input = environ['wsgi.input']
+    input_data = wsgi_input.read()
     if cookie:
-        metadata = zlib.decompress(base64.b64decode(cookie), -zlib.MAX_WBITS)
+        if 'rc4' not in options:
+            metadata = zlib.decompress(base64.b64decode(cookie), -zlib.MAX_WBITS)
+            payload = input_data or ''
+        else:
+            metadata = zlib.decompress(rc4crypt(base64.b64decode(cookie), __password__), -zlib.MAX_WBITS)
+            payload = rc4crypt(input_data, __password__) if input_data else ''
     else:
-        data = wsgi_input.read(2)
-        metadata_length, = struct.unpack('!h', data)
-        metadata = wsgi_input.read(metadata_length)
+        metadata_length, = struct.unpack('!h', input_data[:2])
+        metadata = input_data[2:2+metadata_length]
+        payload = input_data[2+metadata_length:]
+        if 'rc4' in options:
+            metadata = rc4crypt(metadata, __password__)
+            payload = payload and rc4crypt(payload, __password__)
         metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
 
     headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
@@ -113,14 +143,13 @@ def gae_application(environ, start_response):
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
 
-    abbv_headers = {'A': ('Accept', 'text/html, */*; q=0.01'),
-                    'AC': ('Accept-Charset', 'UTF-8,*;q=0.5'),
-                    'AL': ('Accept-Language', 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'),
-                    'AE': ('Accept-Encoding', 'gzip,deflate'), }
-    abbv_args = kwargs.get('abbv', '').split(',')
-    headers.update(v for k, v in abbv_headers.iteritems() if k in abbv_args and v[0] not in headers)
+    if 'Content-Encoding' in headers:
+        if headers['Content-Encoding'] == 'deflate':
+            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
+            headers['Content-Length'] = str(len(payload))
+            del headers['Content-Encoding']
 
-    #logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
+    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
     #logging.info('request headers=%s', headers)
 
     if __password__ and __password__ != kwargs.get('password', ''):
@@ -149,16 +178,7 @@ def gae_application(environ, start_response):
 
     deadline = URLFETCH_TIMEOUT
     validate_certificate = bool(int(kwargs.get('validate', 0)))
-    headers = dict(headers)
-    payload = wsgi_input.read() if 'Content-Length' in headers else None
-    if 'Content-Encoding' in headers:
-        if headers['Content-Encoding'] == 'deflate':
-            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
-            headers['Content-Length'] = str(len(payload))
-            del headers['Content-Encoding']
-
     accept_encoding = headers.get('Accept-Encoding', '')
-
     errors = []
     for i in xrange(int(kwargs.get('fetchmax', URLFETCH_MAX))):
         try:
