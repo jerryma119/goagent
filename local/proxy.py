@@ -1501,16 +1501,16 @@ def rc4crypt(data, key):
     x = 0
     box = range(256)
     for i, y in enumerate(box):
-        x = (x + y + ord(key[i % len(key)])) % 256
+        x = (x + y + ord(key[i % len(key)])) & 0xff
         box[i], box[x] = box[x], y
     x = y = 0
     out = []
     out_append = out.append
     for char in data:
-        x = (x + 1) % 256
-        y = (y + box[x]) % 256
+        x = (x + 1) & 0xff
+        y = (y + box[x]) & 0xff
         box[x], box[y] = box[y], box[x]
-        out_append(chr(ord(char) ^ box[(box[x] + box[y]) % 256]))
+        out_append(chr(ord(char) ^ box[(box[x] + box[y]) & 0xff]))
     return ''.join(out)
 
 
@@ -1566,12 +1566,14 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if len(data) < 4:
         response.status = 502
         response.fp = io.BytesIO(b'connection aborted. too short leadtype data=' + data)
+        response.read = response.fp.read
         return response
     response.status, headers_length = struct.unpack('!hh', data)
     data = response.read(headers_length)
     if len(data) < headers_length:
         response.status = 502
         response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
+        response.read = response.fp.read
         return response
     if 'rc4' not in response.app_options:
         response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
@@ -1738,7 +1740,7 @@ class RangeFetch(object):
                 else:
                     logging.error('RangeFetch %r return %s', self.url, response.status)
                     response.close()
-                    #range_queue.put((start, end, None))
+                    range_queue.put((start, end, None))
                     continue
             except Exception as e:
                 logging.exception('RangeFetch._fetchlet error:%s', e)

@@ -89,16 +89,16 @@ def rc4crypt(data, key):
     x = 0
     box = range(256)
     for i, y in enumerate(box):
-        x = (x + y + ord(key[i % len(key)])) % 256
+        x = (x + y + ord(key[i % len(key)])) & 0xff
         box[i], box[x] = box[x], y
     x = y = 0
     out = []
     out_append = out.append
     for char in data:
-        x = (x + 1) % 256
-        y = (y + box[x]) % 256
+        x = (x + 1) & 0xff
+        y = (y + box[x]) & 0xff
         box[x], box[y] = box[y], box[x]
-        out_append(chr(ord(char) ^ box[(box[x] + box[y]) % 256]))
+        out_append(chr(ord(char) ^ box[(box[x] + box[y]) & 0xff]))
     return ''.join(out)
 
 
