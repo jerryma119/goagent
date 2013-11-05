@@ -1517,9 +1517,7 @@ def rc4crypt(data, key):
 class RC4FileObject(object):
     """fileobj for rc4"""
     def __init__(self, stream, key):
-        self.__key = key
         self.__stream = stream
-        self.__stream_read = stream.read
         x = 0
         box = range(256)
         for i, y in enumerate(box):
@@ -1530,7 +1528,7 @@ class RC4FileObject(object):
         self.__y = 0
 
     def __getattr__(self, attr):
-        if attr not in ('__key', '__stream', '__stream_read', '__box', '__x', '__y'):
+        if attr not in ('__stream', '__box', '__x', '__y'):
             return getattr(self.__stream, attr)
 
     def read(self, size=-1):
@@ -1539,7 +1537,7 @@ class RC4FileObject(object):
         x = self.__x
         y = self.__y
         box = self.__box
-        data = self.__stream_read(size)
+        data = self.__stream.read(size)
         for char in data:
             x = (x + 1) & 0xff
             y = (y + box[x]) & 0xff
