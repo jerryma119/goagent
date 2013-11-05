@@ -1514,6 +1514,42 @@ def rc4crypt(data, key):
     return ''.join(out)
 
 
+class RC4FileObject(object):
+    """fileobj for rc4"""
+    def __init__(self, stream, key):
+        self.__key = key
+        self.__stream = stream
+        self.__stream_read = stream.read
+        x = 0
+        box = range(256)
+        for i, y in enumerate(box):
+            x = (x + y + ord(key[i % len(key)])) & 0xff
+            box[i], box[x] = box[x], y
+        self.__box = box
+        self.__x = 0
+        self.__y = 0
+
+    def __getattr__(self, attr):
+        if attr not in ('__key', '__stream', '__stream_read', '__box', '__x', '__y'):
+            return getattr(self.__stream, attr)
+
+    def read(self, size=-1):
+        out = []
+        out_append = out.append
+        x = self.__x
+        y = self.__y
+        box = self.__box
+        data = self.__stream_read(size)
+        for char in data:
+            x = (x + 1) & 0xff
+            y = (y + box[x]) & 0xff
+            box[x], box[y] = box[y], box[x]
+            out_append(chr(ord(char) ^ box[(box[x] + box[y]) & 0xff]))
+        self.__x = x
+        self.__y = y
+        return ''.join(out)
+
+
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
@@ -1579,10 +1615,8 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
     else:
         response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(rc4crypt(data, kwargs.get('password')), -zlib.MAX_WBITS)))
-        response.fp = io.BytesIO(rc4crypt(response.read(), kwargs.get('password')))
-        response.read = response.fp.read
-        if response.getheader('Transfer-Encoding'):
-            del response.msg['Transfer-Encoding']
+        if kwargs.get('password') and response.fp:
+            response.fp = RC4FileObject(response.fp, kwargs['password'])
     return response
 
 
