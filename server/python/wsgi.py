@@ -102,6 +102,58 @@ def rc4crypt(data, key):
     return ''.join(out)
 
 
+class RC4FileObject(object):
+    """fileobj for rc4"""
+    def __init__(self, stream, key):
+        self.__stream = stream
+        x = 0
+        box = range(256)
+        for i, y in enumerate(box):
+            x = (x + y + ord(key[i % len(key)])) & 0xff
+            box[i], box[x] = box[x], y
+        self.__box = box
+        self.__x = 0
+        self.__y = 0
+
+    def __getattr__(self, attr):
+        if attr not in ('__stream', '__box', '__x', '__y'):
+            return getattr(self.__stream, attr)
+
+    def read(self, size=-1):
+        out = []
+        out_append = out.append
+        x = self.__x
+        y = self.__y
+        box = self.__box
+        data = self.__stream.read(size)
+        for char in data:
+            x = (x + 1) & 0xff
+            y = (y + box[x]) & 0xff
+            box[x], box[y] = box[y], box[x]
+            out_append(chr(ord(char) ^ box[(box[x] + box[y]) & 0xff]))
+        self.__x = x
+        self.__y = y
+        return ''.join(out)
+
+
+try:
+    import Crypto.Cipher.ARC4
+    def rc4crypt(data, key):
+        return Crypto.Cipher.ARC4.new(key).encrypt(data)
+    class RC4FileObject(object):
+        """fileobj for rc4"""
+        def __init__(self, stream, key):
+            self.__stream = stream
+            self.__cipher = Crypto.Cipher.ARC4.new(key)
+        def __getattr__(self, attr):
+            if attr not in ('__stream', '__cipher'):
+                return getattr(self.__stream, attr)
+        def read(self, size=-1):
+            return self.__cipher.encrypt(self.__stream.read(size))
+except ImportError:
+    pass
+
+
 def gae_application(environ, start_response):
     cookie = environ.get('HTTP_COOKIE', '')
     options = environ.get('HTTP_X_GOA_OPTIONS', '')
