@@ -19,7 +19,7 @@
 #      Wang Wei Qiang <wwqgtxx@gmail.com>
 #      Poly Rabbit    <mcx_221@foxmail.com>
 
-__version__ = '3.0.5'
+__version__ = '3.0.6'
 
 import sys
 import os
