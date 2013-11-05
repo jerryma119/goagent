@@ -1556,6 +1556,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     need_crlf = 0 if common.GOOGLE_MODE == 'https' else common.GAE_CRLF
     response = http_util.request(request_method, fetchserver, payload, request_headers, crlf=need_crlf)
     response.app_status = response.status
+    response.app_options = response.getheader('X-GOA-Options', '')
     if response.status != 200:
         if response.status in (400, 405):
             # filter by some firewall
@@ -1572,7 +1573,14 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         response.status = 502
         response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
         return response
-    response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+    if 'rc4' not in response.app_options:
+        response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+    else:
+        response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(rc4crypt(data, kwargs.get('password')), -zlib.MAX_WBITS)))
+        response.fp = io.BytesIO(rc4crypt(response.read(), kwargs.get('password')))
+        response.read = response.fp.read
+        if response.getheader('Transfer-Encoding'):
+            del response.msg['Transfer-Encoding']
     return response
 
 

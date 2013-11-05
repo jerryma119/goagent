@@ -129,16 +129,22 @@ def gae_application(environ, start_response):
             payload = rc4crypt(input_data, __password__) if input_data else ''
     else:
         metadata_length, = struct.unpack('!h', input_data[:2])
-        metadata = input_data[2:2+metadata_length]
-        payload = input_data[2+metadata_length:]
-        if 'rc4' in options:
-            metadata = rc4crypt(metadata, __password__)
-            payload = payload and rc4crypt(payload, __password__)
-        metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
+        if 'rc4' not in options:
+            metadata = zlib.decompress(input_data[2:2+metadata_length], -zlib.MAX_WBITS)
+            payload = input_data[2+metadata_length:]
+        else:
+            metadata = rc4crypt(zlib.decompress(input_data[2:2+metadata_length], -zlib.MAX_WBITS), __password__)
+            payload = rc4crypt(input_data[2+metadata_length:], __password__)
 
-    headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
-    method = headers.pop('G-Method')
-    url = headers.pop('G-Url')
+    try:
+        headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
+        method = headers.pop('G-Method')
+        url = headers.pop('G-Url')
+    except KeyError, ValueError:
+        import traceback
+        start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
+        yield message_html('500 Internal Server Error', 'Wrong Request(metadata)', '<pre>%s</pre>' % traceback.format_exc())
+        raise StopIteration
 
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
@@ -245,9 +251,15 @@ def gae_application(environ, start_response):
     if data:
          response_headers['Content-Length'] = str(len(data))
     response_headers_data = zlib.compress('\n'.join('%s:%s' % (k.title(), v) for k, v in response_headers.items() if not k.startswith('x-google-')))[2:-4]
-    start_response('200 OK', [('Content-Type', 'image/gif')])
-    yield struct.pack('!hh', int(response.status_code), len(response_headers_data))+response_headers_data
-    yield data
+    if 'rc4' not in options:
+        start_response('200 OK', [('Content-Type', 'image/gif')])
+        yield struct.pack('!hh', int(response.status_code), len(response_headers_data))+response_headers_data
+        yield data
+    else:
+        start_response('200 OK', [('Content-Type', 'image/gif'), ('X-GOA-Options', 'rc4')])
+        yield struct.pack('!hh', int(response.status_code), len(response_headers_data))
+        yield rc4crypt(response_headers_data, __password__)
+        yield rc4crypt(data, __password__)
 
 
 class LegacyHandler(object):
