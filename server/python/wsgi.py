@@ -137,14 +137,14 @@ class RC4FileObject(object):
 
 
 try:
-    import Crypto.Cipher.ARC4
+    from Crypto.Cipher._ARC4 import new as _Crypto_Cipher_ARC4_new
     def rc4crypt(data, key):
-        return Crypto.Cipher.ARC4.new(key).encrypt(data)
+        return _Crypto_Cipher_ARC4_new(key).encrypt(data)
     class RC4FileObject(object):
         """fileobj for rc4"""
         def __init__(self, stream, key):
             self.__stream = stream
-            self.__cipher = Crypto.Cipher.ARC4.new(key)
+            self.__cipher = _Crypto_Cipher_ARC4_new(key)
         def __getattr__(self, attr):
             if attr not in ('__stream', '__cipher'):
                 return getattr(self.__stream, attr)
