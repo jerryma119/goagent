@@ -892,7 +892,7 @@ class HTTPUtil(object):
             else:
                 iplist = DNSUtil.remote_resolve(dnsserver, host, timeout=2)
             if not iplist:
-                iplist = DNSUtil.remote_resolve('8.8.8.8', host, timeout=2)
+                iplist = DNSUtil.remote_resolve('8.8.4.4', host, timeout=2)
             if ipv4_only:
                 iplist = [ip for ip in iplist if re.match(r'\d+\.\d+\.\d+\.\d+', ip)]
             self.dns[host] = iplist = list(set(iplist))
@@ -1852,7 +1852,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if len(google_iplist) < 10 or len(set(x.split('.', 1)[0] for x in google_iplist)) == 1:
                 logging.warning('local google_iplist=%s is too short, try remote_resolve', google_iplist)
                 need_resolve_remote += list(common.GOOGLE_HOSTS)
-            for dnsserver in ('8.8.8.8', '8.8.4.4', '114.114.114.114', '114.114.115.115'):
+            for dnsserver in ('8.8.4.4', '168.95.1.1', '114.114.114.114', '114.114.115.115'):
                 for domain in need_resolve_remote:
                     logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
                     try:
