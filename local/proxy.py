@@ -1849,7 +1849,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 else:
                     google_ipmap[domain] = [domain]
             google_iplist = list(set(sum(list(google_ipmap.values()), [])))
-            if len(google_iplist) < 10 or len(set(x.split('.', 1)[0] for x in google_iplist)) == 1:
+            if len(google_iplist) < 20 or len(set(x.split('.', 1)[0] for x in google_iplist)) == 1:
                 logging.warning('local google_iplist=%s is too short, try remote_resolve', google_iplist)
                 need_resolve_remote += list(common.GOOGLE_HOSTS)
             for dnsserver in ('8.8.4.4', '168.95.1.1', '114.114.114.114', '114.114.115.115'):
