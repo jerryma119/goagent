@@ -18,6 +18,7 @@
 #      Mort Yao       <mort.yao@gmail.com>
 #      Wang Wei Qiang <wwqgtxx@gmail.com>
 #      Poly Rabbit    <mcx_221@foxmail.com>
+#      Chen Shuang    <chens09@mails.tsinghua.edu.cn>
 
 __version__ = '3.0.6'
 
@@ -1775,6 +1776,9 @@ class RangeFetch(object):
                     logging.info('>>>>>>>>>>>>>>> [thread %s] %s %s', threading.currentThread().ident, content_length, content_range)
                     while 1:
                         try:
+                            if self._stopped:
+                                response.close()
+                                return
                             data = response.read(self.bufsize)
                             if not data:
                                 break
