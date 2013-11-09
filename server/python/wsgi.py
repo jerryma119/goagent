@@ -139,12 +139,12 @@ class RC4FileObject(object):
 try:
     from Crypto.Cipher._ARC4 import new as _Crypto_Cipher_ARC4_new
     def rc4crypt(data, key):
-        return _Crypto_Cipher_ARC4_new(key).encrypt(data)
+        return _Crypto_Cipher_ARC4_new(key).encrypt(data) if key else data
     class RC4FileObject(object):
         """fileobj for rc4"""
         def __init__(self, stream, key):
             self.__stream = stream
-            self.__cipher = _Crypto_Cipher_ARC4_new(key)
+            self.__cipher = _Crypto_Cipher_ARC4_new(key) if key else lambda x:x
         def __getattr__(self, attr):
             if attr not in ('__stream', '__cipher'):
                 return getattr(self.__stream, attr)
@@ -172,30 +172,28 @@ def gae_application(environ, start_response):
     # inflate = lambda x:zlib.decompress(x, -zlib.MAX_WBITS)
     wsgi_input = environ['wsgi.input']
     input_data = wsgi_input.read()
-    if cookie:
-        if 'rc4' not in options:
-            metadata = zlib.decompress(base64.b64decode(cookie), -zlib.MAX_WBITS)
-            payload = input_data or ''
-        else:
-            metadata = zlib.decompress(rc4crypt(base64.b64decode(cookie), __password__), -zlib.MAX_WBITS)
-            payload = rc4crypt(input_data, __password__) if input_data else ''
-    else:
-        metadata_length, = struct.unpack('!h', input_data[:2])
-        if 'rc4' not in options:
-            metadata = zlib.decompress(input_data[2:2+metadata_length], -zlib.MAX_WBITS)
-            payload = input_data[2+metadata_length:]
-        else:
-            metadata = rc4crypt(zlib.decompress(input_data[2:2+metadata_length], -zlib.MAX_WBITS), __password__)
-            payload = rc4crypt(input_data[2+metadata_length:], __password__)
 
     try:
+        if cookie:
+            if 'rc4' not in options:
+                metadata = zlib.decompress(base64.b64decode(cookie), -zlib.MAX_WBITS)
+                payload = input_data or ''
+            else:
+                metadata = zlib.decompress(rc4crypt(base64.b64decode(cookie), __password__), -zlib.MAX_WBITS)
+                payload = rc4crypt(input_data, __password__) if input_data else ''
+        else:
+            if 'rc4' in options:
+                input_data = rc4crypt(input_data, __password__)
+            metadata_length, = struct.unpack('!h', input_data[:2])
+            metadata = zlib.decompress(input_data[2:2+metadata_length], -zlib.MAX_WBITS)
+            payload = input_data[2+metadata_length:]
         headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
         method = headers.pop('G-Method')
         url = headers.pop('G-Url')
-    except KeyError, ValueError:
+    except (zlib.error, KeyError, ValueError):
         import traceback
         start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
-        yield message_html('500 Internal Server Error', 'Wrong Request(metadata)', '<pre>%s</pre>' % traceback.format_exc())
+        yield message_html('500 Internal Server Error', 'Bad Request(metadata), Password maybe is wrong', '<pre>%s</pre>' % traceback.format_exc())
         raise StopIteration
 
     kwargs = {}

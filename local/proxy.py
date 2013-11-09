@@ -1552,12 +1552,12 @@ class RC4FileObject(object):
 try:
     from Crypto.Cipher._ARC4 import new as _Crypto_Cipher_ARC4_new
     def rc4crypt(data, key):
-        return _Crypto_Cipher_ARC4_new(key).encrypt(data)
+        return _Crypto_Cipher_ARC4_new(key).encrypt(data) if key else data
     class RC4FileObject(object):
         """fileobj for rc4"""
         def __init__(self, stream, key):
             self.__stream = stream
-            self.__cipher = _Crypto_Cipher_ARC4_new(key)
+            self.__cipher = _Crypto_Cipher_ARC4_new(key) if key else lambda x:x
         def __getattr__(self, attr):
             if attr not in ('__stream', '__cipher'):
                 return getattr(self.__stream, attr)
@@ -1598,12 +1598,11 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         else:
             request_method = 'GET'
     else:
-        if 'rc4' in common.GAE_OPTIONS:
-            request_headers['X-GOA-Options'] = 'rc4'
-            metadata = rc4crypt(metadata, kwargs.get('password'))
-            payload = rc4crypt(payload, kwargs.get('password'))
         metadata = zlib.compress(metadata)[2:-4]
         payload = '%s%s%s' % (struct.pack('!h', len(metadata)), metadata, payload)
+        if 'rc4' in common.GAE_OPTIONS:
+            request_headers['X-GOA-Options'] = 'rc4'
+            payload = rc4crypt(payload, kwargs.get('password'))
         request_headers['Content-Length'] = str(len(payload))
     # post data
     need_crlf = 0 if common.GOOGLE_MODE == 'https' else common.GAE_CRLF
