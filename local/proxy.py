@@ -1215,7 +1215,7 @@ class HTTPUtil(object):
         if crlf:
             need_crlf = 1
         if need_crlf:
-            request_data = 'GET / HTTP/1.1\r\n\r\n\r\n\r\n\r\r'
+            request_data = 'GET /%s HTTP/1.1\r\n\r\n\r\n\r\n\r\r' % ''.join(random.sample('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', random.randint(1, 52)))
         else:
             request_data = ''
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
