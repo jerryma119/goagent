@@ -193,7 +193,7 @@ def gae_application(environ, start_response):
     except (zlib.error, KeyError, ValueError):
         import traceback
         start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
-        yield message_html('500 Internal Server Error', 'Bad Request(metadata), Password maybe is wrong', '<pre>%s</pre>' % traceback.format_exc())
+        yield message_html('500 Internal Server Error', 'Bad Request (metadata) - Possible Wrong Password', '<pre>%s</pre>' % traceback.format_exc())
         raise StopIteration
 
     kwargs = {}
