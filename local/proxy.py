@@ -3,22 +3,34 @@
 # Based on GAppProxy 2.0.0 by Du XiaoGang <dugang.2008@gmail.com>
 # Based on WallProxy 0.4.0 by Hust Moon <www.ehust@gmail.com>
 # Contributor:
-#      Phus Lu        <phus.lu@gmail.com>
-#      Hewig Xu       <hewigovens@gmail.com>
-#      Ayanamist Yang <ayanamist@gmail.com>
-#      Max Lv         <max.c.lv@gmail.com>
-#      AlsoTang       <alsotang@gmail.com>
-#      Yonsm          <YonsmGuo@gmail.com>
-#      Ming Bai       <mbbill@gmail.com>
-#      Bin Yu         <yubinlove1991@gmail.com>
-#      Zhang Youfu    <zhangyoufu@gmail.com>
-#      Harmony Meow   <harmony.meow@gmail.com>
-#      logostream     <logostream@gmail.com>
-#      Felix Yan      <felixonmars@gmail.com>
-#      Mort Yao       <mort.yao@gmail.com>
-#      Wang Wei Qiang <wwqgtxx@gmail.com>
-#      Poly Rabbit    <mcx_221@foxmail.com>
-#      Chen Shuang    <chens09@mails.tsinghua.edu.cn>
+#      Phus Lu           <phus.lu@gmail.com>
+#      Hewig Xu          <hewigovens@gmail.com>
+#      Ayanamist Yang    <ayanamist@gmail.com>
+#      V.E.O             <V.E.O@tom.com>
+#      Max Lv            <max.c.lv@gmail.com>
+#      AlsoTang          <alsotang@gmail.com>
+#      Christopher Meng  <cickumqt@gmail.com>
+#      Yonsm Guo         <YonsmGuo@gmail.com>
+#      Parkman           <cseparkman@gmail.com>
+#      Ming Bai          <mbbill@gmail.com>
+#      Bin Yu            <yubinlove1991@gmail.com>
+#      lileixuan         <lileixuan@gmail.com>
+#      Cong Ding         <cong@cding.org>
+#      Zhang Youfu       <zhangyoufu@gmail.com>
+#      Lu Wei            <luwei@barfoo>
+#      Harmony Meow      <harmony.meow@gmail.com>
+#      logostream        <logostream@gmail.com>
+#      Rui Wang          <isnowfy@gmail.com>
+#      Wang Wei Qiang    <wwqgtxx@gmail.com>
+#      Felix Yan         <felixonmars@gmail.com>
+#      Sui Feng          <suifeng.me@qq.com>
+#      QXO               <qxodream@gmail.com>
+#      Geek An           <geekan@foxmail.com>
+#      Poly Rabbit       <mcx_221@foxmail.com>
+#      oxnz              <yunxinyi@gmail.com>
+#      Shusen Liu        <liushusen.smart@gmail.com>
+#      Yad Smood         <y.s.inside@gmail.com>
+#      Chen Shuang       <cs0x7f@gmail.com>
 
 __version__ = '3.0.6'
 
