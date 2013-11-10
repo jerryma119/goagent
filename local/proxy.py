@@ -32,7 +32,7 @@
 #      Yad Smood         <y.s.inside@gmail.com>
 #      Chen Shuang       <cs0x7f@gmail.com>
 
-__version__ = '3.0.6'
+__version__ = '3.0.7'
 
 import sys
 import os
