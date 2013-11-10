@@ -1,9 +1,9 @@
 .DS_Store
 .appcfg_cookies
-.pid
 *~
 *.pyc
 *.pac
 *.key
 *.crt
 *.egg
+*.pid
