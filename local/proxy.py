@@ -32,7 +32,7 @@
 #      Yad Smood         <y.s.inside@gmail.com>
 #      Chen Shuang       <cs0x7f@gmail.com>
 
-__version__ = '3.0.7'
+__version__ = '3.0.8'
 
 import sys
 import os
@@ -1340,10 +1340,16 @@ class Common(object):
         self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE = self.CONFIG.get('gae', 'profile')
+        self.GAE_HOSTS = self.CONFIG.get('gae', 'hosts')
         self.GAE_CRLF = self.CONFIG.getint('gae', 'crlf')
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate') if self.CONFIG.has_option('gae', 'obfuscate') else 0
         self.GAE_OPTIONS = self.CONFIG.get('gae', 'options') if self.CONFIG.has_option('gae', 'options') else ''
+        m = re.match(r'\[(\w+)\](\w+)', self.GAE_HOSTS)
+        if m:
+            self.GAE_HOSTS = self.CONFIG.get(m.group(1), m.group(2)).split('|')
+        else:
+            self.GAE_HOSTS = self.GAE_HOSTS.split('|')
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
@@ -1848,43 +1854,41 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
     normattachment = functools.partial(re.compile(r'filename=(.+?)').sub, 'filename="\\1"')
 
-    def _update_google_iplist(self):
-        if any(not re.match(r'\d+\.\d+\.\d+\.\d+', x) for x in common.GOOGLE_HOSTS):
-            google_ipmap = {}
-            need_resolve_remote = []
-            for domain in common.GOOGLE_HOSTS:
-                if not re.match(r'\d+\.\d+\.\d+\.\d+', domain):
-                    try:
-                        iplist = socket.gethostbyname_ex(domain)[-1]
-                        if len(iplist) >= 2:
-                            google_ipmap[domain] = iplist
-                    except (socket.error, OSError):
-                        need_resolve_remote.append(domain)
-                        continue
+    @staticmethod
+    def resolve_google_iplist(google_hosts):
+        resolved_iplist = []
+        need_resolve_remote = []
+        for host in google_hosts:
+            if re.match(r'\d+\.\d+\.\d+\.\d+', host):
+                resolved_iplist += [host]
+                continue
+            try:
+                iplist = socket.gethostbyname_ex(host)[-1]
+                if len(iplist) >= 2:
+                    resolved_iplist += iplist
                 else:
-                    google_ipmap[domain] = [domain]
-            google_iplist = list(set(sum(list(google_ipmap.values()), [])))
-            if len(google_iplist) < 20 or len(set(x.split('.', 1)[0] for x in google_iplist)) == 1:
-                logging.warning('local google_iplist=%s is too short, try remote_resolve', google_iplist)
-                need_resolve_remote += list(common.GOOGLE_HOSTS)
-            for dnsserver in ('8.8.4.4', '168.95.1.1', '114.114.114.114', '114.114.115.115'):
-                for domain in need_resolve_remote:
-                    logging.info('resolve remote domain=%r from dnsserver=%r', domain, dnsserver)
-                    try:
-                        iplist = DNSUtil.remote_resolve(dnsserver, domain, timeout=3)
-                        if iplist:
-                            google_ipmap.setdefault(domain, []).extend(iplist)
-                            logging.info('resolve remote domain=%r to iplist=%s', domain, google_ipmap[domain])
-                    except (socket.error, OSError) as e:
-                        logging.exception('resolve remote domain=%r dnsserver=%r failed: %s', domain, dnsserver, e)
-            common.GOOGLE_HOSTS = list(set(sum(list(google_ipmap.values()), [])))
-            if len(common.GOOGLE_HOSTS) == 0:
-                logging.error('resolve %s domain return empty! try remote dns resovle!', common.GAE_PROFILE)
-                common.GOOGLE_HOSTS = common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|')
-                #sys.exit(-1)
-        for appid in common.GAE_APPIDS:
-            http_util.dns['%s.appspot.com' % appid] = list(set(common.GOOGLE_HOSTS))
-        logging.info('resolve common.GOOGLE_HOSTS domain to iplist=%r', common.GOOGLE_HOSTS)
+                    need_resolve_remote += [host]
+            except (socket.error, OSError):
+                need_resolve_remote += [host]
+        if len(resolved_iplist) < 20 or len(set(x.split('.', 1)[0] for x in resolved_iplist)) == 1:
+            logging.warning('local google_hosts=%s is too short, try remote_resolve', google_hosts)
+            need_resolve_remote += [x for x in google_hosts if not re.match(r'\d+\.\d+\.\d+\.\d+', x)]
+        for dnsserver in ('8.8.4.4', '168.95.1.1', '114.114.114.114', '114.114.115.115'):
+            for host in need_resolve_remote:
+                logging.info('resolve remote host=%r from dnsserver=%r', host, dnsserver)
+                try:
+                    iplist = DNSUtil.remote_resolve(dnsserver, host, timeout=3)
+                    if iplist:
+                        resolved_iplist += iplist
+                        logging.info('resolve remote host=%r to iplist=%s', host, iplist)
+                except (socket.error, OSError) as e:
+                    logging.exception('resolve remote host=%r dnsserver=%r failed: %s', host, dnsserver, e)
+        resolved_iplist = list(set(resolved_iplist))
+        if len(resolved_iplist) == 0:
+            logging.error('resolve %s host return empty! please retry!', google_hosts)
+            sys.exit(-1)
+        logging.info('resolve google_hosts=%s host to iplist=%r', google_hosts, resolved_iplist)
+        return resolved_iplist
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
@@ -1937,7 +1941,12 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     http_util.max_window = common.GOOGLE_WINDOW = common.CONFIG.getint('google_hk', 'window')
                     common.GOOGLE_HOSTS = list(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
                     common.GOOGLE_WITHGAE = tuple(common.CONFIG.get('google_hk', 'withgae').split('|'))
-            self._update_google_iplist()
+            common.GOOGLE_HOSTS = self.__class__.resolve_google_iplist(common.GOOGLE_HOSTS)
+            common.GAE_HOSTS = self.__class__.resolve_google_iplist(common.GAE_HOSTS)
+            for appid in common.GAE_APPIDS:
+                http_util.dns['%s.appspot.com' % appid] = common.GAE_HOSTS
+            logging.info('GOOGLE_HOSTS=%s', common.GOOGLE_HOSTS)
+            logging.info('GAE_HOSTS=%s', common.GAE_HOSTS)
 
     def setup(self):
         if isinstance(self.__class__.first_run, collections.Callable):
