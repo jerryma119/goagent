@@ -332,7 +332,7 @@ class CertUtil(object):
                 sys.exit(-1)
             if os.path.exists(certdir):
                 if os.path.isdir(certdir):
-                    any(os.remove(x) for x in glob.glob(certdir+'/*.crt'))
+                    any(os.remove(x) for x in glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt'))
                 else:
                     os.remove(certdir)
                     os.mkdir(certdir)
@@ -1340,6 +1340,7 @@ class Common(object):
         self.GAE_PASSWORD = self.CONFIG.get('gae', 'password').strip()
         self.GAE_PATH = self.CONFIG.get('gae', 'path')
         self.GAE_PROFILE = self.CONFIG.get('gae', 'profile')
+        self.GAE_MODE = self.CONFIG.get('gae', 'mode')
         self.GAE_HOSTS = self.CONFIG.get('gae', 'hosts')
         self.GAE_CRLF = self.CONFIG.getint('gae', 'crlf')
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
@@ -1349,7 +1350,7 @@ class Common(object):
         if m:
             self.GAE_HOSTS = self.CONFIG.get(m.group(1), m.group(2)).split('|')
         else:
-            self.GAE_HOSTS = self.GAE_HOSTS.split('|')
+            self.GAE_HOSTS = (self.GAE_HOSTS or self.CONFIG.get(self.GAE_PROFILE, 'hosts')).split('|')
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
@@ -1384,12 +1385,11 @@ class Common(object):
                 self.PROXY_HOST = proxyhost
                 self.PROXY_PORT = int(proxyport)
         if self.PROXY_ENABLE:
-            self.GOOGLE_MODE = 'https'
+            self.GAE_MODE = 'https'
             self.proxy = 'https://%s:%s@%s:%d' % (self.PROXY_USERNAME or '', self.PROXY_PASSWROD or '', self.PROXY_HOST, self.PROXY_PORT)
         else:
             self.proxy = ''
 
-        self.GOOGLE_MODE = self.CONFIG.get(self.GAE_PROFILE, 'mode')
         self.GOOGLE_WINDOW = self.CONFIG.getint(self.GAE_PROFILE, 'window') if self.CONFIG.has_option(self.GAE_PROFILE, 'window') else 4
         self.GOOGLE_HOSTS = [x for x in self.CONFIG.get(self.GAE_PROFILE, 'hosts').split('|') if x]
         self.GOOGLE_SITES = tuple(x for x in self.CONFIG.get(self.GAE_PROFILE, 'sites').split('|') if x)
@@ -1441,7 +1441,7 @@ class Common(object):
         self.HOSTS_CONNECT_MATCH = DictType((re.compile(k).search, v) for k, v in self.HOSTS.items() if re.search(r'\d+$', k))
 
         random.shuffle(self.GAE_APPIDS)
-        self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GOOGLE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
+        self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GAE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
 
     def info(self):
         info = ''
@@ -1451,7 +1451,7 @@ class Common(object):
         info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
         info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'Debug INFO         : %s\n' % self.LISTEN_DEBUGINFO if self.LISTEN_DEBUGINFO else ''
-        info += 'GAE Mode           : %s\n' % self.GOOGLE_MODE
+        info += 'GAE Mode           : %s\n' % self.GAE_MODE
         info += 'GAE Profile        : %s\n' % self.GAE_PROFILE
         info += 'GAE APPID          : %s\n' % '|'.join(self.GAE_APPIDS)
         info += 'GAE Validate       : %s\n' % self.GAE_VALIDATE if self.GAE_VALIDATE else ''
@@ -1623,7 +1623,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
             payload = rc4crypt(payload, kwargs.get('password'))
         request_headers['Content-Length'] = str(len(payload))
     # post data
-    need_crlf = 0 if common.GOOGLE_MODE == 'https' else common.GAE_CRLF
+    need_crlf = 0 if common.GAE_MODE == 'https' else common.GAE_CRLF
     response = http_util.request(request_method, fetchserver, payload, request_headers, crlf=need_crlf)
     response.app_status = response.status
     response.app_options = response.getheader('X-GOA-Options', '')
@@ -1936,8 +1936,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 logging.info('speedtest google_cn iplist average_timing=%0.2f ms, need_switch=%r', average_timing, need_switch)
                 if need_switch:
                     common.GAE_PROFILE = 'google_hk'
-                    common.GOOGLE_MODE = 'https'
-                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                    common.GAE_MODE = 'https'
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                     http_util.max_window = common.GOOGLE_WINDOW = common.CONFIG.getint('google_hk', 'window')
                     common.GOOGLE_HOSTS = list(set(x for x in common.CONFIG.get(common.GAE_PROFILE, 'hosts').split('|') if x))
                     common.GOOGLE_WITHGAE = tuple(common.CONFIG.get('google_hk', 'withgae').split('|'))
@@ -2096,14 +2096,14 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     return
                 # gateway error, switch to https mode
                 if response.app_status in (400, 504) or (response.app_status == 502 and common.GAE_PROFILE == 'google_cn'):
-                    common.GOOGLE_MODE = 'https'
-                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                    common.GAE_MODE = 'https'
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                     continue
                 # appid not exists, try remove it from appid
                 if response.app_status == 404:
                     if len(common.GAE_APPIDS) > 1:
                         appid = common.GAE_APPIDS.pop(0)
-                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                         http_util.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
                         logging.warning('APPID %r not exists, remove it.', appid)
                         continue
@@ -2117,7 +2117,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status == 503:
                     if len(common.GAE_APPIDS) > 1:
                         common.GAE_APPIDS.pop(0)
-                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                         http_util.dns[urlparse.urlparse(common.GAE_FETCHSERVER).netloc] = common.GOOGLE_HOSTS
                         logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying…' % (common.GAE_APPIDS[0]))
                         self.do_METHOD_GAE()
@@ -2182,8 +2182,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.debug('GAEProxyHandler.do_METHOD_GAE return %r', e)
                 elif e.args[0] in (errno.ECONNRESET, errno.ETIMEDOUT, errno.ENETUNREACH, 11004):
                     # connection reset or timeout, switch to https
-                    common.GOOGLE_MODE = 'https'
-                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GOOGLE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+                    common.GAE_MODE = 'https'
+                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                 elif e.args[0] == errno.ETIMEDOUT or isinstance(e.args[0], str) and 'timed out' in e.args[0]:
                     if content_length and accept_ranges == 'bytes':
                         # we can retry range fetch here
@@ -2616,7 +2616,7 @@ def pre_start():
     if common.GAE_APPIDS[0] == 'goagent':
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
-    if common.GOOGLE_MODE == 'http' and common.GAE_PROFILE != 'google_ipv6' and common.GAE_PASSWORD == '':
+    if common.GAE_MODE == 'http' and common.GAE_PROFILE != 'google_ipv6' and common.GAE_PASSWORD == '':
         logging.critical('to enable http mode, you should set %r [gae]password = <your_pass> and [gae]options = rc4', common.CONFIG_FILENAME)
         sys.exit(-1)
     if common.PAC_ENABLE:
