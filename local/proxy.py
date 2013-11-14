@@ -1880,12 +1880,12 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             need_resolve_remote += [x for x in google_hosts if not re.match(r'\d+\.\d+\.\d+\.\d+', x)]
         for dnsserver in ('8.8.4.4', '168.95.1.1', '114.114.114.114', '114.114.115.115'):
             for host in need_resolve_remote:
-                logging.info('resolve remote host=%r from dnsserver=%r', host, dnsserver)
+                logging.debug('resolve remote host=%r from dnsserver=%r', host, dnsserver)
                 try:
                     iplist = DNSUtil.remote_resolve(dnsserver, host, timeout=3)
                     if iplist:
                         resolved_iplist += iplist
-                        logging.info('resolve remote host=%r to iplist=%s', host, iplist)
+                        logging.debug('resolve remote host=%r to iplist=%s', host, iplist)
                 except (socket.error, OSError) as e:
                     logging.exception('resolve remote host=%r dnsserver=%r failed: %s', host, dnsserver, e)
         resolved_iplist = list(set(resolved_iplist))
