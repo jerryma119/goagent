@@ -879,15 +879,6 @@ class HTTPUtil(object):
             self.ssl_context.set_session_id(binascii.b2a_hex(os.urandom(10)))
             if hasattr(OpenSSL.SSL, 'SESS_CACHE_BOTH'):
                 self.ssl_context.set_session_cache_mode(OpenSSL.SSL.SESS_CACHE_BOTH)
-            else:
-                try:
-                    import ctypes
-                    SSL_CTRL_SET_SESS_CACHE_MODE = 44
-                    SESS_CACHE_BOTH = 0x3
-                    ctx = ctypes.c_void_p.from_address(id(self.ssl_context)+ctypes.sizeof(ctypes.c_int)+ctypes.sizeof(ctypes.c_voidp))
-                    ctypes.cdll.ssleay32.SSL_CTX_ctrl(ctx, SSL_CTRL_SET_SESS_CACHE_MODE, SESS_CACHE_BOTH, None)
-                except Exception as e:
-                    logging.warning('SSL_CTX_set_session_cache_mode failed: %r', e)
         else:
             self.ssl_context = None
         if self.ssl_validate:
@@ -1878,7 +1869,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if len(resolved_iplist) < 20 or len(set(x.split('.', 1)[0] for x in resolved_iplist)) == 1:
             logging.warning('local google_hosts=%s is too short, try remote_resolve', google_hosts)
             need_resolve_remote += [x for x in google_hosts if not re.match(r'\d+\.\d+\.\d+\.\d+', x)]
-        for dnsserver in ('8.8.4.4', '168.95.1.1', '114.114.114.114', '114.114.115.115'):
+        for dnsserver in ('114.114.114.114', '114.114.115.115'):
             for host in need_resolve_remote:
                 logging.debug('resolve remote host=%r from dnsserver=%r', host, dnsserver)
                 try:
