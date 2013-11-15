@@ -137,7 +137,7 @@ class RC4FileObject(object):
 
 
 try:
-    from Crypto.Cipher._ARC4 import new as _Crypto_Cipher_ARC4_new
+    from Crypto.Cipher.ARC4 import new as _Crypto_Cipher_ARC4_new
     def rc4crypt(data, key):
         return _Crypto_Cipher_ARC4_new(key).encrypt(data) if key else data
     class RC4FileObject(object):
