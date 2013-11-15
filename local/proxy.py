@@ -446,7 +446,8 @@ class SSLConnection(object):
     def close(self):
         if self._makefile_refs < 1:
             self._connection = None
-            socket.socket.close(self._sock)
+            if self._sock:
+                socket.socket.close(self._sock)
         else:
             self._makefile_refs -= 1
 
