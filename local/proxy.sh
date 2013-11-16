@@ -22,12 +22,9 @@ PACKAGE_NAME=goagent
 PACKAGE_DESC="goagent proxy server"
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:${PATH}
 
-# Choose python version.
-py=python2.7
-
 start() {
     echo "Starting ${PACKAGE_DESC}: "
-    nohup /usr/bin/env $py proxy.py > /dev/null 2>&1 &
+    nohup /usr/bin/env python2.7 proxy.py > /dev/null 2>&1 &
     echo $! > ${PACKAGE_NAME}.pid
     echo "${PACKAGE_NAME}."
 }
@@ -56,7 +53,7 @@ if [ "$(id -u)" != "0" ]; then
 fi
 
 # `readlink -f` won't work on Mac, this hack should work on all systems.
-cd $(dirname $($py -c "import os; print os.path.realpath('$0')"))
+cd $(python -c "import os; print os.path.dirname(os.path.realpath('$0'))")
 
 case "$1" in
     # If no arg is given, start the goagent.
