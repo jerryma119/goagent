@@ -325,7 +325,7 @@ class CertUtil(object):
     def check_ca():
         #Check CA exists
         capath = os.path.join(os.path.dirname(os.path.abspath(__file__)), CertUtil.ca_keyfile)
-        certdir = os.path.join(os.path.dirname(__file__), CertUtil.ca_certdir)
+        certdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), CertUtil.ca_certdir)
         if not os.path.exists(capath):
             if not OpenSSL:
                 logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
