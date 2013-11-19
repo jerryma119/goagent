@@ -306,7 +306,7 @@ class CertUtil(object):
                 del crypt32
                 return 0 if ret else -1
         elif sys.platform == 'darwin':
-            return os.system('security find-certificate -a -c "%s" | grep "%s" >/dev/null || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, commonname, certfile))
+            return os.system(('security find-certificate -a -c "%s" | grep "%s" >/dev/null || security add-trusted-cert -d -r trustRoot -k "/Library/Keychains/System.keychain" "%s"' % (commonname, commonname, certfile.decode('utf-8'))).encode('utf-8'))
         elif sys.platform.startswith('linux'):
             import platform
             platform_distname = platform.dist()[0]
