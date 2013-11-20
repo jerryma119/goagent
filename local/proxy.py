@@ -514,7 +514,7 @@ class PacUtil(object):
                 content += '\r\n' + jsrule + '\r\n'
                 logging.info('%r downloaded and parsed', common.PAC_ADBLOCK)
             else:
-                content += '\r\nfunction FindProxyForURLByAdblock(url, host) {return DIRECT;}\r\n'
+                content += '\r\nfunction FindProxyForURLByAdblock(url, host) {return "DIRECT";}\r\n'
         except Exception as e:
             need_update = False
             logging.exception('update_pacfile failed: %r', e)
