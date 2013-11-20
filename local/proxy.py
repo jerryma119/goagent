@@ -325,7 +325,7 @@ class CertUtil(object):
     def check_ca():
         #Check CA exists
         capath = os.path.join(os.path.dirname(os.path.abspath(__file__)), CertUtil.ca_keyfile)
-        certdir = os.path.join(os.path.dirname(__file__), CertUtil.ca_certdir)
+        certdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), CertUtil.ca_certdir)
         if not os.path.exists(capath):
             if not OpenSSL:
                 logging.critical('CA.key is not exist and OpenSSL is disabled, ABORT!')
@@ -1972,7 +1972,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if common.HOSTS_MATCH and any(x(self.path) for x in common.HOSTS_MATCH):
                 realhosts = next(common.HOSTS_MATCH[x] for x in common.HOSTS_MATCH if x(self.path)) or re.sub(r':\d+$', '', self.parsed_url.netloc)
                 realhost = random.choice(realhosts.split('|'))
-                logging.debug('hosts pattern mathed, url=%r realhost=%r', self.path, realhost)
+                logging.debug('hosts pattern matched, url=%r realhost=%r', self.path, realhost)
                 response = http_util.request(self.command, self.path, payload, self.headers, realhost=realhost, crlf=common.GAE_CRLF)
             else:
                 response = http_util.request(self.command, self.path, payload, self.headers, crlf=common.GAE_CRLF)
