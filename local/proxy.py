@@ -31,8 +31,10 @@
 #      Shusen Liu        <liushusen.smart@gmail.com>
 #      Yad Smood         <y.s.inside@gmail.com>
 #      Chen Shuang       <cs0x7f@gmail.com>
+#      cnfuyu            <cnfuyu@gmail.com>
+#      cuixin            <steven.cuixin@gmail.com>
 
-__version__ = '3.0.8'
+__version__ = '3.0.9a'
 
 import sys
 import os
