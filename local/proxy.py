@@ -1080,10 +1080,13 @@ class HTTPUtil(object):
                 if sock:
                     sock.close()
         def _close_ssl_connection(count, queobj):
-            for _ in range(count):
+            for i in range(count):
                 sock = queobj.get()
                 if sock and not isinstance(sock, Exception):
-                    self.ssl_connection_cache[address].put((time.time(), sock))
+                    if i == 0:
+                        self.ssl_connection_cache[address].put((time.time(), sock))
+                    else:
+                        sock.close()
         try:
             ctime, sock = self.ssl_connection_cache[address].get_nowait()
             if time.time() - ctime < 30:
