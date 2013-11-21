@@ -877,6 +877,7 @@ class HTTPUtil(object):
         self.max_timeout = max_timeout
         self.tcp_connection_time = collections.defaultdict(float)
         self.ssl_connection_time = collections.defaultdict(float)
+        self.ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
         self.max_timeout = max_timeout
         self.dns = {}
         self.crlf = 0
@@ -1080,7 +1081,15 @@ class HTTPUtil(object):
                     sock.close()
         def _close_ssl_connection(count, queobj):
             for _ in range(count):
-                queobj.get()
+                sock = queobj.get()
+                if sock and not isinstance(sock, Exception):
+                    self.ssl_connection_cache[address].put((time.time(), sock))
+        try:
+            ctime, sock = self.ssl_connection_cache[address].get_nowait()
+            if time.time() - ctime < 30:
+                return sock
+        except Queue.Empty:
+            pass
         host, port = address
         result = None
         # create_connection = _create_ssl_connection if not self.ssl_obfuscate and not self.ssl_validate else _create_openssl_connection
