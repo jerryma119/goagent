@@ -1601,8 +1601,13 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
             payload = rc4crypt(payload, kwargs.get('password'))
         request_headers['Content-Length'] = str(len(payload))
     # post data
-    need_crlf = 0 if common.GAE_MODE == 'https' else common.GAE_CRLF
-    response = http_util.request(request_method, fetchserver, payload, request_headers, crlf=need_crlf, connection_cache_key='*.appspot.com')
+    if common.GAE_MODE == 'https':
+        need_crlf = 0
+        connection_cache_key = '*.appspot.com:443'
+    else:
+        need_crlf = 1
+        connection_cache_key = '*.appspot.com:80'
+    response = http_util.request(request_method, fetchserver, payload, request_headers, crlf=need_crlf, connection_cache_key=connection_cache_key)
     response.app_status = response.status
     response.app_options = response.getheader('X-GOA-Options', '')
     if response.status != 200:
@@ -2202,7 +2207,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for i in range(5):
                 try:
                     timeout = 4
-                    connection_cache_key = '*.google.com' if host.endswith(common.GOOGLE_SITES) else ''
+                    connection_cache_key = '*.google.com:%d' % port if host.endswith(common.GOOGLE_SITES) else ''
                     remote = http_util.create_connection((host, port), timeout, cache_key=connection_cache_key)
                     if remote is not None and data:
                         remote.sendall(data)
