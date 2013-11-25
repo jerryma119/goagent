@@ -1018,7 +1018,7 @@ class HTTPUtil(object):
                 # record TCP connection time
                 self.tcp_connection_time[ipaddr] = connected_time - start_time
                 # record SSL connection time
-                self.ssl_connection_time[ipaddr] = handshaked_time - start_time
+                self.ssl_connection_time[ipaddr] = ssl_sock.connection_time = handshaked_time - start_time
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 # verify SSL certificate.
@@ -1072,7 +1072,7 @@ class HTTPUtil(object):
                 # record TCP connection time
                 self.tcp_connection_time[ipaddr] = connected_time - start_time
                 # record SSL connection time
-                self.ssl_connection_time[ipaddr] = handshaked_time - start_time
+                self.ssl_connection_time[ipaddr] = ssl_sock.connection_time = handshaked_time - start_time
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 # verify SSL certificate.
