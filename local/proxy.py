@@ -1839,6 +1839,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     @staticmethod
     def resolve_google_iplist(google_hosts):
+        def do_remote_resolve(name, dnsserver, queue):
+            try:
+                queue.put((name, dnsserver, DNSUtil.remote_resolve(dnsserver, name, timeout=2)))
+            except (socket.error, OSError) as e:
+                logging.error('resolve remote name=%r dnsserver=%r failed: %s', name, dnsserver, e)
         resolved_iplist = []
         need_resolve_remote = []
         for host in google_hosts:
@@ -1856,16 +1861,20 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if len(resolved_iplist) < 20 or len(set(x.split('.', 1)[0] for x in resolved_iplist)) == 1:
             logging.warning('local google_hosts=%s is too short, try remote_resolve', google_hosts)
             need_resolve_remote += [x for x in google_hosts if not re.match(r'\d+\.\d+\.\d+\.\d+', x)]
-        for dnsserver in ('114.114.114.114', '114.114.115.115'):
-            for host in need_resolve_remote:
+        dnsservers = ['114.114.114.114', '114.114.115.115']
+        result_queue = Queue.Queue()
+        for host in need_resolve_remote:
+            for dnsserver in dnsservers:
                 logging.debug('resolve remote host=%r from dnsserver=%r', host, dnsserver)
-                try:
-                    iplist = DNSUtil.remote_resolve(dnsserver, host, timeout=3)
-                    if iplist:
-                        resolved_iplist += iplist
-                        logging.debug('resolve remote host=%r to iplist=%s', host, iplist)
-                except (socket.error, OSError) as e:
-                    logging.exception('resolve remote host=%r dnsserver=%r failed: %s', host, dnsserver, e)
+                threading._start_new_thread(do_remote_resolve, (host, dnsserver, result_queue))
+        for _ in xrange(len(need_resolve_remote) * len(dnsservers)):
+            try:
+                name, dnsserver, iplist = result_queue.get(timeout=2)
+                resolved_iplist += iplist or []
+                logging.debug('resolve remote name=%r from dnsserver=%r return iplist=%s', name, dnsserver, iplist)
+            except Queue.Empty:
+                logging.warn('resolve remote timeout, continue')
+                break
         resolved_iplist = list(set(resolved_iplist))
         if len(resolved_iplist) == 0:
             logging.error('resolve %s host return empty! please retry!', google_hosts)
