@@ -9,6 +9,7 @@
 $__version__  = '3.0.5';
 $__password__ = '';
 $__timeout__  = 20;
+$__content_type__ = 'image/gif'
 
 class URLFetch {
     protected $body_maxsize = 4194304;
@@ -223,7 +224,7 @@ function print_response($status, $headers, $content, $support_gzip=true) {
         $content = gzcompress($content);
     }
     $response_headers_data = gzdeflate(rtrim($strheaders));
-    header('Content-Type: image/gif');
+    header('Content-Type: ' . $GLOBALS['__content_type__']);
     print(pack('nn', $status, strlen($response_headers_data)) . $response_headers_data);
     print($content);
 }
