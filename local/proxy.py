@@ -1858,7 +1858,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     need_resolve_remote += [host]
             except (socket.error, OSError):
                 need_resolve_remote += [host]
-        if len(resolved_iplist) < 20 or len(set(x.split('.', 1)[0] for x in resolved_iplist)) == 1:
+        if len(resolved_iplist) < 32 or len(set(x.split('.', 1)[0] for x in resolved_iplist)) == 1:
             logging.warning('local google_hosts=%s is too short, try remote_resolve', google_hosts)
             need_resolve_remote += [x for x in google_hosts if not re.match(r'\d+\.\d+\.\d+\.\d+', x)]
         dnsservers = ['114.114.114.114', '114.114.115.115']
