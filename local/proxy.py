@@ -1645,6 +1645,7 @@ class RangeFetch(object):
     threads = 1
     waitsize = 1024*512
     urlfetch = staticmethod(gae_urlfetch)
+    expect_begin = 0
 
     def __init__(self, wfile, response, method, url, headers, payload, fetchservers, password, maxsize=0, bufsize=0, waitsize=0, threads=0):
         self.wfile = wfile
@@ -1684,63 +1685,69 @@ class RangeFetch(object):
         range_queue.put((start, end, self.response))
         for begin in range(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
-        for _ in range(self.threads):
-            thread.start_new_thread(self.__fetchlet, (range_queue, data_queue))
+        thread.start_new_thread(self.__fetchlet, (range_queue, data_queue, 0))
+        t0 = time.time()
+        cur_threads = 1
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 90
-        expect_begin = start
-        while expect_begin < length-1:
+        self.expect_begin = start
+        while self.expect_begin < length - 1:
+            while cur_threads < self.threads and time.time() - t0 > cur_threads * common.AUTORANGE_MAXSIZE / 1048576:
+                thread.start_new_thread(self.__fetchlet, (range_queue, data_queue, cur_threads * common.AUTORANGE_MAXSIZE))
+                cur_threads += 1
             try:
                 if has_peek:
                     begin, data = data_queue.peek(timeout=peek_timeout)
-                    if expect_begin == begin:
+                    if self.expect_begin == begin:
                         data_queue.get()
-                    elif expect_begin < begin:
+                    elif self.expect_begin < begin:
                         time.sleep(0.1)
                         continue
                     else:
-                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, expect_begin)
+                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, self.expect_begin)
                         break
                 else:
                     begin, data = data_queue.get(timeout=peek_timeout)
-                    if expect_begin == begin:
+                    if self.expect_begin == begin:
                         pass
-                    elif expect_begin < begin:
+                    elif self.expect_begin < begin:
                         data_queue.put((begin, data))
                         time.sleep(0.1)
                         continue
                     else:
-                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, expect_begin)
+                        logging.error('RangeFetch Error: begin(%r) < expect_begin(%r), quit.', begin, self.expect_begin)
                         break
             except Queue.Empty:
                 logging.error('data_queue peek timeout, break')
                 break
             try:
                 self.wfile.write(data)
-                expect_begin += len(data)
+                self.expect_begin += len(data)
             except Exception as e:
                 logging.info('RangeFetch client connection aborted(%s).', e)
                 break
         self._stopped = True
 
-    def __fetchlet(self, range_queue, data_queue):
+    def __fetchlet(self, range_queue, data_queue, range_delay_size):
         headers = dict((k.title(), v) for k, v in self.headers.items())
         headers['Connection'] = 'close'
         while 1:
             try:
                 if self._stopped:
                     return
-                if data_queue.qsize() * self.bufsize > 180*1024*1024:
-                    time.sleep(10)
-                    continue
                 try:
                     start, end, response = range_queue.get(timeout=1)
+                    if self.expect_begin < start and data_queue.qsize() * self.bufsize + range_delay_size > 30*1024*1024:
+                        range_queue.put((start, end, response))
+                        time.sleep(10)
+                        continue
                     headers['Range'] = 'bytes=%d-%d' % (start, end)
                     fetchserver = ''
                     if not response:
                         fetchserver = random.choice(self.fetchservers)
                         if self._last_app_status.get(fetchserver, 200) >= 500:
                             time.sleep(5)
+                        t0 = time.time()
                         response = self.urlfetch(self.command, self.url, headers, self.payload, fetchserver, password=self.password)
                 except Queue.Empty:
                     continue
@@ -1787,11 +1794,14 @@ class RangeFetch(object):
                         except Exception as e:
                             logging.warning('RangeFetch "%s %s" %s failed: %s', self.command, self.url, headers['Range'], e)
                             break
+                    t0 = time.time() - t0
                     if start < end + 1:
                         logging.warning('RangeFetch "%s %s" retry %s-%s', self.command, self.url, start, end)
                         response.close()
                         range_queue.put((start, end, None))
                         continue
+                    logging.info('>>>>>>>>>>>>>>> Successfully reached {:,} at {:,.0f} KB/s'.format(
+                        start - 1, ((common.AUTORANGE_MAXSIZE+start-end) / t0 / 1024)))
                 else:
                     logging.error('RangeFetch %r return %s', self.url, response.status)
                     response.close()
