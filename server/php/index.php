@@ -9,7 +9,7 @@
 $__version__  = '3.0.5';
 $__password__ = '';
 $__timeout__  = 20;
-$__content_type__ = 'image/gif'
+$__content_type__ = 'image/gif';
 
 class URLFetch {
     protected $body_maxsize = 4194304;
