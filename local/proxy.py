@@ -1731,6 +1731,7 @@ class RangeFetch(object):
     def __fetchlet(self, range_queue, data_queue, range_delay_size):
         headers = dict((k.title(), v) for k, v in self.headers.items())
         headers['Connection'] = 'close'
+        t0 = time.time()
         while 1:
             try:
                 if self._stopped:
