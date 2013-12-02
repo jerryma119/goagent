@@ -1731,7 +1731,6 @@ class RangeFetch(object):
     def __fetchlet(self, range_queue, data_queue, range_delay_size):
         headers = dict((k.title(), v) for k, v in self.headers.items())
         headers['Connection'] = 'close'
-        t0 = time.time()
         while 1:
             try:
                 if self._stopped:
@@ -1748,7 +1747,6 @@ class RangeFetch(object):
                         fetchserver = random.choice(self.fetchservers)
                         if self._last_app_status.get(fetchserver, 200) >= 500:
                             time.sleep(5)
-                        t0 = time.time()
                         response = self.urlfetch(self.command, self.url, headers, self.payload, fetchserver, password=self.password)
                 except Queue.Empty:
                     continue
@@ -1795,14 +1793,12 @@ class RangeFetch(object):
                         except Exception as e:
                             logging.warning('RangeFetch "%s %s" %s failed: %s', self.command, self.url, headers['Range'], e)
                             break
-                    t0 = time.time() - t0
                     if start < end + 1:
                         logging.warning('RangeFetch "%s %s" retry %s-%s', self.command, self.url, start, end)
                         response.close()
                         range_queue.put((start, end, None))
                         continue
-                    logging.info('>>>>>>>>>>>>>>> Successfully reached {:,} at {:,.0f} KB/s'.format(
-                        start - 1, ((common.AUTORANGE_MAXSIZE+start-end) / t0 / 1024)))
+                    logging.info('>>>>>>>>>>>>>>> Successfully reached %d bytes.', start - 1)
                 else:
                     logging.error('RangeFetch %r return %s', self.url, response.status)
                     response.close()
