@@ -34,7 +34,7 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 
-__version__ = '3.0.9a'
+__version__ = '3.0.9'
 
 import sys
 import os
@@ -955,9 +955,10 @@ class HTTPUtil(object):
                     else:
                         sock.close()
         try:
-            ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
-            if time.time() - ctime < 30:
-                return sock
+            while True:
+                ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
+                if time.time() - ctime < 30:
+                    return sock
         except Queue.Empty:
             pass
         host, port = address
@@ -1103,9 +1104,10 @@ class HTTPUtil(object):
                     else:
                         sock.close()
         try:
-            ctime, sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
-            if time.time() - ctime < 30:
-                return sock
+            while True:
+                ctime, sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
+                if time.time() - ctime < 30:
+                    return sock
         except Queue.Empty:
             pass
         host, port = address
