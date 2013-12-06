@@ -1603,12 +1603,8 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
             payload = rc4crypt(payload, kwargs.get('password'))
         request_headers['Content-Length'] = str(len(payload))
     # post data
-    if common.GAE_MODE == 'https':
-        need_crlf = 0
-        connection_cache_key = '*.appspot.com:443'
-    else:
-        need_crlf = 1
-        connection_cache_key = '*.appspot.com:80'
+    need_crlf = 0 if common.GAE_MODE == 'https' else 1
+    connection_cache_key = '%s:%d' % ('*.appspot.com' if common.GAE_PROFILE == 'google_cn' else '*.google.com', 443 if common.GAE_MODE == 'https' else 80)
     response = http_util.request(request_method, fetchserver, payload, request_headers, crlf=need_crlf, connection_cache_key=connection_cache_key)
     response.app_status = response.status
     response.app_options = response.getheader('X-GOA-Options', '')
