@@ -2225,7 +2225,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             for i in range(5):
                 try:
                     timeout = 4
-                    connection_cache_key = '*.google.com:%d' % port if host.endswith(common.GOOGLE_SITES) else ''
+                    connection_cache_key = '*.google.com:%d' % port if common.GAE_PROFILE != 'google_cn' and host.endswith(common.GOOGLE_SITES) else ''
                     remote = http_util.create_connection((host, port), timeout, cache_key=connection_cache_key)
                     if remote is not None and data:
                         remote.sendall(data)
