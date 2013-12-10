@@ -1903,8 +1903,12 @@ def expand_google_iplist(iplist, max_count=100, ca_certs=None):
     for ip in need_expand:
         if count >= max_count:
             break
+        sock = None
+        ssl_sock = None
         try:
+            start_time = time.time()
             sock = socket.create_connection((ip, 443), timeout=2)
+            end_time = time.time()
             if ca_certs:
                 ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs=ca_certs)
                 cert = ssl_sock.getpeercert()
@@ -1914,11 +1918,17 @@ def expand_google_iplist(iplist, max_count=100, ca_certs=None):
                 iplist += [ip]
             count += 1
             logging.debug('expand_google_iplist(%s) OK.', ip)
+            http_util.tcp_connection_time[(ip, 443)] = end_time - start_time
+            http_util.ssl_connection_time[(ip, 443)] = http_util.tcp_connection_time[(ip, 443)] * 2
         except socket.error as e:
             logging.debug('expand_google_iplist(%s) error: %r', ip, e)
         except Exception as e:
             logging.warn('expand_google_iplist(%s) error: %r', ip, e)
         finally:
+            if sock:
+                sock.close()
+            if ssl_sock:
+                ssl_sock.close()
             time.sleep(2)
     logging.info('expand_google_iplist end. iplist=%s', iplist)
 
@@ -1937,7 +1947,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
             if 'google_hk' in common.IPLIST_MAP:
-                threading._start_new_thread(expand_google_iplist, (common.IPLIST_MAP['google_hk'], len(common.IPLIST_MAP['google_hk']) // 2, None))
+                threading._start_new_thread(expand_google_iplist, (common.IPLIST_MAP['google_hk'], len(common.IPLIST_MAP['google_hk']), None))
             for appid in common.GAE_APPIDS:
                 host = '%s.appspot.com' % appid
                 if host not in common.HOSTS_MAP:
