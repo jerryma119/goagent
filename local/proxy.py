@@ -1899,9 +1899,9 @@ def expand_google_iplist(iplist, max_count=100, ca_certs=None):
     cranges = set(x.rpartition('.')[0] for x in iplist)
     need_expand = list(set(['%s.%d' % (c, i) for c in cranges for i in xrange(1, 254)]) - set(iplist))
     random.shuffle(need_expand)
-    count = 0
+    ip_connection_time = {}
     for ip in need_expand:
-        if count >= max_count:
+        if len(ip_connection_time) >= max_count:
             break
         sock = None
         ssl_sock = None
@@ -1913,13 +1913,11 @@ def expand_google_iplist(iplist, max_count=100, ca_certs=None):
                 ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs=ca_certs)
                 cert = ssl_sock.getpeercert()
                 common_name = next(v for (k, v), in cert['subject'] if k == 'commonName')
-                iplist += [ip] if '.google' in common_name else []
+                if '.google' in common_name:
+                    ip_connection_time[ip] = end_time - start_time
             else:
-                iplist += [ip]
-            count += 1
-            logging.debug('expand_google_iplist(%s) OK.', ip)
-            http_util.tcp_connection_time[(ip, 443)] = end_time - start_time
-            http_util.ssl_connection_time[(ip, 443)] = http_util.tcp_connection_time[(ip, 443)] * 2
+                ip_connection_time[ip] = end_time - start_time
+            logging.debug('expand_google_iplist connect(%s) OK.', ip)
         except socket.error as e:
             logging.debug('expand_google_iplist(%s) error: %r', ip, e)
         except Exception as e:
@@ -1930,7 +1928,11 @@ def expand_google_iplist(iplist, max_count=100, ca_certs=None):
             if ssl_sock:
                 ssl_sock.close()
             time.sleep(2)
-    logging.info('expand_google_iplist end. iplist=%s', iplist)
+    for ip, connection_time in ip_connection_time.items():
+        http_util.tcp_connection_time[(ip, 443)] = connection_time
+        http_util.ssl_connection_time[(ip, 443)] = connection_time * 2
+    iplist += list(ip_connection_time)
+    logging.info('expand_google_iplist end. iplist=%s', list(ip_connection_time))
 
 
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
