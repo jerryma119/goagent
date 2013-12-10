@@ -176,7 +176,7 @@ class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
 
     ca_vendor = 'GoAgent'
-    ca_keyfile = 'CA.cer'
+    ca_keyfile = 'CA.crt'
     ca_certdir = 'certs'
     ca_lock = threading.Lock()
 
@@ -260,7 +260,7 @@ class CertUtil(object):
         #cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
         cert.sign(key, 'sha1')
 
-        certfile = os.path.join(CertUtil.ca_certdir, commonname + '.cer')
+        certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
         with open(certfile, 'wb') as fp:
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, cert))
             fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, pkey))
@@ -270,7 +270,7 @@ class CertUtil(object):
     def get_cert(commonname, sans=()):
         if commonname.count('.') >= 2 and len(commonname.split('.')[-2]) > 4:
             commonname = '.'+commonname.partition('.')[-1]
-        certfile = os.path.join(CertUtil.ca_certdir, commonname + '.cer')
+        certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
         if os.path.exists(certfile):
             return certfile
         elif OpenSSL is None:
@@ -314,7 +314,7 @@ class CertUtil(object):
             platform_distname = platform.dist()[0]
             if platform_distname == 'Ubuntu':
                 pemfile = "/etc/ssl/certs/%s.pem" % commonname
-                new_certfile = "/usr/local/share/ca-certificates/%s.cer" % commonname
+                new_certfile = "/usr/local/share/ca-certificates/%s.crt" % commonname
                 if not os.path.exists(pemfile):
                     return os.system('cp "%s" "%s" && update-ca-certificates' % (certfile, new_certfile))
             elif any(os.path.isfile('%s/certutil' % x) for x in os.environ['PATH'].split(os.pathsep)):
@@ -334,7 +334,7 @@ class CertUtil(object):
                 sys.exit(-1)
             if os.path.exists(certdir):
                 if os.path.isdir(certdir):
-                    any(os.remove(x) for x in glob.glob(certdir+'/*.cer')+glob.glob(certdir+'/.*.cer'))
+                    any(os.remove(x) for x in glob.glob(certdir+'/*.crt')+glob.glob(certdir+'/.*.crt'))
                 else:
                     os.remove(certdir)
                     os.mkdir(certdir)
@@ -343,7 +343,7 @@ class CertUtil(object):
             for filename in glob.glob('%s/*.key' % CertUtil.ca_certdir):
                 try:
                     os.remove(filename)
-                    os.remove(os.path.splitext(filename)[0]+'.cer')
+                    os.remove(os.path.splitext(filename)[0]+'.crt')
                 except EnvironmentError:
                     pass
         #Check CA imported
@@ -879,7 +879,7 @@ class HTTPUtil(object):
         # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
         # http://src.chromium.org/svn/trunk/src/net/third_party/nss/ssl/sslenum.c
         # http://www.openssl.org/docs/apps/ciphers.html
-        # openssl s_server -accept 443 -key CA.cer -cert CA.cer
+        # openssl s_server -accept 443 -key CA.crt -cert CA.crt
         # set_ciphers as Modern Browsers
         self.max_window = max_window
         self.max_retry = max_retry
