@@ -1895,6 +1895,34 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
             SocketServer.ThreadingTCPServer.handle_error(self, *args)
 
 
+def expand_google_iplist(iplist, max_count=100, ca_certs=None):
+    cranges = set(x.rpartition('.')[0] for x in iplist)
+    need_expand = list(set(['%s.%d' % (c, i) for c in cranges for i in xrange(1, 254)]) - set(iplist))
+    random.shuffle(need_expand)
+    count = 0
+    for ip in need_expand:
+        if count >= max_count:
+            break
+        try:
+            sock = socket.create_connection((ip, 443), timeout=2)
+            if ca_certs:
+                ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs=ca_certs)
+                cert = ssl_sock.getpeercert()
+                common_name = next(v for (k, v), in cert['subject'] if k == 'commonName')
+                iplist += [ip] if '.google' in common_name else []
+            else:
+                iplist += [ip]
+            count += 1
+            logging.debug('expand_google_iplist(%s) OK.', ip)
+        except socket.error as e:
+            logging.debug('expand_google_iplist(%s) error: %r', ip, e)
+        except Exception as e:
+            logging.warn('expand_google_iplist(%s) error: %r', ip, e)
+        finally:
+            time.sleep(2)
+    logging.info('expand_google_iplist end. iplist=%s', iplist)
+
+
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     bufsize = 256*1024
@@ -1908,6 +1936,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if not common.PROXY_ENABLE:
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
+            if 'google_hk' in common.IPLIST_MAP:
+                threading._start_new_thread(expand_google_iplist, (common.IPLIST_MAP['google_hk'], len(common.IPLIST_MAP['google_hk']) // 2, None))
             for appid in common.GAE_APPIDS:
                 host = '%s.appspot.com' % appid
                 if host not in common.HOSTS_MAP:
