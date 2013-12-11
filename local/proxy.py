@@ -685,7 +685,7 @@ class PacUtil(object):
                     jsLine = 'if (%s) return "%s";' % (jsCondition, return_proxy)
                 else:
                     jsLine = 'if (shExpMatch(url, "*%s*")) return "%s";' % (line, return_proxy)
-            jsLine = ' ' * indent + jsLine
+            jsLine = ' ' * indent + jsLine.replace('**', '*')
             if use_proxy:
                 jsLines.append(jsLine)
             else:
