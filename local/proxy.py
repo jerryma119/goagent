@@ -1364,7 +1364,7 @@ class Common(object):
                     self.CONFIG.remove_section('hosts')
                 self.CONFIG.readfp(io.BytesIO(content))
 
-        if not self.CONFIG.has_section('http'):
+        if not any(x.endswith('/http') for x in self.CONFIG.sections()):
             logging.error('please upgrade your proxy.ini')
             sys.exit(-1)
 
@@ -1385,10 +1385,7 @@ class Common(object):
         self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
         self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GAE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
 
-        if self.GAE_PROFILE:
-            hosts_section, http_section = '%s/hosts' % self.GAE_PROFILE, '%s/http' % self.GAE_PROFILE
-        else:
-            hosts_section, http_section = 'hosts', 'http'
+        hosts_section, http_section = '%s/hosts' % self.GAE_PROFILE, '%s/http' % self.GAE_PROFILE
         self.HOSTS_MAP = collections.OrderedDict((k, v or k) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and not k.startswith('.'))
         self.HOSTS_POSTFIX_MAP = collections.OrderedDict((k, v) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and k.startswith('.'))
         self.HOSTS_POSTFIX_ENDSWITH = tuple(self.HOSTS_POSTFIX_MAP)
