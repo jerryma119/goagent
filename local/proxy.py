@@ -1892,7 +1892,8 @@ class LocalProxyServer(SocketServer.ThreadingTCPServer):
             SocketServer.ThreadingTCPServer.handle_error(self, *args)
 
 
-def expand_google_iplist(iplist, max_count=100, ca_certs=None):
+def expand_google_iplist(domains, max_count=100):
+    iplist = sum([socket.gethostbyname_ex(x)[-1] for x in domains if not re.match(r'\d+\.\d+\.\d+\.\d+', x)], [])
     cranges = set(x.rpartition('.')[0] for x in iplist)
     need_expand = list(set(['%s.%d' % (c, i) for c in cranges for i in xrange(1, 254)]) - set(iplist))
     random.shuffle(need_expand)
@@ -1904,18 +1905,18 @@ def expand_google_iplist(iplist, max_count=100, ca_certs=None):
         ssl_sock = None
         try:
             start_time = time.time()
-            sock = socket.create_connection((ip, 443), timeout=2)
-            end_time = time.time()
-            if ca_certs:
-                ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs=ca_certs)
-                cert = ssl_sock.getpeercert()
-                common_name = next(v for (k, v), in cert['subject'] if k == 'commonName')
-                if '.google' in common_name:
-                    ip_connection_time[ip] = end_time - start_time
-            else:
-                ip_connection_time[ip] = end_time - start_time
-            logging.debug('expand_google_iplist connect(%s) OK.', ip)
+            request = urllib2.Request('https://%s/2' % ip, headers={'Host': 'goagent.appspot.com'})
+            urllib2.build_opener(urllib2.ProxyHandler({})).open(request)
+            ip_connection_time[(ip, 443)] = time.time() - start_time
         except socket.error as e:
+            logging.debug('expand_google_iplist(%s) error: %r', ip, e)
+        except urllib2.HTTPError as e:
+            if e.code == 404:
+                logging.debug('expand_google_iplist(%s) OK', ip)
+                ip_connection_time[(ip, 443)] = time.time() - start_time
+            else:
+                logging.debug('expand_google_iplist(%s) error: %r', ip, e.code)
+        except urllib2.URLError as e:
             logging.debug('expand_google_iplist(%s) error: %r', ip, e)
         except Exception as e:
             logging.warn('expand_google_iplist(%s) error: %r', ip, e)
@@ -1925,11 +1926,10 @@ def expand_google_iplist(iplist, max_count=100, ca_certs=None):
             if ssl_sock:
                 ssl_sock.close()
             time.sleep(2)
-    for ip, connection_time in ip_connection_time.items():
-        http_util.tcp_connection_time[(ip, 443)] = connection_time
-        http_util.ssl_connection_time[(ip, 443)] = connection_time * 2
-    iplist += list(ip_connection_time)
-    logging.info('expand_google_iplist end. iplist=%s', list(ip_connection_time))
+    http_util.tcp_connection_time.update(ip_connection_time)
+    http_util.ssl_connection_time.update(ip_connection_time)
+    common.IPLIST_MAP['google_hk'] += [x[0] for x in ip_connection_time]
+    logging.info('expand_google_iplist end. iplist=%s', ip_connection_time)
 
 
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -1943,10 +1943,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
         if not common.PROXY_ENABLE:
+            if 'google_hk' in common.IPLIST_MAP:
+                threading._start_new_thread(expand_google_iplist, (common.IPLIST_MAP['google_hk'][:], 16))
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
-            if 'google_hk' in common.IPLIST_MAP:
-                threading._start_new_thread(expand_google_iplist, (common.IPLIST_MAP['google_hk'], len(common.IPLIST_MAP['google_hk']), None))
             for appid in common.GAE_APPIDS:
                 host = '%s.appspot.com' % appid
                 if host not in common.HOSTS_MAP:
