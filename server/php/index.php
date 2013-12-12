@@ -6,13 +6,13 @@
 // Contributor:
 //     Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '3.0.5';
+$__version__  = '3.1.0';
 $__password__ = '';
 $__timeout__  = 20;
 $__content_type__ = 'image/gif';
 
 class URLFetch {
-    protected $body_maxsize = 4194304;
+    protected $body_maxsize = 8388608;
     protected $headers = array();
     protected $body = '';
     protected $body_size = 0;
@@ -40,12 +40,13 @@ class URLFetch {
 
     function urlfetch_readbody($ch, $data) {
         $bytes = strlen($data);
-        if ($this->body_size + $bytes > $this->body_maxsize) {
-            return -1;
-        }
         $this->body_size += $bytes;
         $this->body .= $data;
-        return $bytes;
+        if ($this->body_size > $this->body_maxsize) {
+            return -1;
+        } else {
+            return $bytes;
+        }
     }
 
     function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
@@ -129,7 +130,7 @@ class URLFetch {
         $this->headers['Connection'] = 'close';
         $content_length = isset($this->headers['Content-Length']) ? 1*$this->headers['Content-Length'] : 0;
 
-        if ($status < 200 && $errno == 23 && $content_length && $this->body_size < $content_length) {
+        if ($status == 200 && $content_length && $this->body_size > $this->body_maxsize) {
             $status = 206;
             $range_end = $this->body_size - 1;
             $this->headers['Content-Range'] = "bytes 0-$range_end/$content_length";
