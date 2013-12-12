@@ -52,7 +52,9 @@ try:
     gevent.monkey.patch_all(subprocess=True)
 except ImportError:
     gevent = None
-
+except TypeError:
+    gevent.monkey.patch_all()
+    sys.stderr.write('\033[1m\033[31m Warning: Please update gevent to the latest 1.0 version!\033[0m\n')
 import errno
 import binascii
 import time
