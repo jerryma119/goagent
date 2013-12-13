@@ -11,138 +11,6 @@ $__password__ = '';
 $__timeout__  = 20;
 $__content_type__ = 'image/gif';
 
-class URLFetch {
-    protected $body_maxsize = 8388608;
-    protected $headers = array();
-    protected $body = '';
-    protected $body_size = 0;
-
-    function __construct() {
-    }
-
-    function urlfetch_readheader($ch, $header) {
-        $kv = array_map('trim', explode(':', $header, 2));
-        if (isset($kv[1])) {
-            $key = join('-', array_map('ucfirst', explode('-', $kv[0])));
-            $value = $kv[1];
-            if ($key == 'Set-Cookie') {
-                if (!array_key_exists('Set-Cookie', $this->headers)) {
-                    $this->headers['Set-Cookie'] = $value;
-                } else {
-                    $this->headers['Set-Cookie'] .= "\r\nSet-Cookie: " . $value;
-                }
-            } else {
-                $this->headers[$key] = $kv[1];
-            }
-        }
-        return strlen($header);
-    }
-
-    function urlfetch_readbody($ch, $data) {
-        $bytes = strlen($data);
-        $this->body_size += $bytes;
-        $this->body .= $data;
-        if ($this->body_size > $this->body_maxsize) {
-            return -1;
-        } else {
-            return $bytes;
-        }
-    }
-
-    function urlfetch($url, $payload, $method, $headers, $follow_redirects, $deadline, $validate_certificate) {
-
-        $this->headers = array();
-        $this->body = '';
-        $this->body_size = 0;
-
-        if ($payload) {
-            $headers['Content-Length'] = strval(strlen($payload));
-        }
-        $headers['Connection'] = 'close';
-
-        $curl_opt = array();
-
-        $curl_opt[CURLOPT_TIMEOUT]        = $deadline;
-        $curl_opt[CURLOPT_CONNECTTIMEOUT] = $deadline;
-        $curl_opt[CURLOPT_RETURNTRANSFER] = true;
-        $curl_opt[CURLOPT_BINARYTRANSFER] = true;
-        $curl_opt[CURLOPT_FAILONERROR]    = true;
-
-        if (!$follow_redirects) {
-            $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
-        }
-
-        if ($deadline) {
-            $curl_opt[CURLOPT_CONNECTTIMEOUT] = $deadline;
-            $curl_opt[CURLOPT_TIMEOUT] = $deadline;
-        }
-
-        if (!$validate_certificate) {
-            $curl_opt[CURLOPT_SSL_VERIFYPEER] = false;
-            $curl_opt[CURLOPT_SSL_VERIFYHOST] = false;
-        }
-
-        switch (strtoupper($method)) {
-            case 'HEAD':
-                $curl_opt[CURLOPT_NOBODY] = true;
-                break;
-            case 'GET':
-                break;
-            case 'POST':
-                $curl_opt[CURLOPT_POST] = true;
-                $curl_opt[CURLOPT_POSTFIELDS] = $payload;
-                break;
-            case 'PUT':
-            case 'DELETE':
-                $curl_opt[CURLOPT_CUSTOMREQUEST] = $method;
-                $curl_opt[CURLOPT_POSTFIELDS] = $payload;
-                break;
-            default:
-                print(message_html('502 Urlfetch Error', 'Invalid Method: ' . $method,  $url));
-                exit(-1);
-        }
-
-        $header_array = array();
-        foreach ($headers as $key => $value) {
-            if ($key) {
-                $header_array[] = join('-', array_map('ucfirst', explode('-', $key))).': '.$value;
-            }
-        }
-        $curl_opt[CURLOPT_HTTPHEADER] = $header_array;
-
-        $curl_opt[CURLOPT_HEADER]         = false;
-        $curl_opt[CURLOPT_HEADERFUNCTION] = array(&$this, 'urlfetch_readheader');
-        $curl_opt[CURLOPT_WRITEFUNCTION]  = array(&$this, 'urlfetch_readbody');
-
-        $ch = curl_init($url);
-        curl_setopt_array($ch, $curl_opt);
-        $ret = curl_exec($ch);
-        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $errno = curl_errno($ch);
-        if ($errno)
-        {
-            $error =  $errno . ': ' .curl_error($ch);
-        } else {
-            $error = '';
-        }
-        curl_close($ch);
-
-        $this->headers['Connection'] = 'close';
-        $content_length = isset($this->headers['Content-Length']) ? 1*$this->headers['Content-Length'] : 0;
-
-        if ($status == 200 && $content_length && $this->body_size > $this->body_maxsize) {
-            $status = 206;
-            $range_end = $this->body_size - 1;
-            $this->headers['Content-Range'] = "bytes 0-$range_end/$content_length";
-            $this->headers['Accept-Ranges'] = 'bytes';
-            $this->headers['Content-Length'] = $this->body_size;
-        }
-
-        $response = array('status' => $status, 'headers' => $this->headers, 'content' => $this->body, 'error' => $error);
-        return $response;
-    }
-}
-
 
 function message_html($title, $banner, $detail) {
     $error = <<<ERROR_STRING
@@ -213,52 +81,104 @@ function decode_request($data) {
     return array($method, $url, $headers, $kwargs, $body);
 }
 
-function print_response($status, $headers, $content, $support_gzip=true) {
-    $headers['Content-Length'] = strval(strlen($content));
-    $strheaders = '';
-    foreach ($headers as $key => $value) {
-        $strheaders .= $key. ':' . $value . "\n";
+function header_function($ch, $header) {
+    if (substr($header, 0, 5) == 'HTTP/') {
+        $terms = explode(' ', $header);
+        $status = intval($terms[1]);
+        $GLOBALS['__status__'] == $status;
+        echo "Status: $status\r\n";
+    } elseif (substr($header, 0, 17) == 'Transfer-Encoding') {
+        // skip transfer-encoding
+    } else {
+        echo $header;
     }
-    $content_type = isset($headers['Content-Type']) ? $headers['Content-Type'] : '';
-    if ($support_gzip && !isset($headers['Content-Encoding']) && $content_type && (substr($content_type, 0, 5) == 'text/' || substr($content_type, 0, 16) == 'application/json' || substr($content_type, 0, 22) == 'application/javascript')) {
-        $strheaders .= 'Content-Encoding:gzip';
-        $content = gzcompress($content);
-    }
-    $response_headers_data = gzdeflate(rtrim($strheaders));
-    header('Content-Type: ' . $GLOBALS['__content_type__']);
-    print(pack('nn', $status, strlen($response_headers_data)) . $response_headers_data);
-    print($content);
+    return strlen($header);
 }
 
+function write_function($ch, $content) {
+    if (!isset($GLOBALS['__body_sent__'])) {
+        $GLOBALS['__body_sent__'] = true;
+        echo "\r\n";
+    }
+    echo $content;
+    return strlen($content);
+}
 
 function post()
 {
     list($method, $url, $headers, $kwargs, $body) = @decode_request(@file_get_contents('php://input'));
 
-    if ($GLOBALS['__password__']) {
-        if (!isset($kwargs['password']) || $GLOBALS['__password__'] != $kwargs['password']) {
+    $password = $GLOBALS['__password__'];
+    if ($password) {
+        if (!isset($kwargs['password']) || $password != $kwargs['password']) {
             header("HTTP/1.0 403 Forbidden");
-            echo '403 Forbidden';
+            print(message_html('403 Forbidden', 'Wrong Password'));
             exit(-1);
         }
     }
 
-    if (isset($kwargs['hostip']) && isset($headers['Host'])) {
-        $ip = $kwargs['hostip'];
-        $url = preg_replace('#(.+://)([\w\.\-]+)#', '${1}'.$ip, $url);
+    if ($body) {
+        $headers['Content-Length'] = strval(strlen($body));
     }
-
     $headers['Connection'] = 'close';
 
-    $urlfetch = new URLFetch();
-    $response = $urlfetch->urlfetch($url, $body, $method, $headers, False, $deadline, False);
-    $status = $response['status'];
-    if (200 <= $status && $status < 400) {
-        print_response($status, $response['headers'], $response['content'], isset($headers['Accept-Encoding']) && strpos($headers['Accept-Encoding'], 'gzip'));
-    } else {
-        header('HTTP/1.0 502');
-        echo message_html('502 Urlfetch Error', 'PHP Curl Urlfetch Error: ' . $status,  $response['error']);
+    $timeout = $GLOBALS['__timeout__'];
+
+    $curl_opt = array();
+
+    $curl_opt[CURLOPT_RETURNTRANSFER] = true;
+    $curl_opt[CURLOPT_BINARYTRANSFER] = true;
+
+    $curl_opt[CURLOPT_HEADER]         = false;
+    $curl_opt[CURLOPT_HEADERFUNCTION] = 'header_function';
+    $curl_opt[CURLOPT_WRITEFUNCTION]  = 'write_function';
+
+    $curl_opt[CURLOPT_FAILONERROR]    = true;
+    $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
+
+    $curl_opt[CURLOPT_CONNECTTIMEOUT] = $timeout;
+    $curl_opt[CURLOPT_TIMEOUT]        = $timeout;
+
+    $curl_opt[CURLOPT_SSL_VERIFYPEER] = false;
+    $curl_opt[CURLOPT_SSL_VERIFYHOST] = false;
+
+    switch (strtoupper($method)) {
+        case 'HEAD':
+            $curl_opt[CURLOPT_NOBODY] = true;
+            break;
+        case 'GET':
+            break;
+        case 'POST':
+            $curl_opt[CURLOPT_POST] = true;
+            $curl_opt[CURLOPT_POSTFIELDS] = $body;
+            break;
+        case 'PUT':
+        case 'DELETE':
+            $curl_opt[CURLOPT_CUSTOMREQUEST] = $method;
+            $curl_opt[CURLOPT_POSTFIELDS] = $body;
+            break;
+        default:
+            print(message_html('502 Urlfetch Error', 'Invalid Method: ' . $method,  $url));
+            exit(-1);
     }
+
+    $header_array = array();
+    foreach ($headers as $key => $value) {
+        if ($key) {
+            $header_array[] = join('-', array_map('ucfirst', explode('-', $key))).': '.$value;
+        }
+    }
+    $curl_opt[CURLOPT_HTTPHEADER] = $header_array;
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, $curl_opt);
+    $ret = curl_exec($ch);
+    $errno = curl_errno($ch);
+    if ($errno && !isset($GLOBALS['__status__'])) {
+        header('HTTP/1.0 502');
+        echo message_html('502 Urlfetch Error', 'PHP Curl Urlfetch Error' . $errno,  curl_error($ch));
+    }
+    curl_close($ch);
 }
 
 function get() {

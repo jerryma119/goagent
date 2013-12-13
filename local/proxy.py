@@ -2352,23 +2352,23 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
+    response.app_transfer_encoding = response.getheader('Transfer-Encoding', '')
     if response.status != 200:
         if response.status in (400, 405):
             # filter by some firewall
             common.PAAS_CRLF = 0
         return response
-    data = response.read(4)
-    if len(data) < 4:
-        response.status = 502
-        response.fp = io.BytesIO(b'connection aborted. too short leadtype data=' + data)
-        return response
-    response.status, headers_length = struct.unpack('!hh', data)
-    data = response.read(headers_length)
-    if len(data) < headers_length:
-        response.status = 502
-        response.fp = io.BytesIO(b'connection aborted. too short headers data=' + data)
-        return response
-    response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(data, -zlib.MAX_WBITS)))
+    data = ''
+    while not data.endswith('\r\n\r\n'):
+        data += response.read(1)
+    response.read(2)
+    message = httplib.HTTPMessage(io.BytesIO(data))
+    if message.getheader('Status'):
+        response.status = message.getheader('Status')
+        del message['Status']
+    if response.app_transfer_encoding == 'chunked':
+        message['Transfer-Encoding'] = 'chunked'
+    response.msg = message
     return response
 
 

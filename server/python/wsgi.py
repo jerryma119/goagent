@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '3.0.7'
+__version__ = '3.1.0'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -499,10 +499,10 @@ def paas_application(environ, start_response):
             conn = HTTPConnection(netloc, timeout=timeout)
             conn.request(method, path, body=payload, headers=headers)
             response = conn.getresponse()
-
-            headers_data = zlib.compress('\n'.join('%s:%s' % (k.title(), v) for k, v in response.getheaders()))[2:-4]
             start_response('200 OK', [('Content-Type', __content_type__)])
-            yield struct.pack('!hh', int(response.status), len(headers_data))+headers_data
+            for keyword, value in response.msg.items():
+                yield '%s: %s\r\n' % (keyword.title(), value)
+            yield '\r\n\r\n'
             while 1:
                 data = response.read(8192)
                 if not data:
