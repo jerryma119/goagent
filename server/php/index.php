@@ -12,6 +12,32 @@ $__timeout__  = 20;
 $__content_type__ = 'image/gif';
 
 
+class XORCipher {
+    var $key;
+    var $keylen;
+    var $pos;
+
+    function XORCipher($key) {
+        $this->key = $key;
+        $this->keylen = strlen($key);
+        $this->pos = 0;
+    }
+
+    function encrypt($data) {
+        $out = '';
+        $pos = $this->pos;
+        $key = $this->key;
+        $keylen = $this->keylen;
+        foreach (str_split($data) as $c) {
+            $out .= $c ^ $key[$pos];
+            $pos = ($pos + 1) % $keylen;
+        }
+        $this->pos = $pos;
+        return $out;
+    }
+}
+
+
 function message_html($title, $banner, $detail) {
     $error = <<<ERROR_STRING
 <html><head>
@@ -99,8 +125,14 @@ function write_function($ch, $content) {
     if (!isset($GLOBALS['__body_sent__'])) {
         $GLOBALS['__body_sent__'] = true;
         echo "\r\n";
+        $GLOBALS['__xor_cipher__'] = new XORCipher($GLOBALS['__password__']);
     }
-    echo $content;
+
+    if ($GLOBALS['__password__']) {
+        echo $GLOBALS['__xor_cipher__']->encrypt($content);
+    } else {
+        echo $content;
+    }
     return strlen($content);
 }
 

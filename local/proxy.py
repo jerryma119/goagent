@@ -63,6 +63,7 @@ import struct
 import collections
 import zlib
 import functools
+import itertools
 import re
 import io
 import fnmatch
@@ -2331,6 +2332,18 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.__realconnection = None
 
 
+class XORFileObject(object):
+    """fileobj for xor"""
+    def __init__(self, stream, key):
+        self.__stream = stream
+        self.__key_gen = itertools.cycle(key).next
+    def __getattr__(self, attr):
+        if attr not in ('__stream', '__cipher'):
+            return getattr(self.__stream, attr)
+    def read(self, size=-1):
+        return ''.join(chr(ord(x) ^ ord(self.__key_gen())) for x in self.__stream.read(size))
+
+
 def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if payload:
         if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
@@ -2368,6 +2381,8 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if response.app_transfer_encoding == 'chunked':
         message['Transfer-Encoding'] = 'chunked'
     response.msg = message
+    if kwargs.get('password') and response.fp:
+        response.fp = XORFileObject(response.fp, kwargs['password'])
     return response
 
 
