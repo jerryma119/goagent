@@ -2338,7 +2338,7 @@ class XORFileObject(object):
         self.__stream = stream
         self.__key_gen = itertools.cycle(key).next
     def __getattr__(self, attr):
-        if attr not in ('__stream', '__cipher'):
+        if attr not in ('__stream', '__key_gen'):
             return getattr(self.__stream, attr)
     def read(self, size=-1):
         return ''.join(chr(ord(x) ^ ord(self.__key_gen())) for x in self.__stream.read(size))
@@ -2382,7 +2382,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
         message['Transfer-Encoding'] = 'chunked'
     response.msg = message
     if kwargs.get('password') and response.fp:
-        response.fp = XORFileObject(response.fp, kwargs['password'])
+        response.fp = XORFileObject(response.fp, kwargs['password'][0])
     return response
 
 

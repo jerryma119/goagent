@@ -12,32 +12,6 @@ $__timeout__  = 20;
 $__content_type__ = 'image/gif';
 
 
-class XORCipher {
-    var $key;
-    var $keylen;
-    var $pos;
-
-    function XORCipher($key) {
-        $this->key = $key;
-        $this->keylen = strlen($key);
-        $this->pos = 0;
-    }
-
-    function encrypt($data) {
-        $out = '';
-        $pos = $this->pos;
-        $key = $this->key;
-        $keylen = $this->keylen;
-        foreach (str_split($data) as $c) {
-            $out .= $c ^ $key[$pos];
-            $pos = ($pos + 1) % $keylen;
-        }
-        $this->pos = $pos;
-        return $out;
-    }
-}
-
-
 function message_html($title, $banner, $detail) {
     $error = <<<ERROR_STRING
 <html><head>
@@ -125,11 +99,11 @@ function write_function($ch, $content) {
     if (!isset($GLOBALS['__body_sent__'])) {
         $GLOBALS['__body_sent__'] = true;
         echo "\r\n";
-        $GLOBALS['__xor_cipher__'] = new XORCipher($GLOBALS['__password__']);
     }
 
-    if ($GLOBALS['__password__']) {
-        echo $GLOBALS['__xor_cipher__']->encrypt($content);
+    $password = $GLOBALS['__password__'];
+    if ($password) {
+        echo $content ^ str_repeat($password[0], strlen($content));
     } else {
         echo $content;
     }
@@ -208,7 +182,7 @@ function post()
     $errno = curl_errno($ch);
     if ($errno && !isset($GLOBALS['__status__'])) {
         header('HTTP/1.0 502');
-        echo message_html('502 Urlfetch Error', 'PHP Curl Urlfetch Error' . $errno,  curl_error($ch));
+        echo message_html('502 Urlfetch Error', "PHP Urlfetch Error curl($errno)",  curl_error($ch));
     }
     curl_close($ch);
 }
