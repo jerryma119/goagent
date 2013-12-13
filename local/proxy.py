@@ -1919,7 +1919,7 @@ def expand_google_hk_iplist(domains, max_count=100):
         except socket.error as e:
             logging.debug('expand_google_hk_iplist(%s) error: %r', ip, e)
         except urllib2.HTTPError as e:
-            if e.code == 404 and 'google' in e.headers.get('Server', ''):
+            if e.code == 404 and 'google' in e.headers.get('Server', '').lower():
                 logging.debug('expand_google_hk_iplist(%s) OK', ip)
                 ip_connection_time[(ip, 443)] = time.time() - start_time
             else:
