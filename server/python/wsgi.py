@@ -13,6 +13,7 @@ import os
 import re
 import time
 import struct
+import itertools
 import zlib
 import base64
 import logging
@@ -124,6 +125,27 @@ class RC4FileObject(object):
         self.__cipher = _Crypto_Cipher_ARC4_new(key) if key else lambda x:x
     def __getattr__(self, attr):
         if attr not in ('__stream', '__cipher'):
+            return getattr(self.__stream, attr)
+    def read(self, size=-1):
+        return self.__cipher.encrypt(self.__stream.read(size))
+
+
+class XORCipher(object):
+    """XOR Cipher Class"""
+    def __init__(self, key):
+        self.__key_gen = itertools.cycle(key).next
+
+    def encrypt(self, data):
+        return ''.join(chr(ord(x) ^ ord(self.__key_gen())) for x in data)
+
+
+class XORFileObject(object):
+    """fileobj for xor"""
+    def __init__(self, stream, key):
+        self.__stream = stream
+        self.__cipher = XORCipher(key)
+    def __getattr__(self, attr):
+        if attr not in ('__stream', '__key_gen'):
             return getattr(self.__stream, attr)
     def read(self, size=-1):
         return self.__cipher.encrypt(self.__stream.read(size))
@@ -503,12 +525,16 @@ def paas_application(environ, start_response):
             for keyword, value in response.msg.items():
                 yield '%s: %s\r\n' % (keyword.title(), value)
             yield '\r\n\r\n'
+            cipher = kwargs.get('password') and XORCipher(kwargs['password'][0])
             while 1:
                 data = response.read(8192)
                 if not data:
                     response.close()
                     break
-                yield data
+                if not cipher:
+                    yield data
+                else:
+                    yield cipher.encrypt(data)
         except httplib.HTTPException:
             raise
 

@@ -1631,6 +1631,27 @@ class RC4FileObject(object):
         return self.__cipher.encrypt(self.__stream.read(size))
 
 
+class XORCipher(object):
+    """XOR Cipher Class"""
+    def __init__(self, key):
+        self.__key_gen = itertools.cycle(key).next
+
+    def encrypt(self, data):
+        return ''.join(chr(ord(x) ^ ord(self.__key_gen())) for x in data)
+
+
+class XORFileObject(object):
+    """fileobj for xor"""
+    def __init__(self, stream, key):
+        self.__stream = stream
+        self.__cipher = XORCipher(key)
+    def __getattr__(self, attr):
+        if attr not in ('__stream', '__key_gen'):
+            return getattr(self.__stream, attr)
+    def read(self, size=-1):
+        return self.__cipher.encrypt(self.__stream.read(size))
+
+
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
     if payload:
@@ -2330,18 +2351,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     pass
                 finally:
                     self.__realconnection = None
-
-
-class XORFileObject(object):
-    """fileobj for xor"""
-    def __init__(self, stream, key):
-        self.__stream = stream
-        self.__key_gen = itertools.cycle(key).next
-    def __getattr__(self, attr):
-        if attr not in ('__stream', '__key_gen'):
-            return getattr(self.__stream, attr)
-    def read(self, size=-1):
-        return ''.join(chr(ord(x) ^ ord(self.__key_gen())) for x in self.__stream.read(size))
 
 
 def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
