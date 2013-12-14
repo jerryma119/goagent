@@ -82,6 +82,7 @@ import SocketServer
 import ConfigParser
 import BaseHTTPServer
 import httplib
+import urllib
 import urllib2
 import urlparse
 try:
@@ -1308,7 +1309,7 @@ class HTTPUtil(object):
             response = None
         return response
 
-    def request(self, method, url, payload=None, headers={}, realhost='', fullurl=False, bufsize=8192, crlf=None, return_sock=None, connection_cache_key=None):
+    def request(self, method, url, payload=None, headers={}, realhost='', bufsize=8192, crlf=None, return_sock=None, connection_cache_key=None):
         scheme, netloc, path, _, query, _ = urlparse.urlparse(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1321,6 +1322,8 @@ class HTTPUtil(object):
 
         if 'Host' not in headers:
             headers['Host'] = host
+        if payload and 'Content-Length' not in headers:
+            headers['Content-Length'] = str(len(payload))
 
         for i in range(self.max_retry):
             sock = None
@@ -1422,6 +1425,14 @@ class Common(object):
         self.PHP_VALIDATE = self.CONFIG.getint('php', 'validate') if self.CONFIG.has_option('php', 'validate') else 0
         self.PHP_FETCHSERVER = self.CONFIG.get('php', 'fetchserver')
         self.PHP_USEHOSTS = self.CONFIG.getint('php', 'usehosts')
+
+        self.PAAS_ENABLE = self.CONFIG.getint('paas', 'enable')
+        self.PAAS_LISTEN = self.CONFIG.get('paas', 'listen')
+        self.PAAS_PASSWORD = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
+        self.PAAS_CRLF = self.CONFIG.getint('paas', 'crlf') if self.CONFIG.has_option('paas', 'crlf') else 1
+        self.PAAS_VALIDATE = self.CONFIG.getint('paas', 'validate') if self.CONFIG.has_option('paas', 'validate') else 0
+        self.PAAS_FETCHSERVER = self.CONFIG.get('paas', 'fetchserver')
+        self.PAAS_USEHOSTS = self.CONFIG.getint('paas', 'usehosts')
 
         self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_AUTODETECT = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
@@ -1541,9 +1552,12 @@ class Common(object):
         if common.PAC_ENABLE:
             info += 'Pac Server         : http://%s:%d/%s\n' % (self.PAC_IP, self.PAC_PORT, self.PAC_FILE)
             info += 'Pac File           : file://%s\n' % os.path.join(os.path.dirname(os.path.abspath(__file__)), self.PAC_FILE).replace('\\', '/')
+        if common.PAAS_ENABLE:
+            info += 'PAAS Listen        : %s\n' % common.PAAS_LISTEN
+            info += 'PAAS FetchServer   : %s\n' % common.PAAS_FETCHSERVER
         if common.PHP_ENABLE:
-            info += 'PHP Listen        : %s\n' % common.PHP_LISTEN
-            info += 'PHP FetchServer   : %s\n' % common.PHP_FETCHSERVER
+            info += 'PHP Listen         : %s\n' % common.PHP_LISTEN
+            info += 'PHP FetchServer    : %s\n' % common.PHP_FETCHSERVER
         if common.DNS_ENABLE:
             info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
             info += 'DNS Remote         : %s\n' % common.DNS_REMOTE
@@ -2463,8 +2477,6 @@ class PHPProxyHandler(GAEProxyHandler):
                         kwargs['password'] = common.PHP_PASSWORD
                     if common.PHP_VALIDATE:
                         kwargs['validate'] = 1
-                    if common.CONFIG.has_option('hosts', host):
-                        kwargs['hostip'] = random.choice(http_util.dns_resolve(host))
                     response = self.urlfetch(self.command, self.path, headers, payload, common.PHP_FETCHSERVER, **kwargs)
                     if response:
                         break
@@ -2494,6 +2506,101 @@ class PHPProxyHandler(GAEProxyHandler):
                 self.wfile.write(data)
             response.close()
 
+        except NetWorkIOError as e:
+            # Connection closed before proxy return
+            if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
+                raise
+
+class PAASProxyHandler(GAEProxyHandler):
+
+    first_run_lock = threading.Lock()
+
+    def first_run(self):
+        if not common.PROXY_ENABLE:
+            common.resolve_iplist()
+            fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
+            logging.info('resolve common.PAAS_FETCHSERVER domain=%r to iplist', fetchhost)
+            fethhost_iplist = http_util.dns_resolve(fetchhost)
+            if len(fethhost_iplist) == 0:
+                logging.error('resolve %r domain return empty! please use ip list to replace domain list!', fetchhost)
+                sys.exit(-1)
+            http_util.dns[fetchhost] = list(set(fethhost_iplist))
+            logging.info('resolve common.PAAS_FETCHSERVER domain to iplist=%r', fethhost_iplist)
+        return True
+
+    def setup(self):
+        if isinstance(self.__class__.first_run, collections.Callable):
+            try:
+                with self.__class__.first_run_lock:
+                    if isinstance(self.__class__.first_run, collections.Callable):
+                        self.first_run()
+                        self.__class__.first_run = None
+            except NetWorkIOError as e:
+                logging.error('PAASProxyHandler.first_run() return %r', e)
+            except Exception as e:
+                logging.exception('PAASProxyHandler.first_run() return %r', e)
+        self.__class__.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
+        if common.PAAS_USEHOSTS:
+            self.__class__.do_GET = self.__class__.do_METHOD
+            self.__class__.do_PUT = self.__class__.do_METHOD
+            self.__class__.do_POST = self.__class__.do_METHOD
+            self.__class__.do_HEAD = self.__class__.do_METHOD
+            self.__class__.do_DELETE = self.__class__.do_METHOD
+            self.__class__.do_OPTIONS = self.__class__.do_METHOD
+            self.__class__.do_CONNECT = GAEProxyHandler.do_CONNECT
+        else:
+            self.__class__.do_GET = self.__class__.do_METHOD_AGENT
+            self.__class__.do_PUT = self.__class__.do_METHOD_AGENT
+            self.__class__.do_POST = self.__class__.do_METHOD_AGENT
+            self.__class__.do_HEAD = self.__class__.do_METHOD_AGENT
+            self.__class__.do_DELETE = self.__class__.do_METHOD_AGENT
+            self.__class__.do_OPTIONS = self.__class__.do_METHOD_AGENT
+            self.__class__.do_CONNECT = GAEProxyHandler.do_CONNECT_AGENT
+        self.setup()
+
+    def do_METHOD_AGENT(self):
+        try:
+            headers = dict((k.title(), v) for k, v in self.headers.items())
+            ps_result = urlparse.urlparse(self.path)
+            host = headers.get('Host') or ps_result.netloc
+            if re.search(r':\d+$', host):
+                host, _, port = host.partition(':')
+                port = int(port)
+            else:
+                port = {'https': 443, 'http': 80, 'ftp': 21}.get(ps_result.scheme, 80)
+            headers['Connection'] = 'close'
+            payload = '%s %s HTTP/1.1\r\n' % (self.command, '%s?%s' % (ps_result.path, ps_result.query) if ps_result.query else ps_result.path)
+            payload += ''.join('%s: %s\r\n' % (k, v) for k, v in headers.items())
+            payload += '\r\n'
+            if 'Content-Length' in headers:
+                try:
+                    payload += self.rfile.read(int(headers.get('Content-Length', 0)))
+                except NetWorkIOError as e:
+                    logging.error('handle_method read payload failed:%s', e)
+                    return
+            kwargs = {'host': host, 'port': port}
+            if common.PAAS_PASSWORD:
+                kwargs['password'] = common.PAAS_PASSWORD
+            if common.PAAS_VALIDATE:
+                kwargs['validate'] = 1
+            if ps_result.scheme == 'https':
+                kwargs['ssl'] = 1
+            url = '%s?%s' % (common.PAAS_FETCHSERVER.rstrip('?'), base64.b64encode(urllib.urlencode(kwargs)).strip())
+            response = http_util.request('POST', url, payload)
+            errors = []
+            if response is None:
+                html = message_html('502 PAAS URLFetch failed', 'Local PAAS URLFetch %r failed' % self.path, str(errors))
+                self.wfile.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + html.encode('utf-8'))
+                return
+            logging.info('%s "PAAS %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
+            if response.status in (400, 405):
+                http_util.crlf = 0
+            while 1:
+                data = response.read(8192)
+                if not data:
+                    break
+                self.wfile.write(data)
+            response.close()
         except NetWorkIOError as e:
             # Connection closed before proxy return
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
@@ -2746,6 +2853,11 @@ def main():
     pre_start()
     CertUtil.check_ca()
     sys.stdout.write(common.info())
+
+    if common.PAAS_ENABLE:
+        host, port = common.PAAS_LISTEN.split(':')
+        server = LocalProxyServer((host, int(port)), PAASProxyHandler)
+        thread.start_new_thread(server.serve_forever, tuple())
 
     if common.PHP_ENABLE:
         host, port = common.PHP_LISTEN.split(':')

@@ -6,23 +6,25 @@
 __version__ = '3.1.0'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
-__content_type__ = 'image/gif'
+
+import gevent.monkey
+gevent.monkey.patch_all(subprocess=True)
 
 import sys
-import time
-import struct
-import itertools
-import zlib
-import logging
-import httplib
-import urlparse
 import errno
+import time
+import itertools
+import logging
 import string
+import base64
+import urlparse
+import httplib
 import socket
+import ssl
 import select
 
 
-HTTP_TIMEOUT = 20
+TIMEOUT = 20
 
 
 def message_html(title, banner, detail=''):
@@ -77,7 +79,7 @@ class XORFileObject(object):
         return self.__cipher.encrypt(self.__stream.read(size))
 
 
-def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, trans=None):
+def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None):
     try:
         timecount = timeout
         while 1:
@@ -90,28 +92,17 @@ def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None
             if ins:
                 for sock in ins:
                     data = sock.recv(bufsize)
-                    if trans:
-                        data = data.translate(trans)
                     if data:
                         if sock is remote:
                             local.sendall(data)
                             timecount = maxpong or timeout
-                            if pongcallback:
-                                try:
-                                    #remote_addr = '%s:%s'%remote.getpeername()[:2]
-                                    #logging.debug('call remote=%s pongcallback=%s', remote_addr, pongcallback)
-                                    pongcallback()
-                                except Exception as e:
-                                    logging.warning('remote=%s pongcallback=%s failed: %s', remote, pongcallback, e)
-                                finally:
-                                    pongcallback = None
                         else:
                             remote.sendall(data)
                             timecount = maxping or timeout
                     else:
                         return
     except socket.error as e:
-        if e[0] not in (10053, 10054, 10057, errno.EPIPE):
+        if e.args[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
             raise
     finally:
         if local:
@@ -125,23 +116,13 @@ def application(environ, start_response):
         start_response('302 Found', [('Location', 'https://www.google.com')])
         raise StopIteration
 
-    wsgi_input = environ['wsgi.input']
-    data = wsgi_input.read(2)
-    metadata_length, = struct.unpack('!h', data)
-    metadata = wsgi_input.read(metadata_length)
+    query_string = environ['QUERY_STRING']
+    kwargs = dict(urlparse.parse_qsl(base64.b64decode(query_string)))
+    host = kwargs.pop('host')
+    port = int(kwargs.pop('port'))
+    timeout = int(kwargs.get('timeout') or TIMEOUT)
 
-    metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
-    headers = {}
-    for line in metadata.splitlines():
-        if line:
-            keyword, value = line.split(':', 1)
-            headers[keyword.title()] = value.strip()
-    method = headers.pop('G-Method')
-    url = headers.pop('G-Url')
-    timeout = HTTP_TIMEOUT
-
-    kwargs = {}
-    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
+    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], host, port, 'HTTP/1.1')
 
     if __password__ and __password__ != kwargs.get('password'):
         random_host = 'g%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
@@ -153,83 +134,31 @@ def application(environ, start_response):
         yield response.read()
         raise StopIteration
 
-    if __hostsdeny__ and urlparse.urlparse(url).netloc.endswith(__hostsdeny__):
+    if __hostsdeny__ and host.endswith(__hostsdeny__):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
-        yield message_html('403 Forbidden Host', 'Hosts Deny(%s)' % url, detail='url=%r' % url)
+        yield message_html('403 Forbidden Host', 'Hosts Deny(%s)' % host, detail='host=%r' % host)
         raise StopIteration
 
-    headers['Connection'] = 'close'
-    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
-    if 'Content-Encoding' in headers:
-        if headers['Content-Encoding'] == 'deflate':
-            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
-            headers['Content-Length'] = str(len(payload))
-            del headers['Content-Encoding']
+    wsgi_input = environ['wsgi.input']
 
-    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
+    local = wsgi_input.rfile._sock
+    remote = socket.create_connection((host, port), timeout=timeout)
+    if kwargs.get('ssl'):
+        remote = ssl.wrap_socket(remote)
 
-    if method == 'CONNECT':
-        if not socket:
-            start_response('403 Forbidden', [('Content-Type', 'text/html')])
-            yield message_html('403 Forbidden CONNECT', 'socket not available', detail='`import socket` raised ImportError')
-            raise StopIteration
-        rfile = wsgi_input.rfile
-        sock = rfile._sock
-        host, _, port = url.rpartition(':')
-        port = int(port)
-        remote_sock = socket.create_connection((host, port), timeout=timeout)
-        start_response('200 OK', [])
-        forward_socket(sock, remote_sock)
-        yield 'out'
-    else:
-        try:
-            scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-            HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
-            if params:
-                path += ';' + params
-            if query:
-                path += '?' + query
-            conn = HTTPConnection(netloc, timeout=timeout)
-            conn.request(method, path, body=payload, headers=headers)
-            response = conn.getresponse()
-            start_response('200 OK', [('Content-Type', __content_type__)])
-            for keyword, value in response.msg.items():
-                yield '%s: %s\r\n' % (keyword.title(), value)
-            yield '\r\n\r\n'
-            cipher = kwargs.get('password') and XORCipher(kwargs['password'][0])
-            while 1:
-                data = response.read(8192)
-                if not data:
-                    response.close()
-                    break
-                if not cipher:
-                    yield data
-                else:
-                    yield cipher.encrypt(data)
-        except httplib.HTTPException:
-            raise
-
-
-try:
-    import sae
-    application = sae.create_wsgi_app(application)
-except ImportError:
-    pass
-try:
-    import bae.core.wsgi
-    application = bae.core.wsgi.WSGIApplication(application)
-except ImportError:
-    pass
+    while True:
+        data = wsgi_input.read(8192)
+        if not data:
+            break
+        remote.send(data)
+    start_response('200 OK', [])
+    forward_socket(local, remote)
+    yield 'out'
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    import gevent
-    import gevent.server
     import gevent.wsgi
-    import gevent.monkey
-    gevent.monkey.patch_all(dns=gevent.version_info[0] >= 1)
-
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     server = gevent.wsgi.WSGIServer(('', int(sys.argv[1])), application)
     logging.info('local paas_application serving at %s:%s', server.address[0], server.address[1])
     server.serve_forever()
