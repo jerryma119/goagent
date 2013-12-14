@@ -8,45 +8,19 @@ __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
 
-import sys
 import os
 import re
 import time
 import struct
-import itertools
 import zlib
 import base64
 import logging
-import httplib
 import urlparse
-import errno
+import io
 import string
-try:
-    from io import BytesIO
-except ImportError:
-    from cStringIO import StringIO as BytesIO
-try:
-    from google.appengine.api import urlfetch
-    from google.appengine.runtime import apiproxy_errors
-except ImportError:
-    urlfetch = None
-try:
-    import sae
-except ImportError:
-    sae = None
-try:
-    import bae.core.wsgi
-except ImportError:
-    bae = None
-try:
-    import socket
-    import select
-except ImportError:
-    socket = None
-try:
-    import OpenSSL
-except ImportError:
-    OpenSSL = None
+
+from google.appengine.api import urlfetch
+from google.appengine.runtime import apiproxy_errors
 
 URLFETCH_MAX = 2
 URLFETCH_MAXSIZE = 4*1024*1024
@@ -130,28 +104,7 @@ class RC4FileObject(object):
         return self.__cipher.encrypt(self.__stream.read(size))
 
 
-class XORCipher(object):
-    """XOR Cipher Class"""
-    def __init__(self, key):
-        self.__key_gen = itertools.cycle(key).next
-
-    def encrypt(self, data):
-        return ''.join(chr(ord(x) ^ ord(self.__key_gen())) for x in data)
-
-
-class XORFileObject(object):
-    """fileobj for xor"""
-    def __init__(self, stream, key):
-        self.__stream = stream
-        self.__cipher = XORCipher(key)
-    def __getattr__(self, attr):
-        if attr not in ('__stream', '__key_gen'):
-            return getattr(self.__stream, attr)
-    def read(self, size=-1):
-        return self.__cipher.encrypt(self.__stream.read(size))
-
-
-def gae_application(environ, start_response):
+def application(environ, start_response):
     cookie = environ.get('HTTP_COOKIE', '')
     options = environ.get('HTTP_X_GOA_OPTIONS', '')
     if environ['REQUEST_METHOD'] == 'GET' and not cookie:
@@ -286,7 +239,7 @@ def gae_application(environ, start_response):
         if 'gzip' in accept_encoding:
             response_headers['Content-Encoding'] = 'gzip'
             compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
-            dataio = BytesIO()
+            dataio = io.BytesIO()
             dataio.write('\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff')
             dataio.write(compressobj.compress(data))
             dataio.write(compressobj.flush())
@@ -296,7 +249,7 @@ def gae_application(environ, start_response):
             response_headers['Content-Encoding'] = 'deflate'
             data = zlib.compress(data)[2:-4]
     if data:
-         response_headers['Content-Length'] = str(len(data))
+        response_headers['Content-Length'] = str(len(data))
     response_headers_data = zlib.compress('\n'.join('%s:%s' % (k.title(), v) for k, v in response_headers.items() if not k.startswith('x-google-')))[2:-4]
     if 'rc4' not in options:
         start_response('200 OK', [('Content-Type', __content_type__)])
@@ -366,7 +319,7 @@ class LegacyHandler(object):
         headers['Connection'] = 'close'
 
         errors = []
-        for i in xrange(URLFETCH_MAX if 'fetchmax' not in request else int(request['fetchmax'])):
+        for _ in xrange(URLFETCH_MAX if 'fetchmax' not in request else int(request['fetchmax'])):
             try:
                 response = urlfetch.fetch(url, payload, fetchmethod, headers, False, False, deadline, False)
                 break
@@ -404,157 +357,3 @@ class LegacyHandler(object):
             headers['content-length'] = str(len(response.content))
         headers['connection'] = 'close'
         return self.send_response(response.status_code, headers, response.content)
-
-
-def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, trans=None):
-    try:
-        timecount = timeout
-        while 1:
-            timecount -= tick
-            if timecount <= 0:
-                break
-            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
-            if errors:
-                break
-            if ins:
-                for sock in ins:
-                    data = sock.recv(bufsize)
-                    if trans:
-                        data = data.translate(trans)
-                    if data:
-                        if sock is remote:
-                            local.sendall(data)
-                            timecount = maxpong or timeout
-                            if pongcallback:
-                                try:
-                                    #remote_addr = '%s:%s'%remote.getpeername()[:2]
-                                    #logging.debug('call remote=%s pongcallback=%s', remote_addr, pongcallback)
-                                    pongcallback()
-                                except Exception as e:
-                                    logging.warning('remote=%s pongcallback=%s failed: %s', remote, pongcallback, e)
-                                finally:
-                                    pongcallback = None
-                        else:
-                            remote.sendall(data)
-                            timecount = maxping or timeout
-                    else:
-                        return
-    except socket.error as e:
-        if e[0] not in (10053, 10054, 10057, errno.EPIPE):
-            raise
-    finally:
-        if local:
-            local.close()
-        if remote:
-            remote.close()
-
-
-def paas_application(environ, start_response):
-    if environ['REQUEST_METHOD'] == 'GET':
-        start_response('302 Found', [('Location', 'https://www.google.com')])
-        raise StopIteration
-
-    wsgi_input = environ['wsgi.input']
-    data = wsgi_input.read(2)
-    metadata_length, = struct.unpack('!h', data)
-    metadata = wsgi_input.read(metadata_length)
-
-    metadata = zlib.decompress(metadata, -zlib.MAX_WBITS)
-    headers = {}
-    for line in metadata.splitlines():
-        if line:
-            keyword, value = line.split(':', 1)
-            headers[keyword.title()] = value.strip()
-    method = headers.pop('G-Method')
-    url = headers.pop('G-Url')
-    timeout = URLFETCH_TIMEOUT
-
-    kwargs = {}
-    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
-
-    if __password__ and __password__ != kwargs.get('password'):
-        random_host = 'g%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
-        conn = httplib.HTTPConnection(random_host, timeout=timeout)
-        conn.request('GET', '/')
-        response = conn.getresponse(True)
-        status_line = '%s %s' % (response.status, httplib.responses.get(response.status, 'OK'))
-        start_response(status_line, response.getheaders())
-        yield response.read()
-        raise StopIteration
-
-    if __hostsdeny__ and urlparse.urlparse(url).netloc.endswith(__hostsdeny__):
-        start_response('403 Forbidden', [('Content-Type', 'text/html')])
-        yield message_html('403 Forbidden Host', 'Hosts Deny(%s)' % url, detail='url=%r' % url)
-        raise StopIteration
-
-    headers['Connection'] = 'close'
-    payload = environ['wsgi.input'].read() if 'Content-Length' in headers else None
-    if 'Content-Encoding' in headers:
-        if headers['Content-Encoding'] == 'deflate':
-            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
-            headers['Content-Length'] = str(len(payload))
-            del headers['Content-Encoding']
-
-    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
-
-    if method == 'CONNECT':
-        if not socket:
-            start_response('403 Forbidden', [('Content-Type', 'text/html')])
-            yield message_html('403 Forbidden CONNECT', 'socket not available', detail='`import socket` raised ImportError')
-            raise StopIteration
-        rfile = wsgi_input.rfile
-        sock = rfile._sock
-        host, _, port = url.rpartition(':')
-        port = int(port)
-        remote_sock = socket.create_connection((host, port), timeout=timeout)
-        start_response('200 OK', [])
-        forward_socket(sock, remote_sock)
-        yield 'out'
-    else:
-        try:
-            scheme, netloc, path, params, query, fragment = urlparse.urlparse(url)
-            HTTPConnection = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
-            if params:
-                path += ';' + params
-            if query:
-                path += '?' + query
-            conn = HTTPConnection(netloc, timeout=timeout)
-            conn.request(method, path, body=payload, headers=headers)
-            response = conn.getresponse()
-            start_response('200 OK', [('Content-Type', __content_type__)])
-            for keyword, value in response.msg.items():
-                yield '%s: %s\r\n' % (keyword.title(), value)
-            yield '\r\n\r\n'
-            cipher = kwargs.get('password') and XORCipher(kwargs['password'][0])
-            while 1:
-                data = response.read(8192)
-                if not data:
-                    response.close()
-                    break
-                if not cipher:
-                    yield data
-                else:
-                    yield cipher.encrypt(data)
-        except httplib.HTTPException:
-            raise
-
-
-app = gae_application if urlfetch else paas_application
-if bae:
-    application = bae.core.wsgi.WSGIApplication(app)
-elif sae:
-    application = sae.create_wsgi_app(app)
-else:
-    application = app
-
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    import gevent
-    import gevent.server
-    import gevent.wsgi
-    import gevent.monkey
-    gevent.monkey.patch_all(dns=gevent.version_info[0] >= 1)
-
-    server = gevent.wsgi.WSGIServer(('', int(sys.argv[1])), application)
-    logging.info('local paas_application serving at %s:%s', server.address[0], server.address[1])
-    server.serve_forever()
