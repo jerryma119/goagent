@@ -1415,13 +1415,13 @@ class Common(object):
         self.PAC_ADBLOCK = self.CONFIG.get('pac', 'adblock') if self.CONFIG.has_option('pac', 'adblock') else ''
         self.PAC_EXPIRED = self.CONFIG.getint('pac', 'expired')
 
-        self.PAAS_ENABLE = self.CONFIG.getint('paas', 'enable')
-        self.PAAS_LISTEN = self.CONFIG.get('paas', 'listen')
-        self.PAAS_PASSWORD = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
-        self.PAAS_CRLF = self.CONFIG.getint('paas', 'crlf') if self.CONFIG.has_option('paas', 'crlf') else 1
-        self.PAAS_VALIDATE = self.CONFIG.getint('paas', 'validate') if self.CONFIG.has_option('paas', 'validate') else 0
-        self.PAAS_FETCHSERVER = self.CONFIG.get('paas', 'fetchserver')
-        self.PAAS_USEHOSTS = self.CONFIG.getint('paas', 'usehosts')
+        self.PHP_ENABLE = self.CONFIG.getint('php', 'enable')
+        self.PHP_LISTEN = self.CONFIG.get('php', 'listen')
+        self.PHP_PASSWORD = self.CONFIG.get('php', 'password') if self.CONFIG.has_option('php', 'password') else ''
+        self.PHP_CRLF = self.CONFIG.getint('php', 'crlf') if self.CONFIG.has_option('php', 'crlf') else 1
+        self.PHP_VALIDATE = self.CONFIG.getint('php', 'validate') if self.CONFIG.has_option('php', 'validate') else 0
+        self.PHP_FETCHSERVER = self.CONFIG.get('php', 'fetchserver')
+        self.PHP_USEHOSTS = self.CONFIG.getint('php', 'usehosts')
 
         self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_AUTODETECT = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
@@ -1541,9 +1541,9 @@ class Common(object):
         if common.PAC_ENABLE:
             info += 'Pac Server         : http://%s:%d/%s\n' % (self.PAC_IP, self.PAC_PORT, self.PAC_FILE)
             info += 'Pac File           : file://%s\n' % os.path.join(os.path.dirname(os.path.abspath(__file__)), self.PAC_FILE).replace('\\', '/')
-        if common.PAAS_ENABLE:
-            info += 'PAAS Listen        : %s\n' % common.PAAS_LISTEN
-            info += 'PAAS FetchServer   : %s\n' % common.PAAS_FETCHSERVER
+        if common.PHP_ENABLE:
+            info += 'PHP Listen        : %s\n' % common.PHP_LISTEN
+            info += 'PHP FetchServer   : %s\n' % common.PHP_FETCHSERVER
         if common.DNS_ENABLE:
             info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
             info += 'DNS Remote         : %s\n' % common.DNS_REMOTE
@@ -1551,7 +1551,7 @@ class Common(object):
         return info
 
 common = Common()
-http_util = HTTPUtil(max_window=common.GAE_WINDOW, ssl_validate=common.GAE_VALIDATE or common.PAAS_VALIDATE, ssl_obfuscate=common.GAE_OBFUSCATE, proxy=common.proxy)
+http_util = HTTPUtil(max_window=common.GAE_WINDOW, ssl_validate=common.GAE_VALIDATE or common.PHP_VALIDATE, ssl_obfuscate=common.GAE_OBFUSCATE, proxy=common.proxy)
 
 
 def message_html(title, banner, detail=''):
@@ -2353,7 +2353,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.__realconnection = None
 
 
-def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
+def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if payload:
         if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
             zpayload = zlib.compress(payload)[2:-4]
@@ -2362,13 +2362,13 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
                 headers['Content-Encoding'] = 'deflate'
         headers['Content-Length'] = str(len(payload))
     skip_headers = http_util.skip_headers
-    if common.PAAS_VALIDATE:
+    if common.PHP_VALIDATE:
         kwargs['validate'] = 1
     metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
     metadata = zlib.compress(metadata)[2:-4]
     app_payload = b''.join((struct.pack('!h', len(metadata)), metadata, payload))
     fetchserver += '?%s' % random.random()
-    crlf = 0 if fetchserver.startswith('https') else common.PAAS_CRLF
+    crlf = 0 if fetchserver.startswith('https') else common.PHP_CRLF
     response = http_util.request('POST', fetchserver, app_payload, {'Content-Length': len(app_payload)}, crlf=crlf)
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
@@ -2377,7 +2377,7 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if response.status != 200:
         if response.status in (400, 405):
             # filter by some firewall
-            common.PAAS_CRLF = 0
+            common.PHP_CRLF = 0
         return response
     data = ''
     while not data.endswith('\r\n\r\n'):
@@ -2395,22 +2395,22 @@ def paas_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     return response
 
 
-class PAASProxyHandler(GAEProxyHandler):
+class PHPProxyHandler(GAEProxyHandler):
 
-    urlfetch = staticmethod(paas_urlfetch)
+    urlfetch = staticmethod(php_urlfetch)
     first_run_lock = threading.Lock()
 
     def first_run(self):
         if not common.PROXY_ENABLE:
             common.resolve_iplist()
-            fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PAAS_FETCHSERVER).netloc)
-            logging.info('resolve common.PAAS_FETCHSERVER domain=%r to iplist', fetchhost)
+            fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PHP_FETCHSERVER).netloc)
+            logging.info('resolve common.PHP_FETCHSERVER domain=%r to iplist', fetchhost)
             fethhost_iplist = http_util.dns_resolve(fetchhost)
             if len(fethhost_iplist) == 0:
                 logging.error('resolve %r domain return empty! please use ip list to replace domain list!', fetchhost)
                 sys.exit(-1)
             http_util.dns[fetchhost] = list(set(fethhost_iplist))
-            logging.info('resolve common.PAAS_FETCHSERVER domain to iplist=%r', fethhost_iplist)
+            logging.info('resolve common.PHP_FETCHSERVER domain to iplist=%r', fethhost_iplist)
         return True
 
     def setup(self):
@@ -2421,11 +2421,11 @@ class PAASProxyHandler(GAEProxyHandler):
                         self.first_run()
                         self.__class__.first_run = None
             except NetWorkIOError as e:
-                logging.error('PAASProxyHandler.first_run() return %r', e)
+                logging.error('PHPProxyHandler.first_run() return %r', e)
             except Exception as e:
-                logging.exception('PAASProxyHandler.first_run() return %r', e)
+                logging.exception('PHPProxyHandler.first_run() return %r', e)
         self.__class__.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
-        if common.PAAS_USEHOSTS:
+        if common.PHP_USEHOSTS:
             self.__class__.do_GET = self.__class__.do_METHOD
             self.__class__.do_PUT = self.__class__.do_METHOD
             self.__class__.do_POST = self.__class__.do_METHOD
@@ -2459,29 +2459,29 @@ class PAASProxyHandler(GAEProxyHandler):
             for _ in range(common.FETCHMAX_LOCAL):
                 try:
                     kwargs = {}
-                    if common.PAAS_PASSWORD:
-                        kwargs['password'] = common.PAAS_PASSWORD
-                    if common.PAAS_VALIDATE:
+                    if common.PHP_PASSWORD:
+                        kwargs['password'] = common.PHP_PASSWORD
+                    if common.PHP_VALIDATE:
                         kwargs['validate'] = 1
                     if common.CONFIG.has_option('hosts', host):
                         kwargs['hostip'] = random.choice(http_util.dns_resolve(host))
-                    response = self.urlfetch(self.command, self.path, headers, payload, common.PAAS_FETCHSERVER, **kwargs)
+                    response = self.urlfetch(self.command, self.path, headers, payload, common.PHP_FETCHSERVER, **kwargs)
                     if response:
                         break
                 except Exception as e:
                     errors.append(e)
 
             if response is None:
-                html = message_html('502 PAAS URLFetch failed', 'Local PAAS URLFetch %r failed' % self.path, str(errors))
+                html = message_html('502 php URLFetch failed', 'Local php URLFetch %r failed' % self.path, str(errors))
                 self.wfile.write(b'HTTP/1.0 502\r\nContent-Type: text/html\r\n\r\n' + html.encode('utf-8'))
                 return
 
-            logging.info('%s "PAAS %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
+            logging.info('%s "PHP %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
             if response.app_status in (400, 405):
                 http_util.crlf = 0
             if response.status == 206:
-                fetchservers = [common.PAAS_FETCHSERVER]
-                rangefetch = RangeFetch(paas_urlfetch, self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
+                fetchservers = [common.PHP_FETCHSERVER]
+                rangefetch = RangeFetch(php_urlfetch, self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                 return rangefetch.fetch()
             if response.getheader('Set-Cookie'):
                 response.msg['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
@@ -2747,9 +2747,9 @@ def main():
     CertUtil.check_ca()
     sys.stdout.write(common.info())
 
-    if common.PAAS_ENABLE:
-        host, port = common.PAAS_LISTEN.split(':')
-        server = LocalProxyServer((host, int(port)), PAASProxyHandler)
+    if common.PHP_ENABLE:
+        host, port = common.PHP_LISTEN.split(':')
+        server = LocalProxyServer((host, int(port)), PHPProxyHandler)
         thread.start_new_thread(server.serve_forever, tuple())
 
     if common.PAC_ENABLE:
