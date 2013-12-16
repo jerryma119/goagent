@@ -133,7 +133,7 @@ def should_visible():
     import ConfigParser
     ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
     config = ConfigParser.ConfigParser()
-    config.read('proxy.ini')
+    config.read(['proxy.ini', 'proxy.user.ini'])
     visible = config.has_option('listen', 'visible') and config.getint('listen', 'visible')
     return visible
 
