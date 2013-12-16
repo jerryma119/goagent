@@ -2100,12 +2100,12 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         path = self.parsed_url.path
         range_in_query = 'range=' in self.parsed_url.query
         special_range = (any(x(host) for x in common.AUTORANGE_HOSTS_MATCH) or path.endswith(common.AUTORANGE_ENDSWITH)) and not path.endswith(common.AUTORANGE_NOENDSWITH)
-        if 'Range' in request_headers:
+        if self.command != 'HEAD' and 'Range' in request_headers:
             m = re.search(r'bytes=(\d+)-', request_headers['Range'])
             start = int(m.group(1) if m else 0)
             request_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
             logging.info('autorange range=%r match url=%r', request_headers['Range'], self.path)
-        elif not range_in_query and special_range:
+        elif self.command != 'HEAD' and not range_in_query and special_range:
             logging.info('Found [autorange]endswith match url=%r', self.path)
             m = re.search(r'bytes=(\d+)-', request_headers.get('Range', ''))
             start = int(m.group(1) if m else 0)
