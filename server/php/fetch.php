@@ -181,9 +181,12 @@ function post()
     curl_setopt_array($ch, $curl_opt);
     $ret = curl_exec($ch);
     $errno = curl_errno($ch);
-    if ($errno && !isset($GLOBALS['__status__'])) {
-        header('HTTP/1.0 502');
-        echo message_html('502 Urlfetch Error', "PHP Urlfetch Error curl($errno)",  curl_error($ch));
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($status == 204 || $status == 304) {
+        echo_content("HTTP/1.1 $status\r\n\r\n");
+    } else if ($errno) {
+        $content = "HTTP/1.0 502\r\n\r\n" . message_html('502 Urlfetch Error', "PHP Urlfetch Error curl($errno)",  curl_error($ch));
+        echo_content($content);
     }
     curl_close($ch);
 }
