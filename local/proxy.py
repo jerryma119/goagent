@@ -33,8 +33,9 @@
 #      Chen Shuang       <cs0x7f@gmail.com>
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
+#      s2marine0         <s2marine0@gmail.com>
 
-__version__ = '3.1.0'
+__version__ = '3.1.1'
 
 import sys
 import os
