@@ -2276,7 +2276,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         http_util.dns[host] = common.IPLIST_MAP[hostname]
                     else:
                         http_util.dns[host] = sum((http_util.dns_resolve(x) for x in hostname.split('|')), [])
-                    connection_cache_key = '%s:%d' % (hostname or host, port)
+                    #connection_cache_key = '%s:%d' % (hostname or host, port)
+                    connection_cache_key = None
                     timeout = 4
                     remote = http_util.create_connection((host, port), timeout, cache_key=connection_cache_key)
                     if remote is not None and data:
