@@ -1985,7 +1985,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     first_run_lock = threading.Lock()
     urlfetch = staticmethod(gae_urlfetch)
     normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
-    normattachment = functools.partial(re.compile(r'filename=(.+?)').sub, 'filename="\\1"')
+    normattachment = functools.partial(re.compile(r'filename=([^"\']+)').sub, 'filename="\\1"')
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
