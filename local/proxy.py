@@ -1035,9 +1035,10 @@ class HTTPUtil(object):
                 ssl_sock.do_handshake()
                 handshaked_time = time.time()
                 # record TCP connection time
-                self.tcp_connection_time[ipaddr] = connected_time - start_time
+                self.tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
                 # record SSL connection time
-                self.ssl_connection_time[ipaddr] = ssl_sock.connection_time = handshaked_time - start_time
+                self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
+                ssl_sock.ssl_time = connected_time - start_time
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 # verify SSL certificate.
@@ -1089,9 +1090,9 @@ class HTTPUtil(object):
                 ssl_sock.do_handshake()
                 handshaked_time = time.time()
                 # record TCP connection time
-                self.tcp_connection_time[ipaddr] = connected_time - start_time
+                self.tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
                 # record SSL connection time
-                self.ssl_connection_time[ipaddr] = handshaked_time - start_time
+                self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 # verify SSL certificate.
@@ -1113,11 +1114,12 @@ class HTTPUtil(object):
                 # close tcp socket
                 if sock:
                     sock.close()
-        def _close_ssl_connection(count, queobj):
+        def _close_ssl_connection(count, queobj, first_tcp_time, first_ssl_time):
             for i in range(count):
                 sock = queobj.get()
+                ssl_time_threshold = 1.5 * first_ssl_time
                 if sock and not isinstance(sock, Exception):
-                    if connection_cache_key and i == 0:
+                    if connection_cache_key and sock.ssl_time < ssl_time_threshold:
                         self.ssl_connection_cache[connection_cache_key].put((time.time(), sock))
                     else:
                         sock.close()
@@ -1143,7 +1145,7 @@ class HTTPUtil(object):
             for i in range(len(addrs)):
                 result = queobj.get()
                 if not isinstance(result, Exception):
-                    thread.start_new_thread(_close_ssl_connection, (len(addrs)-i-1, queobj))
+                    thread.start_new_thread(_close_ssl_connection, (len(addrs)-i-1, queobj, result.tcp_time, result.ssl_time))
                     return result
                 else:
                     if i == 0:
