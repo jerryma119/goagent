@@ -6,7 +6,7 @@
 // Contributor:
 //     Phus Lu        <phus.lu@gmail.com>
 
-$__version__  = '3.1.0';
+$__version__  = '3.1.1';
 $__password__ = '';
 $__timeout__  = 20;
 $__content_type__ = 'image/gif';
@@ -82,31 +82,32 @@ function decode_request($data) {
 }
 
 function header_function($ch, $header) {
-    if (substr($header, 0, 5) == 'HTTP/') {
-        $terms = explode(' ', $header);
-        $status = intval($terms[1]);
-        $GLOBALS['__status__'] == $status;
-        echo "Status: $status\r\n";
-    } elseif (substr($header, 0, 17) == 'Transfer-Encoding') {
-        // skip transfer-encoding
-    } else {
-        echo $header;
+    if (!isset($GLOBALS['__header__'])) {
+        $GLOBALS['__header__'] = '';
+        header('Content-Type: ' . $__content_type__);
+    }
+    if (substr($header, 0, 17) != 'Transfer-Encoding') {
+        $GLOBALS['__header__'] .= $header;
     }
     return strlen($header);
 }
 
-function write_function($ch, $content) {
-    if (!isset($GLOBALS['__body_sent__'])) {
-        $GLOBALS['__body_sent__'] = true;
-        echo "\r\n";
-    }
-
-    $password = $GLOBALS['__password__'];
-    if ($password) {
-        echo $content ^ str_repeat($password[0], strlen($content));
+function echo_content($content) {
+    $__password__ = $GLOBALS['__password__'];
+    if ($__password__) {
+        echo $content ^ str_repeat($__password__[0], strlen($content));
     } else {
         echo $content;
     }
+}
+
+function write_function($ch, $content) {
+    if (isset($GLOBALS['__header__'])) {
+        echo_content($GLOBALS['__header__']);
+        unset($GLOBALS['__header__']);
+    }
+
+    echo_content($content);
     return strlen($content);
 }
 

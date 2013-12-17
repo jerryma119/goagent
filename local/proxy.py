@@ -2393,25 +2393,11 @@ def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
-    response.app_transfer_encoding = response.getheader('Transfer-Encoding', '')
     if response.status != 200:
         if response.status in (400, 405):
             # filter by some firewall
             common.PHP_CRLF = 0
         return response
-    data = ''
-    while not data.endswith('\r\n\r\n'):
-        data += response.read(1)
-    response.read(2)
-    message = httplib.HTTPMessage(io.BytesIO(data))
-    if message.getheader('Status'):
-        response.status = message.getheader('Status')
-        del message['Status']
-    if response.app_transfer_encoding == 'chunked':
-        message['Transfer-Encoding'] = 'chunked'
-    response.msg = message
-    if kwargs.get('password') and response.fp:
-        response.fp = XORFileObject(response.fp, kwargs['password'][0])
     return response
 
 
@@ -2495,20 +2481,14 @@ class PHPProxyHandler(GAEProxyHandler):
                 return
 
             logging.info('%s "PHP %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
-            if response.app_status in (400, 405):
-                http_util.crlf = 0
-            if response.status == 206:
-                fetchservers = [common.PHP_FETCHSERVER]
-                rangefetch = RangeFetch(php_urlfetch, self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
-                return rangefetch.fetch()
-            if response.getheader('Set-Cookie'):
-                response.msg['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
-            self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))))
 
+            cipher = common.PHP_PASSWORD and XORCipher(common.PHP_PASSWORD[0])
             while 1:
                 data = response.read(8192)
                 if not data:
                     break
+                if cipher:
+                    data = cipher.encrypt(data)
                 self.wfile.write(data)
             response.close()
 
