@@ -47,6 +47,7 @@ try:
     import gevent
     import gevent.socket
     import gevent.server
+    import gevent.wsgi
     import gevent.queue
     import gevent.event
     import gevent.monkey
