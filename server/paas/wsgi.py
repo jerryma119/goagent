@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '3.1.0'
+__version__ = '3.1.1'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
@@ -117,7 +117,7 @@ def application(environ, start_response):
         raise StopIteration
 
     query_string = environ['QUERY_STRING']
-    kwargs = dict(urlparse.parse_qsl(base64.b64decode(query_string)))
+    kwargs = dict(urlparse.parse_qsl(query_string))
     host = kwargs.pop('host')
     port = int(kwargs.pop('port'))
     timeout = int(kwargs.get('timeout') or TIMEOUT)
@@ -141,7 +141,6 @@ def application(environ, start_response):
 
     wsgi_input = environ['wsgi.input']
 
-    local = wsgi_input.rfile._sock
     remote = socket.create_connection((host, port), timeout=timeout)
     if kwargs.get('ssl'):
         remote = ssl.wrap_socket(remote)
@@ -152,7 +151,7 @@ def application(environ, start_response):
             break
         remote.send(data)
     start_response('200 OK', [])
-    forward_socket(local, remote)
+    forward_socket(wsgi_input.socket, remote)
     yield 'out'
 
 
