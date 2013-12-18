@@ -98,7 +98,7 @@ function header_function($ch, $header) {
     if (!$__content__) {
         header('Content-Type: ' . $__content_type__);
     }
-    if (substr($header, 0, 17) != 'Transfer-Encoding') {
+    if (strncasecmp($header, 'Transfer-Encoding', 17) != 0) {
         $__content__ .= $header;
     }
     return strlen($header);
@@ -169,7 +169,7 @@ function post()
             $curl_opt[CURLOPT_POSTFIELDS] = $body;
             break;
         default:
-            print(message_html('502 Urlfetch Error', 'Invalid Method: ' . $method,  $url));
+            echo_content("HTTP/1.0 502\r\n\r\n" . message_html('502 Urlfetch Error', 'Invalid Method: ' . $method,  $url));
             exit(-1);
     }
 
