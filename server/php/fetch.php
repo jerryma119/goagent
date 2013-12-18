@@ -10,6 +10,7 @@ $__version__  = '3.1.1';
 $__password__ = '';
 $__timeout__  = 20;
 $__content_type__ = 'image/gif';
+$__content__ = '';
 
 
 function message_html($title, $banner, $detail) {
@@ -81,19 +82,9 @@ function decode_request($data) {
     return array($method, $url, $headers, $kwargs, $body);
 }
 
-function header_function($ch, $header) {
-    if (!isset($GLOBALS['__header__'])) {
-        $GLOBALS['__header__'] = '';
-        header('Content-Type: ' . $__content_type__);
-    }
-    if (substr($header, 0, 17) != 'Transfer-Encoding') {
-        $GLOBALS['__header__'] .= $header;
-    }
-    return strlen($header);
-}
 
 function echo_content($content) {
-    $__password__ = $GLOBALS['__password__'];
+    global $__password__;
     if ($__password__) {
         echo $content ^ str_repeat($__password__[0], strlen($content));
     } else {
@@ -101,12 +92,25 @@ function echo_content($content) {
     }
 }
 
-function write_function($ch, $content) {
-    if (isset($GLOBALS['__header__'])) {
-        echo_content($GLOBALS['__header__']);
-        unset($GLOBALS['__header__']);
-    }
 
+function header_function($ch, $header) {
+    global $__content__;
+    if (!$__content__) {
+        header('Content-Type: ' . $__content_type__);
+    }
+    if (substr($header, 0, 17) != 'Transfer-Encoding') {
+        $__content__ .= $header;
+    }
+    return strlen($header);
+}
+
+
+function write_function($ch, $content) {
+    global $__content__;
+    if ($__content__) {
+        echo_content($__content__);
+        $__content__ = '';
+    }
     echo_content($content);
     return strlen($content);
 }
@@ -181,15 +185,15 @@ function post()
     curl_setopt_array($ch, $curl_opt);
     $ret = curl_exec($ch);
     $errno = curl_errno($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    if ($status == 204 || $status == 304) {
-        echo_content("HTTP/1.1 $status\r\n\r\n");
+    if ($GLOBALS['__content__']) {
+        echo_content($GLOBALS['__content__']);
     } else if ($errno) {
         $content = "HTTP/1.0 502\r\n\r\n" . message_html('502 Urlfetch Error', "PHP Urlfetch Error curl($errno)",  curl_error($ch));
         echo_content($content);
     }
     curl_close($ch);
 }
+
 
 function get() {
     $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : $_SERVER['SERVER_NAME'];
@@ -200,6 +204,7 @@ function get() {
         header('Location: https://www.google.com');
     }
 }
+
 
 function main() {
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
