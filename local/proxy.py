@@ -2043,7 +2043,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.headers['User-Agent'] = common.USERAGENT_STRING
         if host in common.HTTP_WITHGAE:
             return self.do_METHOD_AGENT()
-        if host in common.HTTP_FORCEHTTPS:
+        if host in common.HTTP_FORCEHTTPS and not self.headers.get('Referer', '').startswith('https://'):
             return self.wfile.write(('HTTP/1.1 301\r\nLocation: %s\r\n\r\n' % self.path.replace('http://', 'https://', 1)).encode())
         if self.command not in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'PATCH'):
             return self.do_METHOD_FWD()
