@@ -1048,7 +1048,7 @@ class HTTPUtil(object):
                     cert = ssl_sock.getpeercert()
                     commonname = next((v for ((k, v),) in cert['subject'] if k == 'commonName'))
                     fields = commonname.split('.')
-                    if not (('google' in fields and all(len(x) <=3 for x in fields[fields.index('google')+1:])) or commonname.endswith(('.appspot.com', '.googleusercontent.com', '.google-analytics.com', '.gstatic.com', '.googlecode.com'))):
+                    if not (('google' in fields and all(len(x) <=3 for x in fields[fields.index('google')+1:])) or commonname.endswith(('.appspot.com', '.googleusercontent.com', '.google-analytics.com', '.gstatic.com', '.googlecode.com', '.doubleclick.net'))):
                         raise ssl.SSLError("Host name '%s' doesn't match certificate host '%s'" % (address[0], commonname))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
