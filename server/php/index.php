@@ -7,7 +7,7 @@
 //     Phus Lu        <phus.lu@gmail.com>
 
 $__version__  = '3.1.1';
-$__password__ = '';
+$__password__ = '123456';
 $__timeout__  = 20;
 $__content_type__ = 'image/gif';
 $__content__ = '';
