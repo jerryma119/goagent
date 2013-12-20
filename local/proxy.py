@@ -1788,16 +1788,13 @@ class RangeFetch(object):
         range_queue.put((start, end, self.response))
         for begin in range(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
-        thread.start_new_thread(self.__fetchlet, (range_queue, data_queue, 0))
-        t0 = time.time()
-        cur_threads = 1
+        for i in xrange(0, self.threads):
+            range_delay_size = i * common.AUTORANGE_MAXSIZE
+            spawn_later(range_delay_size/524288.0, self.__fetchlet, range_queue, data_queue, range_delay_size)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 120
         self.expect_begin = start
         while self.expect_begin < length - 1:
-            while cur_threads < self.threads and time.time() - t0 > cur_threads * common.AUTORANGE_MAXSIZE / 1048576:
-                thread.start_new_thread(self.__fetchlet, (range_queue, data_queue, cur_threads * common.AUTORANGE_MAXSIZE))
-                cur_threads += 1
             try:
                 if has_peek:
                     begin, data = data_queue.peek(timeout=peek_timeout)
