@@ -35,7 +35,7 @@
 #      cuixin            <steven.cuixin@gmail.com>
 #      s2marine0         <s2marine0@gmail.com>
 
-__version__ = '3.1.1'
+__version__ = '3.1.2'
 
 import sys
 import os
@@ -1118,7 +1118,7 @@ class HTTPUtil(object):
         def _close_ssl_connection(count, queobj, first_tcp_time, first_ssl_time):
             for i in range(count):
                 sock = queobj.get()
-                ssl_time_threshold = 1.5 * first_ssl_time
+                ssl_time_threshold = min(1, 1.5 * first_ssl_time)
                 if sock and not isinstance(sock, Exception):
                     if connection_cache_key and sock.ssl_time < ssl_time_threshold:
                         self.ssl_connection_cache[connection_cache_key].put((time.time(), sock))
@@ -1305,7 +1305,10 @@ class HTTPUtil(object):
         if return_sock:
             return sock
 
-        response = httplib.HTTPResponse(sock, buffering=True)
+        if sys.hexversion > 0x2070000:
+            response = httplib.HTTPResponse(sock, buffering=True)
+        else:
+            response = httplib.HTTPResponse(sock)
         try:
             response.begin()
         except httplib.BadStatusLine:
@@ -1652,10 +1655,10 @@ class RC4FileObject(object):
 class XORCipher(object):
     """XOR Cipher Class"""
     def __init__(self, key):
-        self.__key_gen = itertools.cycle(key).next
+        self.__key_gen = itertools.cycle([ord(x) for x in key]).next
 
     def encrypt(self, data):
-        return ''.join(chr(ord(x) ^ ord(self.__key_gen())) for x in data)
+        return ''.join(chr(ord(x) ^ self.__key_gen()) for x in data)
 
 
 class XORFileObject(object):

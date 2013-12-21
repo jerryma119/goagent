@@ -3,25 +3,20 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '3.1.1'
-__password__ = ''
+__version__ = '3.1.2'
+__password__ = '123456'
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 
 import gevent.monkey
 gevent.monkey.patch_all(subprocess=True)
 
 import sys
-import errno
 import time
 import itertools
 import logging
 import string
-import base64
 import urlparse
 import httplib
-import socket
-import ssl
-import select
 
 
 TIMEOUT = 20
@@ -61,54 +56,10 @@ def message_html(title, banner, detail=''):
 class XORCipher(object):
     """XOR Cipher Class"""
     def __init__(self, key):
-        self.__key_gen = itertools.cycle(key).next
+        self.__key_gen = itertools.cycle([ord(x) for x in key]).next
 
     def encrypt(self, data):
-        return ''.join(chr(ord(x) ^ ord(self.__key_gen())) for x in data)
-
-
-class XORFileObject(object):
-    """fileobj for xor"""
-    def __init__(self, stream, key):
-        self.__stream = stream
-        self.__cipher = XORCipher(key)
-    def __getattr__(self, attr):
-        if attr not in ('__stream', '__key_gen'):
-            return getattr(self.__stream, attr)
-    def read(self, size=-1):
-        return self.__cipher.encrypt(self.__stream.read(size))
-
-
-def forward_socket(local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None):
-    try:
-        timecount = timeout
-        while 1:
-            timecount -= tick
-            if timecount <= 0:
-                break
-            (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
-            if errors:
-                break
-            if ins:
-                for sock in ins:
-                    data = sock.recv(bufsize)
-                    if data:
-                        if sock is remote:
-                            local.sendall(data)
-                            timecount = maxpong or timeout
-                        else:
-                            remote.sendall(data)
-                            timecount = maxping or timeout
-                    else:
-                        return
-    except socket.error as e:
-        if e.args[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
-            raise
-    finally:
-        if local:
-            local.close()
-        if remote:
-            remote.close()
+        return ''.join(chr(ord(x) ^ self.__key_gen()) for x in data)
 
 
 def application(environ, start_response):

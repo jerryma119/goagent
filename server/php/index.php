@@ -1,12 +1,6 @@
 <?php
 
-// Note:
-//     Please try to use the https url to bypass keyword filtering.
-//     Otherwise, dont forgot set [paas]passowrd in proxy.ini
-// Contributor:
-//     Phus Lu        <phus.lu@gmail.com>
-
-$__version__  = '3.1.1';
+$__version__  = '3.1.2';
 $__password__ = '123456';
 $__timeout__  = 20;
 $__content_type__ = 'image/gif';
@@ -14,7 +8,7 @@ $__content__ = '';
 
 
 function message_html($title, $banner, $detail) {
-    $error = <<<ERROR_STRING
+    $error = <<<MESSAGE_STRING
 <html><head>
 <meta http-equiv="content-type" content="text/html;charset=utf-8">
 <title>${title}</title>
@@ -42,7 +36,7 @@ ${detail}
 </blockquote>
 <table width=100% cellpadding=0 cellspacing=0><tr><td bgcolor=#3366cc><img alt="" width=1 height=4></td></tr></table>
 </body></html>
-ERROR_STRING;
+MESSAGE_STRING;
     return $error;
 }
 
@@ -98,7 +92,7 @@ function header_function($ch, $header) {
     if (!$__content__) {
         header('Content-Type: ' . $__content_type__);
     }
-    if (strncasecmp($header, 'Transfer-Encoding', 17) != 0) {
+    if (strncasecmp($header, 'Transfer-Encoding:', 18) != 0) {
         $__content__ .= $header;
     }
     return strlen($header);
