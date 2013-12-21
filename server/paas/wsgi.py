@@ -6,17 +6,17 @@
 __version__ = '3.1.2'
 __password__ = '123456'
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
+__content_type__ = 'image/gif'
 
-import gevent.monkey
-gevent.monkey.patch_all(subprocess=True)
 
 import sys
-import time
 import itertools
 import logging
 import string
 import urlparse
 import httplib
+import struct
+import zlib
 
 
 TIMEOUT = 20
@@ -56,6 +56,7 @@ def message_html(title, banner, detail=''):
 class XORCipher(object):
     """XOR Cipher Class"""
     def __init__(self, key):
+        assert isinstance(key, basestring) and key
         self.__key_gen = itertools.cycle([ord(x) for x in key]).next
 
     def encrypt(self, data):
@@ -67,43 +68,55 @@ def application(environ, start_response):
         start_response('302 Found', [('Location', 'https://www.google.com')])
         raise StopIteration
 
-    query_string = environ['QUERY_STRING']
-    kwargs = dict(urlparse.parse_qsl(query_string))
-    host = kwargs.pop('host')
-    port = int(kwargs.pop('port'))
-    timeout = int(kwargs.get('timeout') or TIMEOUT)
+    wsgi_input = environ['wsgi.input']
+    input_data = wsgi_input.read()
 
-    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], host, port, 'HTTP/1.1')
+    metadata_length, = struct.unpack('!h', input_data[:2])
+    metadata = zlib.decompress(input_data[2:2+metadata_length], -zlib.MAX_WBITS)
+    payload = input_data[2+metadata_length:]
+    headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
+    method = headers.pop('G-Method')
+    url = headers.pop('G-Url')
+    urlparts = urlparse.urlparse(url)
+
+    kwargs = {}
+    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
+
+    cipher = XORCipher(__password__)
 
     if __password__ and __password__ != kwargs.get('password'):
-        random_host = 'g%d%s' % (int(time.time()*100), environ['HTTP_HOST'])
-        conn = httplib.HTTPConnection(random_host, timeout=timeout)
-        conn.request('GET', '/')
-        response = conn.getresponse(True)
-        status_line = '%s %s' % (response.status, httplib.responses.get(response.status, 'OK'))
-        start_response(status_line, response.getheaders())
-        yield response.read()
+        start_response('200 OK', [('Content-Type', __content_type__)])
+        yield cipher.encrypt('HTTP/1.1 403 Forbidden\r\nContent-type: text/html\r\n\r\n')
+        yield cipher.encrypt(message_html('403 Wrong Password', 'Wrong Password(%s)' % kwargs.get('password'), detail='please edit proxy.ini'))
         raise StopIteration
 
-    if __hostsdeny__ and host.endswith(__hostsdeny__):
-        start_response('403 Forbidden', [('Content-Type', 'text/html')])
-        yield message_html('403 Forbidden Host', 'Hosts Deny(%s)' % host, detail='host=%r' % host)
+    if __hostsdeny__ and urlparts.netloc.endswith(__hostsdeny__):
+        start_response('200 OK', [('Content-Type', __content_type__)])
+        yield cipher.encrypt('HTTP/1.1 403 Forbidden\r\nContent-type: text/html\r\n\r\n')
+        yield cipher.encrypt(message_html('403 Forbidden Host', 'Hosts Deny(%s)' % urlparts.netloc, detail='url=%r' % url))
         raise StopIteration
 
-    wsgi_input = environ['wsgi.input']
-
-    remote = socket.create_connection((host, port), timeout=timeout)
-    if kwargs.get('ssl'):
-        remote = ssl.wrap_socket(remote)
-
-    while True:
-        data = wsgi_input.read(8192)
-        if not data:
-            break
-        remote.send(data)
-    start_response('200 OK', [])
-    forward_socket(wsgi_input.socket, remote)
-    yield 'out'
+    try:
+        timeout = int(kwargs.get('timeout') or TIMEOUT)
+        ConnectionType = httplib.HTTPSConnection if urlparts.scheme == 'https' else httplib.HTTPConnection
+        conn = ConnectionType(urlparts.netloc, timeout=timeout)
+        path = urlparts.path
+        if urlparts.query:
+            path += '?' + urlparts.query
+        conn.request(method, path, body=payload, headers=headers)
+        response = conn.getresponse()
+        start_response('200 OK', [('Content-Type', __content_type__)])
+        yield cipher.encrypt('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding')))
+        while True:
+            data = response.read()
+            if not data:
+                raise StopIteration
+            yield cipher.encrypt(data)
+    except Exception as e:
+        start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
+        yield 'HTTP/1.1 500 Internal Server Error\r\nContent-type: text/html\r\n\r\n'
+        yield message_html('500 Internal Server Error', 'urlfetch %r failed' % url, detail=repr(e))
+        raise StopIteration
 
 
 if __name__ == '__main__':
