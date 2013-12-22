@@ -2105,10 +2105,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = None
         errors = []
         headers_sent = False
-        fetchserver = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-        if range_in_query and special_range:
-            fetchserver = re.sub(r'(?<=://)[^\.]+', random.choice(common.GAE_APPIDS), fetchserver)
         for retry in range(common.FETCHMAX_LOCAL):
+            fetchserver = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+            if range_in_query and special_range:
+                fetchserver = re.sub(r'(?<=://)[^\.]+', random.choice(common.GAE_APPIDS), fetchserver)
             try:
                 content_length = 0
                 kwargs = {}
