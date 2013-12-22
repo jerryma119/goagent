@@ -84,7 +84,6 @@ import SocketServer
 import ConfigParser
 import BaseHTTPServer
 import httplib
-import urllib
 import urllib2
 import urlparse
 try:
@@ -1199,7 +1198,7 @@ class HTTPUtil(object):
 
 
 
-    def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None, pongcallback=None, bitmask=None):
+    def forward_socket(self, local, remote, timeout=60, tick=2, bufsize=8192, maxping=None, maxpong=None):
         try:
             timecount = timeout
             while 1:
@@ -1212,21 +1211,10 @@ class HTTPUtil(object):
                 if ins:
                     for sock in ins:
                         data = sock.recv(bufsize)
-                        if bitmask:
-                            data = ''.join(chr(ord(x) ^ bitmask) for x in data)
                         if data:
                             if sock is remote:
                                 local.sendall(data)
                                 timecount = maxpong or timeout
-                                if pongcallback:
-                                    try:
-                                        #remote_addr = '%s:%s'%remote.getpeername()[:2]
-                                        #logging.debug('call remote=%s pongcallback=%s', remote_addr, pongcallback)
-                                        pongcallback()
-                                    except Exception as e:
-                                        logging.warning('remote=%s pongcallback=%s failed: %s', remote, pongcallback, e)
-                                    finally:
-                                        pongcallback = None
                             else:
                                 remote.sendall(data)
                                 timecount = maxping or timeout
@@ -1368,18 +1356,8 @@ class Common(object):
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
         self.CONFIG = ConfigParser.ConfigParser()
         self.CONFIG_FILENAME = os.path.splitext(os.path.abspath(__file__))[0]+'.ini'
-        self.CONFIG_USER_FILENAME = re.sub(r'\.ini', '.user.ini', self.CONFIG_FILENAME)
-        self.CONFIG.read(self.CONFIG_FILENAME)
-        if os.path.isfile(self.CONFIG_USER_FILENAME):
-            with open(self.CONFIG_USER_FILENAME, 'rb') as fp:
-                content = fp.read()
-                if '[hosts]' in content:
-                    self.CONFIG.remove_section('hosts')
-                self.CONFIG.readfp(io.BytesIO(content))
-
-        if not any(x.endswith('/http') for x in self.CONFIG.sections()):
-            logging.error('please upgrade your proxy.ini')
-            sys.exit(-1)
+        self.CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', self.CONFIG_FILENAME)
+        self.CONFIG.read([self.CONFIG_FILENAME, self.CONFIG_USER_FILENAME])
 
         self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')
@@ -1396,7 +1374,6 @@ class Common(object):
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
         self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
-        self.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (self.GAE_MODE, self.GAE_APPIDS[0], self.GAE_PATH)
 
         hosts_section, http_section = '%s/hosts' % self.GAE_PROFILE, '%s/http' % self.GAE_PROFILE
         self.HOSTS_MAP = collections.OrderedDict((k, v or k) for k, v in self.CONFIG.items(hosts_section) if '\\' not in k and ':' not in k and not k.startswith('.'))
@@ -1607,10 +1584,10 @@ def message_html(title, banner, detail=''):
 
 
 try:
-    from Crypto.Cipher.ARC4 import new as _Crypto_Cipher_ARC4_new
+    from Crypto.Cipher.ARC4 import new as RC4Cipher
 except ImportError:
     logging.warn('Load Crypto.Cipher.ARC4 Failed, Use Pure Python Instead.')
-    class _Crypto_Cipher_ARC4_new(object):
+    class RC4Cipher(object):
         def __init__(self, key):
             x = 0
             box = range(256)
@@ -1637,14 +1614,14 @@ except ImportError:
 
 
 def rc4crypt(data, key):
-    return _Crypto_Cipher_ARC4_new(key).encrypt(data) if key else data
+    return RC4Cipher(key).encrypt(data) if key else data
 
 
 class RC4FileObject(object):
     """fileobj for rc4"""
     def __init__(self, stream, key):
         self.__stream = stream
-        self.__cipher = _Crypto_Cipher_ARC4_new(key) if key else lambda x:x
+        self.__cipher = RC4Cipher(key) if key else lambda x:x
     def __getattr__(self, attr):
         if attr not in ('__stream', '__cipher'):
             return getattr(self.__stream, attr)
@@ -1792,8 +1769,8 @@ class RangeFetch(object):
         for begin in range(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
         for i in xrange(0, self.threads):
-            range_delay_size = i * common.AUTORANGE_MAXSIZE
-            spawn_later(range_delay_size/524288.0, self.__fetchlet, range_queue, data_queue, range_delay_size)
+            range_delay_size = i * self.maxsize
+            spawn_later(float(range_delay_size)/self.waitsize, self.__fetchlet, range_queue, data_queue, range_delay_size)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 120
         self.expect_begin = start
@@ -1994,6 +1971,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 threading._start_new_thread(expand_google_hk_iplist, (common.IPLIST_MAP['google_hk'][:], 16))
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
+        if len(common.GAE_APPIDS) > 10:
+            random.shuffle(common.GAE_APPIDS)
         for appid in common.GAE_APPIDS:
             host = '%s.appspot.com' % appid
             if host not in common.HOSTS_MAP:
@@ -2126,9 +2105,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = None
         errors = []
         headers_sent = False
-        fetchserver = common.GAE_FETCHSERVER
+        fetchserver = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
         if range_in_query and special_range:
-            fetchserver = re.sub(r'//[\w-]+\.appspot\.com', '//%s.appspot.com' % random.choice(common.GAE_APPIDS), fetchserver)
+            fetchserver = re.sub(r'(?<=://)[^\.]+', random.choice(common.GAE_APPIDS), fetchserver)
         for retry in range(common.FETCHMAX_LOCAL):
             try:
                 content_length = 0
@@ -2145,13 +2124,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 # gateway error, switch to https mode
                 if response.app_status in (400, 504):
                     common.GAE_MODE = 'https'
-                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                     continue
                 # appid not exists, try remove it from appid
                 if response.app_status == 404:
                     if len(common.GAE_APPIDS) > 1:
                         appid = common.GAE_APPIDS.pop(0)
-                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                         logging.warning('APPID %r not exists, remove it.', appid)
                         continue
                     else:
@@ -2164,7 +2141,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status == 503:
                     if len(common.GAE_APPIDS) > 1:
                         common.GAE_APPIDS.pop(0)
-                        common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                         logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying…' % (common.GAE_APPIDS[0]))
                         self.do_METHOD_AGENT()
                         return
@@ -2175,11 +2151,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     http_util.crlf = 0
                     continue
                 if response.app_status == 500 and range_in_query and special_range:
-                    fetchserver = re.sub(r'//[\w-]+\.appspot\.com', '//%s.appspot.com' % random.choice(common.GAE_APPIDS), fetchserver)
+                    fetchserver = re.sub(r'(?<=://)[^\.]+', random.choice(common.GAE_APPIDS), fetchserver)
                     logging.warning('500 with range in query, trying another APPID')
-                    # logging.warning('Temporary fetchserver: %s -> %s' % (common.GAE_FETCHSERVER, fetchserver))
-                    # retry -= 1
-                    # logging.warning('retry: %s' % retry)
                     continue
                 if response.app_status != 200 and retry == common.FETCHMAX_LOCAL-1:
                     logging.info('%s "GAE %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
@@ -2191,7 +2164,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not headers_sent:
                     logging.info('%s "GAE %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
                     if response.status == 206:
-                        fetchservers = [re.sub(r'//[\w-]+\.appspot\.com', '//%s.appspot.com' % appid, common.GAE_FETCHSERVER) for appid in common.GAE_APPIDS]
+                        fetchservers = [re.sub(r'(?<=://)[^\.]+', appid, fetchserver) for appid in common.GAE_APPIDS]
                         rangefetch = RangeFetch(gae_urlfetch, self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                         return rangefetch.fetch()
                     if response.getheader('Set-Cookie'):
@@ -2229,7 +2202,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 elif e.args[0] in (errno.ECONNRESET, errno.ETIMEDOUT, errno.ENETUNREACH, 11004):
                     # connection reset or timeout, switch to https
                     common.GAE_MODE = 'https'
-                    common.GAE_FETCHSERVER = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
                 elif e.args[0] == errno.ETIMEDOUT or isinstance(e.args[0], str) and 'timed out' in e.args[0]:
                     if content_length and accept_ranges == 'bytes':
                         # we can retry range fetch here

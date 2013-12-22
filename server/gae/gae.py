@@ -3,7 +3,7 @@
 # Contributor:
 #      Phus Lu        <phus.lu@gmail.com>
 
-__version__ = '3.1.1'
+__version__ = '3.1.2'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -59,10 +59,10 @@ def message_html(title, banner, detail=''):
 
 
 try:
-    from Crypto.Cipher.ARC4 import new as _Crypto_Cipher_ARC4_new
+    from Crypto.Cipher.ARC4 import new as RC4Cipher
 except ImportError:
     logging.warn('Load Crypto.Cipher.ARC4 Failed, Use Pure Python Instead.')
-    class _Crypto_Cipher_ARC4_new(object):
+    class RC4Cipher(object):
         def __init__(self, key):
             x = 0
             box = range(256)
@@ -89,14 +89,14 @@ except ImportError:
 
 
 def rc4crypt(data, key):
-    return _Crypto_Cipher_ARC4_new(key).encrypt(data) if key else data
+    return RC4Cipher(key).encrypt(data) if key else data
 
 
 class RC4FileObject(object):
     """fileobj for rc4"""
     def __init__(self, stream, key):
         self.__stream = stream
-        self.__cipher = _Crypto_Cipher_ARC4_new(key) if key else lambda x:x
+        self.__cipher = RC4Cipher(key) if key else lambda x:x
     def __getattr__(self, attr):
         if attr not in ('__stream', '__cipher'):
             return getattr(self.__stream, attr)
