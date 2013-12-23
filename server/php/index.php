@@ -1,10 +1,12 @@
 <?php
 
+
 $__version__  = '3.1.2';
 $__password__ = '123456';
-$__timeout__  = 20;
+$__hostsdeny__ = array();  # $__hostsdeny__ = array('.youtube.com', '.youku.com')
 $__content_type__ = 'image/gif';
 $__content__ = '';
+$__timeout__ = 20;
 
 
 function message_html($title, $banner, $detail) {
@@ -117,7 +119,7 @@ function post()
     if ($password) {
         if (!isset($kwargs['password']) || $password != $kwargs['password']) {
             header("HTTP/1.0 403 Forbidden");
-            print(message_html('403 Forbidden', 'Wrong Password'));
+            echo message_html('403 Forbidden', 'Wrong Password', 'please edit proxy.ini');
             exit(-1);
         }
     }

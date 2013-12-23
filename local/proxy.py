@@ -47,9 +47,7 @@ try:
     import gevent
     import gevent.socket
     import gevent.server
-    import gevent.wsgi
     import gevent.queue
-    import gevent.event
     import gevent.monkey
     gevent.monkey.patch_all(subprocess=True)
 except ImportError:
@@ -1410,14 +1408,6 @@ class Common(object):
         self.PHP_FETCHSERVER = self.CONFIG.get('php', 'fetchserver')
         self.PHP_USEHOSTS = self.CONFIG.getint('php', 'usehosts')
 
-        self.PAAS_ENABLE = self.CONFIG.getint('paas', 'enable')
-        self.PAAS_LISTEN = self.CONFIG.get('paas', 'listen')
-        self.PAAS_PASSWORD = self.CONFIG.get('paas', 'password') if self.CONFIG.has_option('paas', 'password') else ''
-        self.PAAS_CRLF = self.CONFIG.getint('paas', 'crlf') if self.CONFIG.has_option('paas', 'crlf') else 1
-        self.PAAS_VALIDATE = self.CONFIG.getint('paas', 'validate') if self.CONFIG.has_option('paas', 'validate') else 0
-        self.PAAS_FETCHSERVER = self.CONFIG.get('paas', 'fetchserver')
-        self.PAAS_USEHOSTS = self.CONFIG.getint('paas', 'usehosts')
-
         self.PROXY_ENABLE = self.CONFIG.getint('proxy', 'enable')
         self.PROXY_AUTODETECT = self.CONFIG.getint('proxy', 'autodetect') if self.CONFIG.has_option('proxy', 'autodetect') else 0
         self.PROXY_HOST = self.CONFIG.get('proxy', 'host')
@@ -1536,9 +1526,6 @@ class Common(object):
         if common.PAC_ENABLE:
             info += 'Pac Server         : http://%s:%d/%s\n' % (self.PAC_IP, self.PAC_PORT, self.PAC_FILE)
             info += 'Pac File           : file://%s\n' % os.path.join(os.path.dirname(os.path.abspath(__file__)), self.PAC_FILE).replace('\\', '/')
-        if common.PAAS_ENABLE:
-            info += 'PAAS Listen        : %s\n' % common.PAAS_LISTEN
-            info += 'PAAS FetchServer   : %s\n' % common.PAAS_FETCHSERVER
         if common.PHP_ENABLE:
             info += 'PHP Listen         : %s\n' % common.PHP_LISTEN
             info += 'PHP FetchServer    : %s\n' % common.PHP_FETCHSERVER
@@ -2471,36 +2458,6 @@ class PHPProxyHandler(GAEProxyHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
 
-def paas_application(environ, start_response):
-    method = environ['REQUEST_METHOD']
-    path_info = environ['PATH_INFO']
-    wsgi_input = environ['wsgi.input']
-    if method == 'CONNECT':
-        host, _, port = path_info.rpartition(':')
-        ps_result = urlparse.urlparse(common.PAAS_FETCHSERVER)
-        paas_host = ps_result.netloc
-        paas_port = 443 if ps_result.scheme == 'https' else 80
-        logging.info('create_connection(%r, %r)', paas_host, paas_port)
-        sock = socket.create_connection((paas_host, paas_port), timeout=5)
-        if ps_result.scheme == 'https':
-            sock = ssl.wrap_socket(sock)
-        request = 'POST %s?host=%s&port=%s&ssl=0 HTTP/1.1\r\nHost: %s\r\n\r\n' % (ps_result.path, host, port, paas_host)
-        sock.send(request)
-        logging.info('PAAS POST sock=%r with request=%r', sock, request)
-        rfile = sock.makefile('rb', 0)
-        lines = []
-        while True:
-            line = rfile.readline()
-            if line == '\r\n':
-                break
-            lines.append(line)
-        status = int(lines[0].split()[1])
-        start_response(' '.join(lines[0].split()[1:]), [])
-        if status == 200:
-            http_util.forward_socket(wsgi_input.socket, sock)
-    else:
-        raise NotImplementedError
-
 
 class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
@@ -2748,14 +2705,6 @@ def main():
     pre_start()
     CertUtil.check_ca()
     sys.stdout.write(common.info())
-
-    if common.PAAS_ENABLE:
-        if not gevent:
-            logging.error('PAAS proxy requires gevent 1.0+')
-            sys.exit(-1)
-        host, port = common.PAAS_LISTEN.split(':')
-        server = gevent.wsgi.WSGIServer((host, int(port)), paas_application)
-        thread.start_new_thread(server.serve_forever, tuple())
 
     if common.PHP_ENABLE:
         host, port = common.PHP_LISTEN.split(':')

@@ -1,25 +1,23 @@
 #!/usr/bin/env python
-# coding=utf-8
-# Contributor:
-#      Phus Lu        <phus.lu@gmail.com>
+# coding:utf-8
 
 __version__ = '3.1.2'
 __password__ = '123456'
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
+__timeout__ = 20
 
 
 import sys
+import re
 import itertools
+import functools
 import logging
 import string
 import urlparse
 import httplib
 import struct
 import zlib
-
-
-TIMEOUT = 20
 
 
 def message_html(title, banner, detail=''):
@@ -69,7 +67,7 @@ def application(environ, start_response):
         raise StopIteration
 
     wsgi_input = environ['wsgi.input']
-    input_data = wsgi_input.read()
+    input_data = wsgi_input.read(int(environ.get('CONTENT_LENGTH') or -1))
 
     metadata_length, = struct.unpack('!h', input_data[:2])
     metadata = zlib.decompress(input_data[2:2+metadata_length], -zlib.MAX_WBITS)
@@ -82,12 +80,18 @@ def application(environ, start_response):
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
 
-    cipher = XORCipher(__password__)
+    if 'Content-Encoding' in headers:
+        if headers['Content-Encoding'] == 'deflate':
+            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
+            headers['Content-Length'] = str(len(payload))
+            del headers['Content-Encoding']
+
+    cipher = XORCipher(__password__[0])
+    normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
 
     if __password__ and __password__ != kwargs.get('password'):
-        start_response('200 OK', [('Content-Type', __content_type__)])
-        yield cipher.encrypt('HTTP/1.1 403 Forbidden\r\nContent-type: text/html\r\n\r\n')
-        yield cipher.encrypt(message_html('403 Wrong Password', 'Wrong Password(%s)' % kwargs.get('password'), detail='please edit proxy.ini'))
+        start_response('403 Forbidden', [('Content-Type', 'text/html')])
+        yield message_html('403 Wrong Password', 'Wrong Password(%s)' % kwargs.get('password'), detail='please edit proxy.ini')
         raise StopIteration
 
     if __hostsdeny__ and urlparts.netloc.endswith(__hostsdeny__):
@@ -96,8 +100,9 @@ def application(environ, start_response):
         yield cipher.encrypt(message_html('403 Forbidden Host', 'Hosts Deny(%s)' % urlparts.netloc, detail='url=%r' % url))
         raise StopIteration
 
+    header_sent = False
     try:
-        timeout = int(kwargs.get('timeout') or TIMEOUT)
+        timeout = int(kwargs.get('timeout') or __timeout__)
         ConnectionType = httplib.HTTPSConnection if urlparts.scheme == 'https' else httplib.HTTPConnection
         conn = ConnectionType(urlparts.netloc, timeout=timeout)
         path = urlparts.path
@@ -106,21 +111,39 @@ def application(environ, start_response):
         conn.request(method, path, body=payload, headers=headers)
         response = conn.getresponse()
         start_response('200 OK', [('Content-Type', __content_type__)])
+        header_sent = True
+        if response.getheader('Set-Cookie'):
+            response.msg['Set-Cookie'] = normcookie(response.getheader('Set-Cookie'))
         yield cipher.encrypt('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding')))
         while True:
             data = response.read()
             if not data:
-                raise StopIteration
+                return
             yield cipher.encrypt(data)
     except Exception as e:
-        start_response('500 Internal Server Error', [('Content-Type', 'text/html')])
-        yield 'HTTP/1.1 500 Internal Server Error\r\nContent-type: text/html\r\n\r\n'
-        yield message_html('500 Internal Server Error', 'urlfetch %r failed' % url, detail=repr(e))
+        if not header_sent:
+            start_response('200 OK', [('Content-Type', __content_type__)])
+        yield cipher.encrypt('HTTP/1.1 500 Internal Server Error\r\nContent-type: text/html\r\n\r\n')
+        yield cipher.encrypt(message_html('500 Internal Server Error', 'urlfetch %r failed' % url, detail=repr(e)))
         raise StopIteration
 
 
+try:
+    import sae
+    application = sae.create_wsgi_app(app)
+except ImportError:
+    pass
+try:
+    import bae.core.wsgi
+    application = bae.core.wsgi.WSGIApplication(application)
+except ImportError:
+    pass
+
+
 if __name__ == '__main__':
+    import gevent.monkey
     import gevent.wsgi
+    gevent.monkey.patch_all()
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     server = gevent.wsgi.WSGIServer(('', int(sys.argv[1])), application)
     logging.info('local paas_application serving at %s:%s', server.address[0], server.address[1])

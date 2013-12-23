@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-# coding=utf-8
-# Contributor:
-#      Phus Lu        <phus.lu@gmail.com>
+# coding:utf-8
 
 __version__ = '3.1.2'
 __password__ = ''
