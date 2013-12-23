@@ -880,7 +880,7 @@ class HTTPUtil(object):
                             'DES-CBC3-SHA',
                             'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
 
-    def __init__(self, max_window=4, max_timeout=16, max_retry=4, proxy='', ssl_validate=False, ssl_obfuscate=False):
+    def __init__(self, max_window=4, max_timeout=8, max_retry=4, proxy='', ssl_validate=False, ssl_obfuscate=False):
         # http://docs.python.org/dev/library/ssl.html
         # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
         # http://src.chromium.org/svn/trunk/src/net/third_party/nss/ssl/sslenum.c
