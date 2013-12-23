@@ -8,16 +8,28 @@ __content_type__ = 'image/gif'
 __timeout__ = 20
 
 
+try:
+    import gevent.monkey
+    gevent.monkey.patch_all()
+except ImportError:
+    pass
+
 import sys
 import re
+import time
 import itertools
 import functools
+import collections
 import logging
 import string
 import urlparse
 import httplib
 import struct
 import zlib
+import Queue
+
+
+HTTP_CONNECTION_CACHE = collections.defaultdict(Queue.PriorityQueue)
 
 
 def message_html(title, banner, detail=''):
@@ -75,7 +87,9 @@ def application(environ, start_response):
     headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
     method = headers.pop('G-Method')
     url = headers.pop('G-Url')
-    urlparts = urlparse.urlparse(url)
+    scheme, netloc, path, _, query, _ = urlparse.urlparse(url)
+    if query:
+        path += '?' + query
 
     kwargs = {}
     any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
@@ -94,22 +108,37 @@ def application(environ, start_response):
         yield message_html('403 Wrong Password', 'Wrong Password(%s)' % kwargs.get('password'), detail='please edit proxy.ini')
         raise StopIteration
 
-    if __hostsdeny__ and urlparts.netloc.endswith(__hostsdeny__):
+    if __hostsdeny__ and netloc.endswith(__hostsdeny__):
         start_response('200 OK', [('Content-Type', __content_type__)])
         yield cipher.encrypt('HTTP/1.1 403 Forbidden\r\nContent-type: text/html\r\n\r\n')
-        yield cipher.encrypt(message_html('403 Forbidden Host', 'Hosts Deny(%s)' % urlparts.netloc, detail='url=%r' % url))
+        yield cipher.encrypt(message_html('403 Forbidden Host', 'Hosts Deny(%s)' % netloc, detail='url=%r' % url))
         raise StopIteration
 
+    timeout = int(kwargs.get('timeout') or __timeout__)
+    fetchmax = int(kwargs.get('fetchmax') or 3)
+    ConnectionType = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
     header_sent = False
     try:
-        timeout = int(kwargs.get('timeout') or __timeout__)
-        ConnectionType = httplib.HTTPSConnection if urlparts.scheme == 'https' else httplib.HTTPConnection
-        conn = ConnectionType(urlparts.netloc, timeout=timeout)
-        path = urlparts.path
-        if urlparts.query:
-            path += '?' + urlparts.query
-        conn.request(method, path, body=payload, headers=headers)
-        response = conn.getresponse()
+        connection = None
+        response = None
+        for i in xrange(fetchmax):
+            try:
+                while True:
+                    try:
+                        mtime, connection = HTTP_CONNECTION_CACHE[(scheme, netloc)].get_nowait()
+                        if time.time() - mtime < 16:
+                            break
+                        else:
+                            connection.close()
+                    except Queue.Empty:
+                        connection = ConnectionType(netloc, timeout=timeout)
+                        break
+                connection.request(method, path, body=payload, headers=headers)
+                response = connection.getresponse()
+                break
+            except Exception as e:
+                if i == fetchmax - 1:
+                    raise
         start_response('200 OK', [('Content-Type', __content_type__)])
         header_sent = True
         if response.getheader('Set-Cookie'):
@@ -118,6 +147,8 @@ def application(environ, start_response):
         while True:
             data = response.read()
             if not data:
+                response.close()
+                HTTP_CONNECTION_CACHE[(scheme, netloc)].put((time.time(), connection))
                 return
             yield cipher.encrypt(data)
     except Exception as e:
@@ -141,9 +172,7 @@ except ImportError:
 
 
 if __name__ == '__main__':
-    import gevent.monkey
     import gevent.wsgi
-    gevent.monkey.patch_all()
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     server = gevent.wsgi.WSGIServer(('', int(sys.argv[1])), application)
     logging.info('local paas_application serving at %s:%s', server.address[0], server.address[1])
