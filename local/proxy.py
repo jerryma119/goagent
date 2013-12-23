@@ -2082,14 +2082,15 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         request_headers = dict((k.title(), v) for k, v in self.headers.items())
         host = request_headers.get('Host', '')
         path = self.url_parts.path
-        range_in_query = 'range=' in self.url_parts.query
-        special_range = (any(x(host) for x in common.AUTORANGE_HOSTS_MATCH) or path.endswith(common.AUTORANGE_ENDSWITH)) and not path.endswith(common.AUTORANGE_NOENDSWITH)
+        need_autorange = any(x(host) for x in common.AUTORANGE_HOSTS_MATCH) or path.endswith(common.AUTORANGE_ENDSWITH)
+        if path.endswith(common.AUTORANGE_NOENDSWITH) or 'range=' in self.url_parts.query or self.command == 'HEAD':
+            need_autorange = False
         if self.command != 'HEAD' and 'Range' in request_headers:
             m = re.search(r'bytes=(\d+)-', request_headers['Range'])
             start = int(m.group(1) if m else 0)
             request_headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
             logging.info('autorange range=%r match url=%r', request_headers['Range'], self.path)
-        elif self.command != 'HEAD' and not range_in_query and special_range:
+        elif need_autorange:
             logging.info('Found [autorange]endswith match url=%r', self.path)
             m = re.search(r'bytes=(\d+)-', request_headers.get('Range', ''))
             start = int(m.group(1) if m else 0)
@@ -2105,10 +2106,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = None
         errors = []
         headers_sent = False
+        get_fetchserver = lambda i: '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[i] if i >= 0 else random.choice(common.GAE_APPIDS), common.GAE_PATH)
         for retry in range(common.FETCHMAX_LOCAL):
-            fetchserver = '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            if range_in_query and special_range:
-                fetchserver = re.sub(r'(?<=://)[^\.]+', random.choice(common.GAE_APPIDS), fetchserver)
+            fetchserver = get_fetchserver(0 if not need_autorange else - 1)
             try:
                 content_length = 0
                 kwargs = {}
@@ -2150,9 +2150,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status in (400, 405):
                     http_util.crlf = 0
                     continue
-                if response.app_status == 500 and range_in_query and special_range:
-                    fetchserver = re.sub(r'(?<=://)[^\.]+', random.choice(common.GAE_APPIDS), fetchserver)
-                    logging.warning('500 with range in query, trying another APPID')
+                if response.app_status == 500 and need_autorange:
+                    fetchserver = get_fetchserver(-1)
+                    logging.warning('500 with range in query, trying another fetchserver=%r', fetchserver)
                     continue
                 if response.app_status != 200 and retry == common.FETCHMAX_LOCAL-1:
                     logging.info('%s "GAE %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
@@ -2164,7 +2164,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not headers_sent:
                     logging.info('%s "GAE %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
                     if response.status == 206:
-                        fetchservers = [re.sub(r'(?<=://)[^\.]+', appid, fetchserver) for appid in common.GAE_APPIDS]
+                        fetchservers = [get_fetchserver(i) for i in xrange(len(common.GAE_APPIDS))]
                         rangefetch = RangeFetch(gae_urlfetch, self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS)
                         return rangefetch.fetch()
                     if response.getheader('Set-Cookie'):
@@ -2494,13 +2494,10 @@ def paas_application(environ, start_response):
             if line == '\r\n':
                 break
             lines.append(line)
-        print lines
         status = int(lines[0].split()[1])
         start_response(' '.join(lines[0].split()[1:]), [])
         if status == 200:
             http_util.forward_socket(wsgi_input.socket, sock)
-        else:
-            print rfile.read(100)
     else:
         raise NotImplementedError
 
