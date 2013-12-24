@@ -3,7 +3,7 @@
 
 $__version__  = '3.1.2';
 $__password__ = '123456';
-$__hostsdeny__ = array();  # $__hostsdeny__ = array('.youtube.com', '.youku.com')
+$__hostsdeny__ = array(); // $__hostsdeny__ = array('.youtube.com', '.youku.com');
 $__content_type__ = 'image/gif';
 $__content__ = '';
 $__timeout__ = 20;
@@ -121,6 +121,18 @@ function post()
             header("HTTP/1.0 403 Forbidden");
             echo message_html('403 Forbidden', 'Wrong Password', 'please edit proxy.ini');
             exit(-1);
+        }
+    }
+
+    $hostsdeny = $GLOBALS['__hostsdeny__'];
+    if ($hostsdeny) {
+        $urlparts = parse_url($url);
+        $host = $urlparts['host'];
+        foreach ($hostsdeny as $pattern) {
+            if (substr($host, strlen($host)-strlen($pattern)) == $pattern) {
+                echo_content("HTTP/1.0 403\r\n\r\n" . message_html('403 Forbidden', "hostsdeny matched($host)",  $url));
+                exit(-1);
+            }
         }
     }
 
