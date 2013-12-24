@@ -8,12 +8,6 @@ __content_type__ = 'image/gif'
 __timeout__ = 20
 
 
-try:
-    import gevent.monkey
-    gevent.monkey.patch_all()
-except ImportError:
-    pass
-
 import sys
 import re
 import time
@@ -164,6 +158,7 @@ try:
     application = sae.create_wsgi_app(app)
 except ImportError:
     pass
+
 try:
     import bae.core.wsgi
     application = bae.core.wsgi.WSGIApplication(application)
@@ -172,8 +167,20 @@ except ImportError:
 
 
 if __name__ == '__main__':
-    import gevent.wsgi
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    server = gevent.wsgi.WSGIServer(('', int(sys.argv[1])), application)
-    logging.info('local paas_application serving at %s:%s', server.address[0], server.address[1])
-    server.serve_forever()
+    host, _, port = sys.argv[1].rpartition(':')
+    logging.info('local paas_application serving at %s:%s', host, port)
+    try:
+        import gevent.wsgi
+        import gevent.monkey
+        gevent.monkey.patch_all()
+        server = gevent.wsgi.WSGIServer((host, int(port)), application)
+        server.serve_forever()
+    except ImportError:
+        from gunicorn.app.base import Application
+        class GunicornApplication(Application):
+            def init(self, parser, opts, args):
+                return {'bind': '%s:%d' % (host, int(port))}
+            def load(self):
+                return application
+        GunicornApplication().run()
