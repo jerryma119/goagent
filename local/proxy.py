@@ -2370,12 +2370,16 @@ class PHPProxyHandler(GAEProxyHandler):
             common.resolve_iplist()
             fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PHP_FETCHSERVER).netloc)
             logging.info('resolve common.PHP_FETCHSERVER domain=%r to iplist', fetchhost)
-            fethhost_iplist = http_util.dns_resolve(fetchhost)
-            if len(fethhost_iplist) == 0:
+            if common.PHP_USEHOSTS and fetchhost in common.HOSTS_MAP:
+                hostname = common.HOSTS_MAP[fetchhost]
+                fetchhost_iplist = sum([socket.gethostbyname_ex(x)[-1] for x in common.IPLIST_MAP.get(hostname) or hostname.split('|')], [])
+            else:
+                fetchhost_iplist = http_util.dns_resolve(fetchhost)
+            if len(fetchhost_iplist) == 0:
                 logging.error('resolve %r domain return empty! please use ip list to replace domain list!', fetchhost)
                 sys.exit(-1)
-            http_util.dns[fetchhost] = list(set(fethhost_iplist))
-            logging.info('resolve common.PHP_FETCHSERVER domain to iplist=%r', fethhost_iplist)
+            http_util.dns[fetchhost] = list(set(fetchhost_iplist))
+            logging.info('resolve common.PHP_FETCHSERVER domain to iplist=%r', fetchhost_iplist)
         return True
 
     def setup(self):
