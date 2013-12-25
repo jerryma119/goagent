@@ -1461,6 +1461,17 @@ class Common(object):
                 queue.put((host, dnsserver, DNSUtil.remote_resolve(dnsserver, host, timeout=2)))
             except (socket.error, OSError) as e:
                 logging.error('resolve remote host=%r dnsserver=%r failed: %s', host, dnsserver, e)
+        # https://support.google.com/websearch/answer/186669?hl=zh-Hans
+        google_blacklist = ['nosslsearch.google.com', '216.239.32.20', '74.125.127.102', '74.125.155.102', '74.125.39.102', '74.125.39.113', '209.85.229.138']
+        for host in google_blacklist[:]:
+            if re.match(r'\d+\.\d+\.\d+\.\d+', host) or ':' in host:
+                continue
+            try:
+                google_blacklist.remove(host)
+                google_blacklist += socket.gethostbyname_ex(host)[-1]
+            except socket.error as e:
+                logging.warning('resolve google_blacklist from host=%r failed: %r', host, e)
+        google_blacklist = list(set(google_blacklist))
         for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
             if all(re.match(r'\d+\.\d+\.\d+\.\d+', x) or ':' in x for x in need_resolve_hosts):
                 continue
@@ -1498,11 +1509,13 @@ class Common(object):
                 except Queue.Empty:
                     logging.warn('resolve remote timeout, continue')
                     break
-            if name in ('google_cn', 'google_hk'):
-                resolved_iplist = list(set(resolved_iplist))
-            else:
+            if name.startswith('google_') and name not in ('google_cn', 'google_hk'):
                 iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
                 resolved_iplist = list(set(x for x in resolved_iplist if x.startswith(iplist_prefix)))
+            else:
+                resolved_iplist = list(set(resolved_iplist))
+            if name.startswith('google_'):
+                resolved_iplist = list(set(resolved_iplist) - set(google_blacklist))
             if len(resolved_iplist) == 0:
                 logging.error('resolve %s host return empty! please retry!', name)
                 sys.exit(-1)
@@ -1955,7 +1968,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """GAEProxyHandler setup, init domain/iplist map"""
         if not common.PROXY_ENABLE:
             if 'google_hk' in common.IPLIST_MAP:
-                threading._start_new_thread(expand_google_hk_iplist, (common.IPLIST_MAP['google_hk'][:], 16))
+                # threading._start_new_thread(expand_google_hk_iplist, (common.IPLIST_MAP['google_hk'][:], 16))
+                pass
             logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
             common.resolve_iplist()
         if len(common.GAE_APPIDS) > 10:
