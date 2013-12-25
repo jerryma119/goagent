@@ -7,24 +7,37 @@ __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
 __timeout__ = 20
 
+try:
+    import gevent.wsgi
+    import gevent.monkey
+    gevent.monkey.patch_all()
+    def run_wsgi_app(address, app):
+        gevent.wsgi.WSGIServer(address, app).serve_forever()
+except ImportError:
+    from gunicorn.app.base import Application
+    def run_wsgi_app(address, app):
+        class GunicornApplication(Application):
+            def init(self, parser, opts, args):
+                return {'bind': '%s:%d' % address}
+            def load(self):
+                return application
+        GunicornApplication().run()
 
 import sys
 import re
 import time
 import itertools
 import functools
-import collections
 import logging
 import string
 import urlparse
 import httplib
 import struct
 import zlib
+import collections
 import Queue
 
-
-HTTP_CONNECTION_CACHE = collections.defaultdict(Queue.PriorityQueue)
-
+normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
 
 def message_html(title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
@@ -67,37 +80,35 @@ class XORCipher(object):
         return ''.join(chr(ord(x) ^ self.__key_gen()) for x in data)
 
 
+def decode_request(data):
+    metadata_length, = struct.unpack('!h', data[:2])
+    metadata = zlib.decompress(data[2:2+metadata_length], -zlib.MAX_WBITS)
+    body = data[2+metadata_length:]
+    headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
+    method = headers.pop('G-Method')
+    url = headers.pop('G-Url')
+    kwargs = {}
+    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
+    if headers.get('Content-Encoding', '') == 'deflate':
+        body = zlib.decompress(body, -zlib.MAX_WBITS)
+        headers['Content-Length'] = str(len(body))
+        del headers['Content-Encoding']
+    return method, url, headers, kwargs, body
+
+
+HTTP_CONNECTION_CACHE = collections.defaultdict(Queue.PriorityQueue)
+
 def application(environ, start_response):
     if environ['REQUEST_METHOD'] == 'GET':
         start_response('302 Found', [('Location', 'https://www.google.com')])
         raise StopIteration
 
-    wsgi_input = environ['wsgi.input']
-    input_data = wsgi_input.read(int(environ.get('CONTENT_LENGTH') or -1))
-
-    metadata_length, = struct.unpack('!h', input_data[:2])
-    metadata = zlib.decompress(input_data[2:2+metadata_length], -zlib.MAX_WBITS)
-    payload = input_data[2+metadata_length:]
-    headers = dict(x.split(':', 1) for x in metadata.splitlines() if x)
-    method = headers.pop('G-Method')
-    url = headers.pop('G-Url')
+    post_data = environ['wsgi.input'].read(int(environ.get('CONTENT_LENGTH') or -1))
+    method, url, headers, kwargs, body = decode_request(post_data)
     scheme, netloc, path, _, query, _ = urlparse.urlparse(url)
-    if query:
-        path += '?' + query
-
-    kwargs = {}
-    any(kwargs.__setitem__(x[2:].lower(), headers.pop(x)) for x in headers.keys() if x.startswith('G-'))
-
-    if 'Content-Encoding' in headers:
-        if headers['Content-Encoding'] == 'deflate':
-            payload = zlib.decompress(payload, -zlib.MAX_WBITS)
-            headers['Content-Length'] = str(len(payload))
-            del headers['Content-Encoding']
-
     cipher = XORCipher(__password__[0])
-    normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
 
-    if __password__ and __password__ != kwargs.get('password'):
+    if __password__ != kwargs.get('password'):
         start_response('403 Forbidden', [('Content-Type', 'text/html')])
         yield message_html('403 Wrong Password', 'Wrong Password(%s)' % kwargs.get('password'), detail='please edit proxy.ini')
         raise StopIteration
@@ -127,8 +138,8 @@ def application(environ, start_response):
                     except Queue.Empty:
                         connection = ConnectionType(netloc, timeout=timeout)
                         break
-                connection.request(method, path, body=payload, headers=headers)
-                response = connection.getresponse()
+                connection.request(method, '%s?%s' % (path, query) if query else path, body=body, headers=headers)
+                response = connection.getresponse(buffering=True)
                 break
             except Exception as e:
                 if i == fetchmax - 1:
@@ -139,7 +150,7 @@ def application(environ, start_response):
             response.msg['Set-Cookie'] = normcookie(response.getheader('Set-Cookie'))
         yield cipher.encrypt('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding')))
         while True:
-            data = response.read()
+            data = response.read(8192)
             if not data:
                 response.close()
                 HTTP_CONNECTION_CACHE[(scheme, netloc)].put((time.time(), connection))
@@ -155,7 +166,7 @@ def application(environ, start_response):
 
 try:
     import sae
-    application = sae.create_wsgi_app(app)
+    application = sae.create_wsgi_app(application)
 except ImportError:
     pass
 
@@ -170,17 +181,4 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     host, _, port = sys.argv[1].rpartition(':')
     logging.info('local paas_application serving at %s:%s', host, port)
-    try:
-        import gevent.wsgi
-        import gevent.monkey
-        gevent.monkey.patch_all()
-        server = gevent.wsgi.WSGIServer((host, int(port)), application)
-        server.serve_forever()
-    except ImportError:
-        from gunicorn.app.base import Application
-        class GunicornApplication(Application):
-            def init(self, parser, opts, args):
-                return {'bind': '%s:%d' % (host, int(port))}
-            def load(self):
-                return application
-        GunicornApplication().run()
+    run_wsgi_app((host, int(port)), application)
