@@ -14,14 +14,20 @@ try:
     def run_wsgi_app(address, app):
         gevent.wsgi.WSGIServer(address, app).serve_forever()
 except ImportError:
-    from gunicorn.app.base import Application
-    def run_wsgi_app(address, app):
-        class GunicornApplication(Application):
-            def init(self, parser, opts, args):
-                return {'bind': '%s:%d' % address}
-            def load(self):
-                return application
-        GunicornApplication().run()
+    pass
+
+try:
+    if 'gevent.monkey' not in __import__('sys').modules:
+        from gunicorn.app.base import Application
+        def run_wsgi_app(address, app):
+            class GunicornApplication(Application):
+                def init(self, parser, opts, args):
+                    return {'bind': '%s:%d' % address}
+                def load(self):
+                    return application
+            GunicornApplication().run()
+except ImportError:
+    pass
 
 import sys
 import re
