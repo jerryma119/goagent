@@ -1360,6 +1360,7 @@ class Common(object):
         self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')
         self.LISTEN_VISIBLE = self.CONFIG.getint('listen', 'visible')
+        self.LISTEN_VISIBLE = int(os.getenv('LISTEN_VISIBLE', self.CONFIG.get('listen', 'visible')))
         self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
 
         self.GAE_APPIDS = re.findall(r'[\w\-\.]+', self.CONFIG.get('gae', 'appid').replace('.appspot.com', ''))
