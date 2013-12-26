@@ -9,6 +9,7 @@ __timeout__ = 20
 
 try:
     import gevent.wsgi
+    import gevent.queue
     import gevent.monkey
     gevent.monkey.patch_all()
     def run_wsgi_app(address, app):
@@ -101,8 +102,8 @@ def decode_request(data):
         del headers['Content-Encoding']
     return method, url, headers, kwargs, body
 
-
-HTTP_CONNECTION_CACHE = collections.defaultdict(Queue.PriorityQueue)
+QUEUE_MODULE = __import__('gevent.queue', fromlist=['.']) if 'gevent.wsi' in sys.modules else Queue
+HTTP_CONNECTION_CACHE = collections.defaultdict(QUEUE_MODULE.PriorityQueue)
 
 def application(environ, start_response):
     if environ['REQUEST_METHOD'] == 'GET':
@@ -163,10 +164,11 @@ def application(environ, start_response):
                 return
             yield cipher.encrypt(data)
     except Exception as e:
+        import traceback
         if not header_sent:
             start_response('200 OK', [('Content-Type', __content_type__)])
         yield cipher.encrypt('HTTP/1.1 500 Internal Server Error\r\nContent-type: text/html\r\n\r\n')
-        yield cipher.encrypt(message_html('500 Internal Server Error', 'urlfetch %r failed' % url, detail=repr(e)))
+        yield cipher.encrypt(message_html('500 Internal Server Error', 'urlfetch %r: %r' % (url, e), '<pre>%s</pre>' % traceback.format_exc()))
         raise StopIteration
 
 
