@@ -8,25 +8,10 @@ __content_type__ = 'image/gif'
 __timeout__ = 20
 
 try:
-    import gevent.wsgi
+    import gevent
     import gevent.queue
     import gevent.monkey
     gevent.monkey.patch_all()
-    def run_wsgi_app(address, app):
-        gevent.wsgi.WSGIServer(address, app).serve_forever()
-except ImportError:
-    pass
-
-try:
-    if 'gevent.monkey' not in __import__('sys').modules:
-        from gunicorn.app.base import Application
-        def run_wsgi_app(address, app):
-            class GunicornApplication(Application):
-                def init(self, parser, opts, args):
-                    return {'bind': '%s:%d' % address}
-                def load(self):
-                    return application
-            GunicornApplication().run()
 except ImportError:
     pass
 
@@ -102,6 +87,7 @@ def decode_request(data):
         del headers['Content-Encoding']
     return method, url, headers, kwargs, body
 
+
 QUEUE_MODULE = __import__('gevent.queue', fromlist=['.']) if 'gevent.wsi' in sys.modules else Queue
 HTTP_CONNECTION_CACHE = collections.defaultdict(QUEUE_MODULE.PriorityQueue)
 
@@ -171,7 +157,6 @@ def application(environ, start_response):
         yield cipher.encrypt(message_html('500 Internal Server Error', 'urlfetch %r: %r' % (url, e), '<pre>%s</pre>' % traceback.format_exc()))
         raise StopIteration
 
-
 try:
     import sae
     application = sae.create_wsgi_app(application)
@@ -183,6 +168,20 @@ try:
     application = bae.core.wsgi.WSGIApplication(application)
 except ImportError:
     pass
+
+
+def run_wsgi_app(address, app):
+    if 'gevent' in sys.modules:
+        from gevent.wsgi import WSGIServer
+        return WSGIServer(address, app).serve_forever()
+    else:
+        from gunicorn.app.base import Application
+        class GunicornApplication(Application):
+            def init(self, parser, opts, args):
+                return {'bind': '%s:%d' % address}
+            def load(self):
+                return application
+        GunicornApplication().run()
 
 
 if __name__ == '__main__':
