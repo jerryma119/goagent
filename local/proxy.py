@@ -2108,9 +2108,9 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = None
         errors = []
         headers_sent = False
-        get_fetchserver = lambda i: '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[i] if i >= 0 else random.choice(common.GAE_APPIDS), common.GAE_PATH)
+        get_fetchserver = lambda i: '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[i] if i is None else random.choice(common.GAE_APPIDS), common.GAE_PATH)
         for retry in range(common.FETCHMAX_LOCAL):
-            fetchserver = get_fetchserver(0 if not need_autorange else - 1)
+            fetchserver = get_fetchserver(0 if not need_autorange else None)
             try:
                 content_length = 0
                 kwargs = {}
@@ -2153,7 +2153,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     http_util.crlf = 0
                     continue
                 if response.app_status == 500 and need_autorange:
-                    fetchserver = get_fetchserver(-1)
+                    fetchserver = get_fetchserver(None)
                     logging.warning('500 with range in query, trying another fetchserver=%r', fetchserver)
                     continue
                 if response.app_status != 200 and retry == common.FETCHMAX_LOCAL-1:
