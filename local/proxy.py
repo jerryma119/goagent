@@ -1349,6 +1349,8 @@ class HTTPUtil(object):
 class Common(object):
     """Global Config Object"""
 
+    ENV_CONFIG_PREFIX = 'GOAGENT_'
+
     def __init__(self):
         """load config from proxy.ini"""
         ConfigParser.RawConfigParser.OPTCRE = re.compile(r'(?P<option>[^=\s][^=]*)\s*(?P<vi>[=])\s*(?P<value>.*)$')
@@ -1356,6 +1358,11 @@ class Common(object):
         self.CONFIG_FILENAME = os.path.splitext(os.path.abspath(__file__))[0]+'.ini'
         self.CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', self.CONFIG_FILENAME)
         self.CONFIG.read([self.CONFIG_FILENAME, self.CONFIG_USER_FILENAME])
+
+        for key, value in os.environ.items():
+            m = re.match(r'^%s([A-Z]+)_([A-Z\_\-]+)$' % self.ENV_CONFIG_PREFIX, key)
+            if m:
+                self.CONFIG.set(m.group(1).lower(), m.group(2).lower(), value)
 
         self.LISTEN_IP = self.CONFIG.get('listen', 'ip')
         self.LISTEN_PORT = self.CONFIG.getint('listen', 'port')
