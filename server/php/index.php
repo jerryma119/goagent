@@ -95,16 +95,14 @@ function curl_header_function($ch, $header) {
     if (!$__content__) {
         header('Content-Type: ' . $GLOBALS['__content_type__']);
     }
-    if (strncasecmp($header, 'Transfer-Encoding:', 18) == 0) {
-        return strlen($header);
-    }
-    if (strstr($header, ':')) {
-        $kv = explode(':', $header, 2);
-        $key  = join('-', array_map('ucfirst', explode('-', $kv[0])));
-        $value = trim($kv[1]);
-        $__content__ .= "$key: $value\r\n";
-    } else {
+    $pos = strpos($header, ':');
+    if ($pos == false) {
         $__content__ .= $header;
+    } else {
+        $key = join('-', array_map('ucfirst', explode('-', substr($header, 0, $pos))));
+        if ($key != 'Transfer-Encoding') {
+            $__content__ .= $key . substr($header, $pos);
+        }
     }
     return strlen($header);
 }
