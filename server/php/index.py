@@ -187,5 +187,5 @@ def run_wsgi_app(address, app):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
     host, _, port = sys.argv[1].rpartition(':')
-    logging.info('local paas_application serving at %s:%s', host, port)
+    logging.info('local python application serving at %s:%s', host, port)
     run_wsgi_app((host, int(port)), application)
