@@ -2108,7 +2108,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = None
         errors = []
         headers_sent = False
-        get_fetchserver = lambda i: '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[i] if i is None else random.choice(common.GAE_APPIDS), common.GAE_PATH)
+        get_fetchserver = lambda i: '%s://%s.appspot.com%s?' % (common.GAE_MODE, common.GAE_APPIDS[i] if i is not None else random.choice(common.GAE_APPIDS), common.GAE_PATH)
         for retry in range(common.FETCHMAX_LOCAL):
             fetchserver = get_fetchserver(0 if not need_autorange else None)
             try:
