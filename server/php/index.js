@@ -1,4 +1,4 @@
-// node application for goagent
+#!/usr/bin/env node
 
 var __version__  = '3.1.2';
 var __password__ = '123456';
@@ -12,8 +12,8 @@ var http = require('http');
 var https = require('https');
 var url = require('url');
 
-var ipaddr  = process.env.OPENSHIFT_NODEJS_IP || '127.0.0.1';
-var port    = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
+var ipaddr = '';
+var port = process.env.PORT || 8080;
 
 
 function message_html(title, banner, detail) {
