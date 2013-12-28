@@ -66,7 +66,7 @@ function decode_request(data, callback) {
                 } else if (key == 'G-Url') {
                     request.url = value;
                 } else if (key.indexOf('G-') == 0) {
-                    request.kwargs[key] = value;
+                    request.kwargs[key.substring(2)] = value;
                 } else {
                     request.headers[key] = value;
                 }
@@ -102,7 +102,7 @@ function application(req, res) {
 
     if (!(content_length > 0)) {
         res.writeHead(302, {'Location': 'http://www.google.com/'});
-        res.close();
+        res.end();
         return;
     }
 
@@ -118,14 +118,38 @@ function application(req, res) {
         decode_request(data, function(request) {
             console.log('INFO - [' + new Date().toLocaleString('en', {hour12: false}).replace(/\s*GMT\+.+$/, '') + '] ' + req.connection.remoteAddress + ':' + req.connection.remotePort + ' "' + request.method + ' ' + request.url + ' HTTP/1.1" - -')
 
+            // console.log(request);
+            if (!request.kwargs.hasOwnProperty('password') || __password__ != request.kwargs['password']) {
+                if (!res.headersSent) {
+                    res.writeHead(403, {'Content-Type': __content_type__});
+                }
+                res.write('HTTP/1.0 403\r\n\r\n' + message_html('403 Forbidden', 'Wrong Password', 'please edit proxy.ini'));
+                res.end();
+                return;
+            }
+
             var option = url.parse(request.url);
+
+            if (__hostsdeny__.length) {
+                var hostname = option.hostname;
+                if (__hostsdeny__.filter(function(i) {return i==hostname.substring(hostname.length-i.length);}).length) {
+                    var content = 'HTTP/1.0 403\r\n\r\n' + message_html('403 Forbidden', 'hostsdeny matched(' + hostname + ')',  request.url)
+                    if (!res.headersSent) {
+                        res.writeHead(200, {'Content-Type': __content_type__});
+                    }
+                    res.write(buffer_xorbit(new Buffer(content), bit));
+                    res.end();
+                    return;
+                }
+            }
+
             var httplib = option.protocol == 'https:' ? https : http;
             option.path = option.path ? option.path : option.pathname+(option.search ? option.search : '');
             option.method = request.method;
             option.headers = request.headers;
             var http_request = httplib.request(option, function(response) {
                 if (!res.headersSent) {
-                    res.setHeader('Content-Type', __content_type__);
+                    res.writeHead(200, {'Content-Type': __content_type__});
                 }
                 var content = 'HTTP/1.1 ' + response.statusCode + '\r\n';
                 for (var key in response.headers) {
@@ -150,7 +174,7 @@ function application(req, res) {
                     });
                 }).on('error', function(error) {
                     if (!res.headersSent) {
-                        res.setHeader('Content-Type', __content_type__);
+                        res.writeHead(200, {'Content-Type': __content_type__});
                     }
                     content = "HTTP/1.0 502\r\n\r\n" + message_html('502 Urlfetch Error', 'http.request error: ' + error,  request.url)
                     res.write(buffer_xorbit(new Buffer(content), bit));
@@ -159,7 +183,7 @@ function application(req, res) {
                 http_request.setTimeout(__timeout__ * 1000, function() {
                     http_request.abort();
                     if (!res.headersSent) {
-                        res.setHeader('Content-Type', __content_type__);
+                        res.writeHead(200, {'Content-Type': __content_type__});
                     }
                     content = "HTTP/1.0 502\r\n\r\n" + message_html('502 Urlfetch Error', 'http.request timeout',  request.url)
                     res.write(buffer_xorbit(new Buffer(content), bit));
@@ -167,9 +191,9 @@ function application(req, res) {
                 });
                 http_request.on('error', function(error) {
                     if (!res.headersSent) {
-                        res.setHeader('Content-Type', __content_type__);
+                        res.writeHead(200, {'Content-Type': __content_type__});
                     }
-                    content = "HTTP/1.0 502\r\n\r\n" + message_html('502 Urlfetch Error', 'http.request error: ' + error,  request.url)
+                    content = "HTTP/1.0 502\r\n\r\n" + message_html('502 Urlfetch Error', 'http.request ' + error,  request.url)
                     res.write(buffer_xorbit(new Buffer(content), bit));
                     res.end();
                 });
