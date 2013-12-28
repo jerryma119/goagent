@@ -12,7 +12,7 @@ var http = require('http');
 var https = require('https');
 var url = require('url');
 
-var ipaddr  = process.env.OPENSHIFT_NODEJS_IP || '0.0.0.0';
+var ipaddr  = process.env.OPENSHIFT_NODEJS_IP || '127.0.0.1';
 var port    = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
 
 
@@ -96,7 +96,7 @@ function buffer_xorbit(buff, bit) {
 
 
 function application(req, res) {
-    console.log('INFO - [' + new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '') + '] ' + req.connection.remoteAddress + ':' + req.connection.remotePort + ' "' + req.method + ' ' + req.url + ' ' + req.httpVersion +'" - -')
+    console.log('INFO - [' + new Date().toLocaleString('en', {hour12: false}).replace(/\s*GMT\+.+$/, '') + '] ' + req.connection.remoteAddress + ':' + req.connection.remotePort + ' "' + req.method + ' ' + req.url + ' ' + req.httpVersion +'" - -')
 
     var content_length = parseInt(req.headers['content-length']);
 
@@ -116,7 +116,7 @@ function application(req, res) {
         var data = Buffer.concat(buffers);
         var bit = __password__.charCodeAt(0);
         decode_request(data, function(request) {
-            console.log('INFO - [' + new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '') + '] ' + req.connection.remoteAddress + ':' + req.connection.remotePort + ' "' + request.method + ' ' + request.url + ' HTTP/1.1" - -')
+            console.log('INFO - [' + new Date().toLocaleString('en', {hour12: false}).replace(/\s*GMT\+.+$/, '') + '] ' + req.connection.remoteAddress + ':' + req.connection.remotePort + ' "' + request.method + ' ' + request.url + ' HTTP/1.1" - -')
 
             var option = url.parse(request.url);
             var httplib = option.protocol == 'https:' ? https : http;
