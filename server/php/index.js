@@ -156,12 +156,15 @@ function application(req, res) {
                     res.write(buffer_xorbit(new Buffer(content), bit));
                     res.end();
                 });
-                http_request.setTimeout(__timeout__);
-                // http_request.on('timeout', function(error) {
-                //     content = "HTTP/1.0 502\r\n\r\n" + message_html('502 Urlfetch Error', 'http.request timeout: ' + error,  request.url)
-                //     res.write(buffer_xorbit(new Buffer(content), bit));
-                //     res.end();
-                // });
+                http_request.setTimeout(__timeout__ * 1000, function() {
+                    http_request.abort();
+                    if (!res.headersSent) {
+                        res.setHeader('Content-Type', __content_type__);
+                    }
+                    content = "HTTP/1.0 502\r\n\r\n" + message_html('502 Urlfetch Error', 'http.request timeout',  request.url)
+                    res.write(buffer_xorbit(new Buffer(content), bit));
+                    res.end();
+                });
                 http_request.on('error', function(error) {
                     if (!res.headersSent) {
                         res.setHeader('Content-Type', __content_type__);
