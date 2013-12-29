@@ -65,11 +65,17 @@ def message_html(title, banner, detail=''):
 class XORCipher(object):
     """XOR Cipher Class"""
     def __init__(self, key):
-        assert isinstance(key, basestring) and key
         self.__key_gen = itertools.cycle([ord(x) for x in key]).next
+        self.__key_xor = lambda s: ''.join(chr(ord(x) ^ self.__key_gen()) for x in s)
+        if len(key) == 1:
+            try:
+                from Crypto.Util.strxor import strxor_c
+                self.__key_xor = lambda s: strxor_c(s, ord(key))
+            except ImportError:
+                sys.stderr.write('Load Crypto.Util.strxor Failed, Use Pure Python Instead.\n')
 
     def encrypt(self, data):
-        return ''.join(chr(ord(x) ^ self.__key_gen()) for x in data)
+        return self.__key_xor(data)
 
 
 def decode_request(data):

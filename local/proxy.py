@@ -1620,10 +1620,6 @@ except ImportError:
             return ''.join(out)
 
 
-def rc4crypt(data, key):
-    return RC4Cipher(key).encrypt(data) if key else data
-
-
 class RC4FileObject(object):
     """fileobj for rc4"""
     def __init__(self, stream, key):
@@ -1640,25 +1636,21 @@ class XORCipher(object):
     """XOR Cipher Class"""
     def __init__(self, key):
         self.__key_gen = itertools.cycle([ord(x) for x in key]).next
+        self.__key_xor = lambda s: ''.join(chr(ord(x) ^ self.__key_gen()) for x in s)
+        if len(key) == 1:
+            try:
+                from Crypto.Util.strxor import strxor_c
+                self.__key_xor = lambda s: strxor_c(s, ord(key))
+            except ImportError:
+                sys.stderr.write('Load Crypto.Util.strxor Failed, Use Pure Python Instead.\n')
 
     def encrypt(self, data):
-        return ''.join(chr(ord(x) ^ self.__key_gen()) for x in data)
-
-
-class XORFileObject(object):
-    """fileobj for xor"""
-    def __init__(self, stream, key):
-        self.__stream = stream
-        self.__cipher = XORCipher(key)
-    def __getattr__(self, attr):
-        if attr not in ('__stream', '__key_gen'):
-            return getattr(self.__stream, attr)
-    def read(self, size=-1):
-        return self.__cipher.encrypt(self.__stream.read(size))
+        return self.__key_xor(data)
 
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
+    rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
     if payload:
         if len(payload) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
             zpayload = zlib.compress(payload)[2:-4]
