@@ -1640,7 +1640,8 @@ class XORCipher(object):
         if len(key) == 1:
             try:
                 from Crypto.Util.strxor import strxor_c
-                self.__key_xor = lambda s: strxor_c(s, ord(key))
+                c = ord(key)
+                self.__key_xor = lambda s: strxor_c(s, c)
             except ImportError:
                 sys.stderr.write('Load Crypto.Util.strxor Failed, Use Pure Python Instead.\n')
 

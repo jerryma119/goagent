@@ -70,7 +70,8 @@ class XORCipher(object):
         if len(key) == 1:
             try:
                 from Crypto.Util.strxor import strxor_c
-                self.__key_xor = lambda s: strxor_c(s, ord(key))
+                c = ord(key)
+                self.__key_xor = lambda s: strxor_c(s, c)
             except ImportError:
                 sys.stderr.write('Load Crypto.Util.strxor Failed, Use Pure Python Instead.\n')
 
@@ -94,8 +95,7 @@ def decode_request(data):
     return method, url, headers, kwargs, body
 
 
-QUEUE_MODULE = __import__('gevent.queue', fromlist=['.']) if 'gevent.wsi' in sys.modules else Queue
-HTTP_CONNECTION_CACHE = collections.defaultdict(QUEUE_MODULE.PriorityQueue)
+HTTP_CONNECTION_CACHE = collections.defaultdict(Queue.PriorityQueue)
 
 def application(environ, start_response):
     if environ['REQUEST_METHOD'] == 'GET':
@@ -148,7 +148,7 @@ def application(environ, start_response):
         header_sent = True
         if response.getheader('Set-Cookie'):
             response.msg['Set-Cookie'] = normcookie(response.getheader('Set-Cookie'))
-        content = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))
+        content = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, httplib.responses.get(response.status, 'Unknown'), ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))
         if need_encrypt:
             content = cipher.encrypt(content)
         yield content
@@ -158,7 +158,8 @@ def application(environ, start_response):
             data = response.read(bufsize)
             if not data:
                 response.close()
-                HTTP_CONNECTION_CACHE[(scheme, netloc)].put((time.time(), connection))
+                if connection.sock:
+                    HTTP_CONNECTION_CACHE[(scheme, netloc)].put((time.time(), connection))
                 return
             if need_encrypt:
                 data = cipher.encrypt(data)
