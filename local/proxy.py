@@ -2469,7 +2469,7 @@ class PHPProxyHandler(GAEProxyHandler):
             if response.status != 200:
                 self.wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k, v) for k, v in response.getheaders())))
 
-            cipher = response.status == 200 and common.PHP_PASSWORD and XORCipher(common.PHP_PASSWORD[0])
+            cipher = response.status == 200 and response.getheader('Content-Type', '') == 'image/gif' and XORCipher(common.PHP_PASSWORD[0])
             while 1:
                 data = response.read(8192)
                 if not data:

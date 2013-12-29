@@ -4,7 +4,7 @@
 __version__ = '3.1.2'
 __password__ = '123456'
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
-__content_type__ = 'image/gif'
+__content_types__ = ('image/gif', 'image/x-png')
 __timeout__ = 20
 
 try:
@@ -107,7 +107,7 @@ def application(environ, start_response):
         raise StopIteration
 
     if __hostsdeny__ and netloc.endswith(__hostsdeny__):
-        start_response('200 OK', [('Content-Type', __content_type__)])
+        start_response('200 OK', [('Content-Type', __content_types__[0])])
         yield cipher.encrypt('HTTP/1.1 403 Forbidden\r\nContent-type: text/html\r\n\r\n')
         yield cipher.encrypt(message_html('403 Forbidden Host', 'Hosts Deny(%s)' % netloc, detail='url=%r' % url))
         raise StopIteration
@@ -137,22 +137,30 @@ def application(environ, start_response):
             except Exception as e:
                 if i == fetchmax - 1:
                     raise
-        start_response('200 OK', [('Content-Type', __content_type__)])
+        need_encrypt = not response.getheader('Content-Type', '').startswith(('audio/', 'image/', 'video/', 'application/octet-stream'))
+        start_response('200 OK', [('Content-Type', __content_types__[0] if need_encrypt else __content_types__[1])])
         header_sent = True
         if response.getheader('Set-Cookie'):
             response.msg['Set-Cookie'] = normcookie(response.getheader('Set-Cookie'))
-        yield cipher.encrypt('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding')))
+        content = 'HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))
+        if need_encrypt:
+            content = cipher.encrypt(content)
+        yield content
+        # bufsize = 32768 if int(response.getheader('Content-Length', 0)) > 512*1024 else 8192
+        bufsize = 8192
         while True:
-            data = response.read(8192)
+            data = response.read(bufsize)
             if not data:
                 response.close()
                 HTTP_CONNECTION_CACHE[(scheme, netloc)].put((time.time(), connection))
                 return
-            yield cipher.encrypt(data)
+            if need_encrypt:
+                data = cipher.encrypt(data)
+            yield data
     except Exception as e:
         import traceback
         if not header_sent:
-            start_response('200 OK', [('Content-Type', __content_type__)])
+            start_response('200 OK', [('Content-Type', __content_types__[0])])
         yield cipher.encrypt('HTTP/1.1 500 Internal Server Error\r\nContent-type: text/html\r\n\r\n')
         yield cipher.encrypt(message_html('500 Internal Server Error', 'urlfetch %r: %r' % (url, e), '<pre>%s</pre>' % traceback.format_exc()))
         raise StopIteration
