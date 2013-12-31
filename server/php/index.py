@@ -4,7 +4,7 @@
 __version__ = '3.1.2'
 __password__ = '123456'
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
-__content_types__ = ('image/gif', 'image/x-png')
+__content_type__ = 'image/gif'
 __timeout__ = 20
 
 try:
@@ -113,7 +113,7 @@ def application(environ, start_response):
         raise StopIteration
 
     if __hostsdeny__ and netloc.endswith(__hostsdeny__):
-        start_response('200 OK', [('Content-Type', __content_types__[0])])
+        start_response('200 OK', [('Content-Type', __content_type__)])
         yield cipher.encrypt('HTTP/1.1 403 Forbidden\r\nContent-type: text/html\r\n\r\n')
         yield cipher.encrypt(message_html('403 Forbidden Host', 'Hosts Deny(%s)' % netloc, detail='url=%r' % url))
         raise StopIteration
@@ -144,7 +144,7 @@ def application(environ, start_response):
                 if i == fetchmax - 1:
                     raise
         need_encrypt = not response.getheader('Content-Type', '').startswith(('audio/', 'image/', 'video/', 'application/octet-stream'))
-        start_response('200 OK', [('Content-Type', __content_types__[0] if need_encrypt else __content_types__[1])])
+        start_response('200 OK', [('Content-Type', __content_type__ if need_encrypt else 'image/x-png')])
         header_sent = True
         if response.getheader('Set-Cookie'):
             response.msg['Set-Cookie'] = normcookie(response.getheader('Set-Cookie'))
@@ -167,7 +167,7 @@ def application(environ, start_response):
     except Exception as e:
         import traceback
         if not header_sent:
-            start_response('200 OK', [('Content-Type', __content_types__[0])])
+            start_response('200 OK', [('Content-Type', __content_type__)])
         yield cipher.encrypt('HTTP/1.1 500 Internal Server Error\r\nContent-type: text/html\r\n\r\n')
         yield cipher.encrypt(message_html('500 Internal Server Error', 'urlfetch %r: %r' % (url, e), '<pre>%s</pre>' % traceback.format_exc()))
         raise StopIteration
