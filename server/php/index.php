@@ -4,8 +4,7 @@
 $__version__  = '3.1.2';
 $__password__ = '123456';
 $__hostsdeny__ = array(); // $__hostsdeny__ = array('.youtube.com', '.youku.com');
-$__content_types__ = array('image/gif', 'image/x-png');
-$__need_encrypt__ = true;
+$__content_type__ = 'image/gif';
 $__use_curl__ = function_exists('curl_version');
 $__timeout__ = 20;
 $__content__ = '';
@@ -82,8 +81,8 @@ function decode_request($data) {
 
 
 function echo_content($content) {
-    global $__password__, $__need_encrypt__;
-    if ($__need_encrypt__) {
+    global $__password__, $__content_type__;
+    if ($__content_type__ == 'image/gif') {
         echo $content ^ str_repeat($__password__[0], strlen($content));
     } else {
         echo $content;
@@ -92,7 +91,7 @@ function echo_content($content) {
 
 
 function curl_header_function($ch, $header) {
-    global $__content__, $__need_encrypt__, $__content_types__;
+    global $__content__, $__content_type__;
     $pos = strpos($header, ':');
     if ($pos == false) {
         $__content__ .= $header;
@@ -103,14 +102,10 @@ function curl_header_function($ch, $header) {
         }
     }
     if (preg_match('@^Content-Type: ?(audio/|image/|video/|application/octet-stream)@i', $headers)) {
-        $__need_encrypt__ = false;
+        $__content_type__ = 'image/x-png';
     }
     if (!trim($header)) {
-        if ($__need_encrypt__) {
-            header('Content-Type: ' . $__content_types__[0]);
-        } else {
-            header('Content-Type: ' . $__content_types__[1]);
-        }
+        header('Content-Type: ' . $__content_type__);
     }
     return strlen($header);
 }
@@ -198,7 +193,7 @@ function post()
     $curl_opt[CURLOPT_HEADERFUNCTION] = 'curl_header_function';
     $curl_opt[CURLOPT_WRITEFUNCTION]  = 'curl_write_function';
 
-    $curl_opt[CURLOPT_FAILONERROR]    = true;
+    $curl_opt[CURLOPT_FAILONERROR]    = false;
     $curl_opt[CURLOPT_FOLLOWLOCATION] = false;
 
     $curl_opt[CURLOPT_CONNECTTIMEOUT] = $timeout;
@@ -215,11 +210,7 @@ function post()
         echo_content($GLOBALS['__content__']);
     } else if ($errno) {
         if (!headers_sent()) {
-            if ($__need_encrypt__) {
-                header('Content-Type: ' . $__content_types__[0]);
-            } else {
-                header('Content-Type: ' . $__content_types__[1]);
-            }
+            header('Content-Type: ' . $__content_type__);
         }
         $content = "HTTP/1.0 502\r\n\r\n" . message_html('502 Urlfetch Error', "PHP Urlfetch Error curl($errno)",  curl_error($ch));
         echo_content($content);
