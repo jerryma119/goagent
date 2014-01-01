@@ -2412,7 +2412,7 @@ def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     app_payload = b''.join((struct.pack('!h', len(metadata)), metadata, payload))
     fetchserver += '?%s' % random.random()
     crlf = 0 if fetchserver.startswith('https') else common.PHP_CRLF
-    connection_cache_key = urlparse.urlparse(fetchserver).netloc
+    connection_cache_key = '%s//:%s' % urlparse.urlparse(fetchserver)[:2]
     response = http_util.request('POST', fetchserver, app_payload, {'Content-Length': len(app_payload)}, crlf=crlf, connection_cache_key=connection_cache_key)
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
