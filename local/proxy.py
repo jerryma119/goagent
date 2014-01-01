@@ -206,6 +206,10 @@ class LRUCache(object):
             del self.cache[remove]
             self.key_order.pop(self.max_items)
 
+    def clear(self):
+        self.cache = {}
+        self.key_order = []
+
 
 class CertUtil(object):
     """CertUtil module, based on mitmproxy"""
@@ -2510,6 +2514,7 @@ class PACProxyHandler(GAEProxyHandler):
     first_run_lock = threading.Lock()
     pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
     localhosts = ('127.0.0.1', ProxyUtil.get_listen_ip(), 'localhost')
+    pacparser_lrucache = LRUCache(2048)
 
     def first_run(self):
         if pacparser:
@@ -2546,15 +2551,23 @@ class PACProxyHandler(GAEProxyHandler):
                     logging.info('%r updated, parse it')
                     pacparser.parse_pac_file(self.pacfile)
                     self.pacparser_mtime = mtime
+                    self.pacparser_lrucache.clear()
             except Exception as e:
                 logging.exception('pacparser %r update error: %r', self.pacfile, e)
                 time.sleep(600)
+
+    def find_proxy_with_lrucache(self, url):
+        try:
+            return self.pacparser_lrucache[url]
+        except KeyError:
+            self.pacparser_lrucache[url] = pac_proxy = pacparser.find_proxy(url)
+            return pac_proxy
 
     def do_CONNECT(self):
         if not pacparser:
             self.wfile.write(b'HTTP/1.1 403 Forbidden\r\n\r\n')
             return
-        pac_proxy = pacparser.find_proxy('https://%s/' % self.path.rpartition(':')[0])
+        pac_proxy = self.find_proxy_with_lrucache('https://%s/' % self.path.rpartition(':')[0])
         if pac_proxy == 'DIRECT':
             return self.do_CONNECT_FWD()
         else:
@@ -2605,7 +2618,7 @@ class PACProxyHandler(GAEProxyHandler):
         self.wfile.write(content)
 
     def do_METHOD_AGENT(self):
-        pac_proxy = pacparser.find_proxy(self.path)
+        pac_proxy = self.find_proxy_with_lrucache(self.path)
         if pac_proxy == 'DIRECT' and re.sub(r':\d+$', '', self.url_parts.netloc) not in common.HTTP_WITHGAE:
             return self.do_METHOD_FWD()
         elif pac_proxy.startswith('PROXY '):
