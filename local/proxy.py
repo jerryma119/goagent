@@ -2071,7 +2071,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except NetWorkIOError as e:
             if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
                 logging.warn('http_util.request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
-                common.HTTP_WITHGAE = tuple(list(common.HTTP_WITHGAE)+[re.sub(r':\d+$', '', self.url_parts.netloc)])
+                common.HTTP_WITHGAE.add(re.sub(r':\d+$', '', self.url_parts.netloc))
             elif e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
         except Exception as e:
@@ -2531,7 +2531,7 @@ class PACProxyHandler(GAEProxyHandler):
         if pac_proxy == 'DIRECT':
             return self.do_CONNECT_FWD()
         else:
-            self.do_CONNECT_AGENT()
+            return GAEProxyHandler.do_CONNECT(self)
 
     def do_METHOD(self):
         if self.path[0] == '/':
@@ -2579,7 +2579,7 @@ class PACProxyHandler(GAEProxyHandler):
 
     def do_METHOD_AGENT(self):
         pac_proxy = pacparser.find_proxy(self.path)
-        if pac_proxy == 'DIRECT':
+        if pac_proxy == 'DIRECT' and re.sub(r':\d+$', '', self.url_parts.netloc) not in common.HTTP_WITHGAE:
             return self.do_METHOD_FWD()
         elif pac_proxy.startswith('PROXY '):
             host, _, port = pac_proxy.split()[1].rpartition(':')
