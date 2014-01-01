@@ -2511,16 +2511,16 @@ class PHPProxyHandler(GAEProxyHandler):
 
 class PACProxyHandler(GAEProxyHandler):
 
+    localhosts = ('127.0.0.1', ProxyUtil.get_listen_ip(), 'localhost')
     first_run_lock = threading.Lock()
     pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
-    localhosts = ('127.0.0.1', ProxyUtil.get_listen_ip(), 'localhost')
-    pacparser_lrucache = LRUCache(2048)
+    pacfile_mtime = os.path.getmtime(pacfile)
+    pacparser_lrucache = LRUCache(4096)
 
     def first_run(self):
         if pacparser:
             pacparser.init()
             pacparser.parse_pac_file(self.pacfile)
-            self.pacparser_mtime = os.path.getmtime(self.pacfile)
             threading._start_new_thread(self.__pacparser_update)
         return True
 
@@ -2547,10 +2547,10 @@ class PACProxyHandler(GAEProxyHandler):
             try:
                 time.sleep(300)
                 mtime = os.path.getmtime(self.pacfile)
-                if mtime > self.pacparser_mtime:
+                if mtime > self.__class__.pacfile_mtime:
                     logging.info('%r updated, parse it')
                     pacparser.parse_pac_file(self.pacfile)
-                    self.pacparser_mtime = mtime
+                    self.__class__.pacfile_mtime = mtime
                     self.pacparser_lrucache.clear()
             except Exception as e:
                 logging.exception('pacparser %r update error: %r', self.pacfile, e)
@@ -2686,7 +2686,7 @@ class DNSServer(gevent.server.DatagramServer if gevent and hasattr(gevent.server
 
     def __init__(self, *args, **kwargs):
         super(DNSServer, self).__init__(*args, **kwargs)
-        self.dns_cache = {}
+        self.dns_cache = LRUCache(4096)
 
     def _dns_resolver(self, qname, qtype, qdata, dnsserver, result_queue):
         sock = gevent.socket.socket(socket.AF_INET6 if qtype == dnslib.QTYPE.AAAA else socket.AF_INET, socket.SOCK_DGRAM)
@@ -2707,9 +2707,10 @@ class DNSServer(gevent.server.DatagramServer if gevent and hasattr(gevent.server
         request = dnslib.DNSRecord.parse(data)
         qname = str(request.q.qname)
         qtype = request.q.qtype
-        if len(self.dns_cache) > self.max_cache_size:
-            self.dns_cache.clear()
-        reply_data = self.dns_cache.get((qname, qtype))
+        try:
+            reply_data = self.dns_cache[qname, qtype]
+        except KeyError:
+            reply_data = ''
         if not reply_data:
             result_queue = gevent.queue.Queue()
             for dnsserver in self.dnsservers:
@@ -2717,7 +2718,7 @@ class DNSServer(gevent.server.DatagramServer if gevent and hasattr(gevent.server
             while True:
                 try:
                     data = result_queue.get(timeout=self.timeout)
-                    reply_data = self.dns_cache[(qname, qtype)] = data
+                    self.dns_cache[qname, qtype] = reply_data = data
                     break
                 except gevent.queue.Empty:
                     logging.warning('query %r timed out', qname)
