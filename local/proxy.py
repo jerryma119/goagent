@@ -2488,6 +2488,8 @@ class PACProxyHandler(GAEProxyHandler):
         if pacparser:
             pacparser.init()
             pacparser.parse_pac_file(self.pacfile)
+            self.pacparser_mtime = os.path.getmtime(self.pacfile)
+            threading._start_new_thread(self.__pacparser_update)
         return True
 
     def setup(self):
@@ -2508,9 +2510,23 @@ class PACProxyHandler(GAEProxyHandler):
         self.__class__.do_OPTIONS = self.__class__.do_METHOD
         self.setup()
 
+    def __pacparser_update(self):
+        while True:
+            try:
+                time.sleep(300)
+                mtime = os.path.getmtime(self.pacfile)
+                if mtime > self.pacparser_mtime:
+                    logging.info('%r updated, parse it')
+                    pacparser.parse_pac_file(self.pacfile)
+                    self.pacparser_mtime = mtime
+            except Exception as e:
+                logging.exception('pacparser %r update error: %r', self.pacfile, e)
+                time.sleep(600)
+
     def do_CONNECT(self):
         if not pacparser:
-            return self.do_CONNECT_FWD()
+            self.wfile.write(b'HTTP/1.1 403 Forbidden\r\n\r\n')
+            return
         pac_proxy = pacparser.find_proxy('https://%s/' % self.path.rpartition(':')[0])
         if pac_proxy == 'DIRECT':
             return self.do_CONNECT_FWD()
