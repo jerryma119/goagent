@@ -2515,17 +2515,13 @@ class PHPProxyHandler(GAEProxyHandler):
             queue = Queue.Queue()
             threading._start_new_thread(pipe_response_to_queue, (response, queue, 8192))
             while True:
-                try:
-                    data = queue.get()
-                    if data is StopIteration or isinstance(data, Exception):
-                        response.close()
-                        break
-                    if cipher:
-                        data = cipher.encrypt(data)
-                    self.wfile.write(data)
-                except Exception as e:
-                    logging.exception('pipe_response error: %r', e)
+                data = queue.get()
+                if data is StopIteration or isinstance(data, Exception):
+                    response.close()
                     break
+                if cipher:
+                    data = cipher.encrypt(data)
+                self.wfile.write(data)
         except NetWorkIOError as e:
             # Connection closed before proxy return
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
