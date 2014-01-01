@@ -186,17 +186,15 @@ except ImportError:
 
 
 def run_wsgi_app(address, app):
-    if 'gevent' in sys.modules:
-        from gevent.wsgi import WSGIServer
-        return WSGIServer(address, app).serve_forever()
-    else:
-        from gunicorn.app.base import Application
-        class GunicornApplication(Application):
-            def init(self, parser, opts, args):
-                return {'bind': '%s:%d' % address}
-            def load(self):
-                return application
-        GunicornApplication().run()
+    from gunicorn.app.wsgiapp import WSGIApplication
+    class GunicornApplication(WSGIApplication):
+        def init(self, parser, opts, args):
+            return {'bind': '%s:%d' % (address[0], int(address[1])),
+                    'workers': 2,
+                    'worker_class': 'gevent'}
+        def load(self):
+            return application
+    GunicornApplication().run()
 
 
 if __name__ == '__main__':
