@@ -186,15 +186,19 @@ except ImportError:
 
 
 def run_wsgi_app(address, app):
-    from gunicorn.app.wsgiapp import WSGIApplication
-    class GunicornApplication(WSGIApplication):
-        def init(self, parser, opts, args):
-            return {'bind': '%s:%d' % (address[0], int(address[1])),
-                    'workers': 2,
-                    'worker_class': 'gevent'}
-        def load(self):
-            return application
-    GunicornApplication().run()
+    try:
+        from gunicorn.app.wsgiapp import WSGIApplication
+        class GunicornApplication(WSGIApplication):
+            def init(self, parser, opts, args):
+                return {'bind': '%s:%d' % (address[0], int(address[1])),
+                        'workers': 2,
+                        'worker_class': 'gevent'}
+            def load(self):
+                return application
+        GunicornApplication().run()
+    except ImportError:
+        from gevent.wsgi import WSGIServer
+        WSGIServer(address, app).serve_forever()
 
 
 if __name__ == '__main__':
