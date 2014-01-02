@@ -2531,7 +2531,7 @@ class PHPProxyHandler(GAEProxyHandler):
 
 class PACProxyHandler(GAEProxyHandler):
 
-    localhosts = ('127.0.0.1', ProxyUtil.get_listen_ip(), 'localhost')
+    localhosts = ('127.0.0.1', 'localhost')
     first_run_lock = threading.Lock()
     pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
     pacfile_mtime = os.path.getmtime(pacfile)
@@ -2539,7 +2539,7 @@ class PACProxyHandler(GAEProxyHandler):
 
     def first_run(self):
         try:
-            self.__class__.localhosts = tuple(set(list(self.localhosts) + [socket.gethostname()] + socket.gethostbyname_ex(socket.gethostname())[-1]))
+            self.__class__.localhosts = tuple(set(list(self.localhosts) + [ProxyUtil.get_listen_ip(), socket.gethostname()] + socket.gethostbyname_ex(socket.gethostname())[-1]))
         except socket.error:
             pass
         if pacparser:
