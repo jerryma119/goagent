@@ -2538,6 +2538,10 @@ class PACProxyHandler(GAEProxyHandler):
     pacparser_lrucache = LRUCache(4096)
 
     def first_run(self):
+        try:
+            self.__class__.localhosts = tuple(set(list(self.localhosts) + [socket.gethostname()] + socket.gethostbyname_ex(socket.gethostname())[-1]))
+        except socket.error:
+            pass
         if pacparser:
             pacparser.init()
             pacparser.parse_pac_file(self.pacfile)
