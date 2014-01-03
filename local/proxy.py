@@ -2092,6 +2092,34 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 common.HOSTS_MAP[host] = hostname
             else:
                 hostname = host
+            if hostname.startswith('file://'):
+                filename = hostname.lstrip('file://')
+                if os.name == 'nt':
+                    filename = filename.lstrip('/')
+                content_type = None
+                try:
+                    import mimetypes
+                    content_type = mimetypes.types_map.get(os.path.splitext(filename)[1])
+                except Exception as e:
+                    logging.error('import mimetypes failed: %r', e)
+                try:
+                    with open(filename, 'rb') as fp:
+                        data = fp.read()
+                        self.wfile.write('HTTP/1.1 200\r\n')
+                        self.wfile.write('Connection: close\r\n')
+                        self.wfile.write('Content-Length: %s\r\n' % len(data))
+                        if content_type:
+                            self.wfile.write('Content-Type: %s\r\n' % content_type)
+                        self.wfile.write('\r\n')
+                        self.wfile.write(data)
+                except Exception as e:
+                    self.wfile.write('HTTP/1.1 403\r\n')
+                    self.wfile.write('Connection: close\r\n')
+                    self.wfile.write('\r\n')
+                    self.wfile.write('open %r failed: %r' % (filename, e))
+                finally:
+                    logging.info('%r matched local file %r, return', self.path, filename)
+                    return
             need_crlf = hostname.startswith('google_') or host.endswith(common.HTTP_CRLFSITES)
             hostname = hostname or host
             if hostname in common.IPLIST_MAP:
