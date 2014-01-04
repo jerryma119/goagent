@@ -124,8 +124,7 @@ function curl_write_function($ch, $content) {
 }
 
 
-function post()
-{
+function post() {
     list($method, $url, $headers, $kwargs, $body) = @decode_request(@file_get_contents('php://input'));
 
     $password = $GLOBALS['__password__'];
@@ -156,9 +155,7 @@ function post()
 
     $header_array = array();
     foreach ($headers as $key => $value) {
-        if ($key) {
-            $header_array[] = join('-', array_map('ucfirst', explode('-', $key))).': '.$value;
-        }
+        $header_array[] = join('-', array_map('ucfirst', explode('-', $key))).': '.$value;
     }
 
     $timeout = $GLOBALS['__timeout__'];
