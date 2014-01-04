@@ -342,6 +342,8 @@ class CertUtil(object):
                 store_handle = crypt32.CertOpenStore(10, 0, 0, 0x4000 | 0x20000, b'ROOT'.decode())
                 if not store_handle:
                     return -1
+                if crypt32.CertFindCertificateInStore(store_handle, 0x1, 0, 0x80007, CertUtil.ca_vendor.decode(), None):
+                    return 0
                 ret = crypt32.CertAddEncodedCertificateToStore(store_handle, 0x1, certdata, len(certdata), 4, None)
                 crypt32.CertCloseStore(store_handle, 0)
                 del crypt32
