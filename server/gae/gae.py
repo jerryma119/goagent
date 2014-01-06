@@ -221,7 +221,7 @@ def application(environ, start_response):
     data = response.content
     response_headers = response.headers
     content_type = response_headers.get('content-type', '')
-    if 'content-encoding' not in response_headers and len(response.content) < URLFETCH_DEFLATE_MAXSIZE and content_type.startswith(('text/', 'application/json', 'application/javascript')):
+    if 'content-encoding' not in response_headers and 0 < len(response.content) < URLFETCH_DEFLATE_MAXSIZE and content_type.startswith(('text/', 'application/json', 'application/javascript')):
         if 'gzip' in accept_encoding:
             response_headers['Content-Encoding'] = 'gzip'
             compressobj = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS, zlib.DEF_MEM_LEVEL, 0)
