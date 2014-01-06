@@ -1993,10 +1993,7 @@ def expand_google_hk_iplist(domains, max_count=100):
 
 def pipe_response_to_queue(response, queueobj, bufsize=8192):
     try:
-        while True:
-            if response.isclosed():
-                queueobj.put(StopIteration)
-                break
+        while not response.isclosed():
             data = response.read(bufsize)
             if not data:
                 queueobj.put(StopIteration)
@@ -2151,7 +2148,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.wfile.write(data)
             response.close()
         except NetWorkIOError as e:
-            if response and not response.isclosed():
+            if response:
                 response.close()
             if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
                 logging.warn('http_util.request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
@@ -2562,7 +2559,7 @@ class PHPProxyHandler(GAEProxyHandler):
                 self.wfile.write(data)
         except NetWorkIOError as e:
             # Connection closed before proxy return
-            if response and not response.isclosed():
+            if response:
                 response.close()
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
