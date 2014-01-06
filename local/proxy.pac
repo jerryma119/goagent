@@ -2,6 +2,11 @@
 function FindProxyForURL(url, host) {
     var autoproxy = 'PROXY 127.0.0.1:8087';
     var blackhole = 'PROXY 127.0.0.1:8086';
+    var defaultproxy = 'DIRECT';
+    if (host == '127.0.0.1' || isPlainNameHost(host))
+    {
+        return "DIRECT";
+    }
     if (dnsDomainIs(host, '.google.com') ||
         dnsDomainIs(host, '.google.com.hk') ||
         dnsDomainIs(host, '.google-analytics.com') ||
@@ -25,7 +30,7 @@ function FindProxyForURL(url, host) {
     if (host == 'pagead2.googlesyndication.com' ||
         host == 'p.tanx.com' ||
         host == 'a.alimama.cn' ||
-        FindProxyForURLByAdblock(url, host) != 'DIRECT')
+        FindProxyForURLByAdblock(url, host) != defaultproxy)
     {
         return blackhole;
     } else {
