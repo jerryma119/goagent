@@ -1994,6 +1994,9 @@ def expand_google_hk_iplist(domains, max_count=100):
 def pipe_response_to_queue(response, queueobj, bufsize=8192):
     try:
         while True:
+            if response.isclosed():
+                queueobj.put(StopIteration)
+                break
             data = response.read(bufsize)
             if not data:
                 queueobj.put(StopIteration)
@@ -2082,6 +2085,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD_FWD(self):
         """Direct http forward"""
+        response = None
         try:
             content_length = int(self.headers.get('Content-Length', 0))
             payload = self.rfile.read(content_length) if content_length else b''
@@ -2147,6 +2151,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.wfile.write(data)
             response.close()
         except NetWorkIOError as e:
+            if response and not response.isclosed():
+                response.close()
             if e.args[0] in (errno.ECONNRESET, 10063, errno.ENAMETOOLONG):
                 logging.warn('http_util.request "%s %s" failed:%s, try addto `withgae`', self.command, self.path, e)
                 common.HTTP_WITHGAE.add(re.sub(r':\d+$', '', self.url_parts.netloc))
@@ -2509,6 +2515,7 @@ class PHPProxyHandler(GAEProxyHandler):
         self.setup()
 
     def do_METHOD_AGENT(self):
+        response = None
         try:
             headers = dict((k.title(), v) for k, v in self.headers.items())
             host = headers.get('Host', '')
@@ -2519,7 +2526,6 @@ class PHPProxyHandler(GAEProxyHandler):
                 except NetWorkIOError as e:
                     logging.error('handle_method read payload failed:%s', e)
                     return
-            response = None
             errors = []
             for _ in range(common.FETCHMAX_LOCAL):
                 try:
@@ -2556,6 +2562,8 @@ class PHPProxyHandler(GAEProxyHandler):
                 self.wfile.write(data)
         except NetWorkIOError as e:
             # Connection closed before proxy return
+            if response and not response.isclosed():
+                response.close()
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
 
