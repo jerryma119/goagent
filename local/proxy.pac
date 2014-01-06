@@ -3,7 +3,7 @@ function FindProxyForURL(url, host) {
     var autoproxy = 'PROXY 127.0.0.1:8087';
     var blackhole = 'PROXY 127.0.0.1:8086';
     var defaultproxy = 'DIRECT';
-    if (host == '127.0.0.1' || isPlainNameHost(host))
+    if (host == '127.0.0.1' || isPlainHostName(host))
     {
         return "DIRECT";
     }
