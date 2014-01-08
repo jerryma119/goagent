@@ -44,6 +44,17 @@ if conf['NTLM_AUTH']['NTLM_TO_BASIC'] == '0' and conf['NTLM_AUTH']['USER'] == 'u
     print 'PLEASE SET username/password in %r' % __file__
     __import__('sys').exit(-1)
 
+try:
+    import gevent
+    import gevent.socket
+    import gevent.server
+    import gevent.queue
+    import gevent.monkey
+    gevent.monkey.patch_all()
+except ImportError:
+    sys.stderr.write('\033[31m  Warning: Please update gevent to the latest 1.0 version!\033[0m\n')
+
+
 import ntlmaps
 config = ntlmaps.config_affairs.arrange(conf)
 serv = ntlmaps.server.AuthProxyServer(config)
