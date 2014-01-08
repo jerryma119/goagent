@@ -1,7 +1,14 @@
 @"%~dp0python27.exe" -x "%~dpnx0" && exit /b 0 || (pause && exit /b -1)
 
-conf = {'GENERAL': {'PARENT_PROXY': 'YOUR_PARENTPROXY',
-                    'PARENT_PROXY_PORT': '8080',
+PARENT_PROXY = '10.64.1.63'
+PARENT_PROXY_PORT = '8080'
+USER = 'username_to_use'
+PASSWORD = 'your_nt_password'
+NT_DOMAIN = 'your_domain'
+
+
+conf = {'GENERAL': {'PARENT_PROXY': PARENT_PROXY,
+                    'PARENT_PROXY_PORT': PARENT_PROXY_PORT,
                     'LISTEN_PORT': '5865',
                     'ALLOW_EXTERNAL_CLIENTS': '0',
                     'DIRECT_CONNECT_IF_POSSIBLE': '0',
@@ -10,9 +17,9 @@ conf = {'GENERAL': {'PARENT_PROXY': 'YOUR_PARENTPROXY',
                     'MAX_CONNECTION_BACKLOG': '5',
                     'PARENT_PROXY_TIMEOUT': '15',
                     'URL_LOG': '0'},
-        'NTLM_AUTH': {'USER': 'username_to_use',
-                      'PASSWORD': 'your_nt_password',
-                      'NT_DOMAIN': 'your_domain',
+        'NTLM_AUTH': {'USER': USER,
+                      'PASSWORD': PASSWORD,
+                      'NT_DOMAIN': NT_DOMAIN,
                       'COMPLEX_PASSWORD_INPUT': '1',
                       'LM_HASHED_PW': '',
                       'LM_PART': '1',
