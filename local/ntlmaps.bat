@@ -1,4 +1,4 @@
-@"%~dp0python27.exe" -x "%~dpnx0" && exit /b 0 || exit /b -1
+@"%~dp0python27.exe" -x "%~dpnx0" && exit /b 0 || (pause && exit /b -1)
 
 conf = {'GENERAL': {'PARENT_PROXY': 'YOUR_PARENTPROXY',
                     'PARENT_PROXY_PORT': '8080',
@@ -28,14 +28,16 @@ conf = {'GENERAL': {'PARENT_PROXY': 'YOUR_PARENTPROXY',
                   'DEBUG': '0',
                   'SCR_DEBUG': '0'},}
 
-import sys
-import os
-import ntlmaps
-
 #--------------------------------------------------------------
 print 'NTLM authorization Proxy Server v1.0'
 print 'Copyright (C) 2001-2009 by Dmitry Rozmanov, Darryl Dixon, and others.'
 
+if conf['NTLM_AUTH']['NTLM_TO_BASIC'] == '0' and conf['NTLM_AUTH']['USER'] == 'username_to_use':
+    print
+    print 'PLEASE SET username/password in %r' % __file__
+    __import__('sys').exit(-1)
+
+import ntlmaps
 config = ntlmaps.config_affairs.arrange(conf)
 serv = ntlmaps.server.AuthProxyServer(config)
 serv.run()
