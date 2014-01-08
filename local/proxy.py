@@ -2632,7 +2632,7 @@ class PACProxyHandler(GAEProxyHandler):
     def do_METHOD(self):
         if self.path[0] == '/':
             host = self.headers.getheader('Host')
-            if not host or host.startswith(self.localhosts):
+            if not pacparser or not host or host.startswith(self.localhosts):
                 return self.do_METHOD_LOCAL()
             else:
                 self.path = 'http://%s%s' % (host, self.path)
