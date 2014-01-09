@@ -933,7 +933,6 @@ class HTTPUtil(object):
         self.ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
         self.max_timeout = max_timeout
         self.dns = {}
-        self.crlf = 0
         self.proxy = proxy
         self.ssl_validate = ssl_validate or self.ssl_validate
         self.ssl_obfuscate = ssl_obfuscate or self.ssl_obfuscate
@@ -1289,9 +1288,7 @@ class HTTPUtil(object):
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None, return_sock=None):
         skip_headers = self.skip_headers
-        need_crlf = http_util.crlf
-        if crlf:
-            need_crlf = 1
+        need_crlf = bool(crlf)
         if need_crlf:
             fakehost = 'www.' + ''.join(random.choice(('bcdfghjklmnpqrstvwxyz','aeiou')[x&1]) for x in xrange(random.randint(5,20))) + random.choice(['.net', '.com', '.org'])
             request_data = 'GET / HTTP/1.1\r\nHost: %s\r\n\r\n\r\n\r\r' % fakehost
@@ -1411,7 +1408,6 @@ class Common(object):
         self.GAE_MODE = self.CONFIG.get('gae', 'mode')
         self.GAE_PROFILE = self.CONFIG.get('gae', 'profile').strip()
         self.GAE_WINDOW = self.CONFIG.getint('gae', 'window')
-        self.GAE_CRLF = self.CONFIG.getint('gae', 'crlf')
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
         self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
@@ -1732,9 +1728,6 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     response.app_status = response.status
     response.app_options = response.getheader('X-GOA-Options', '')
     if response.status != 200:
-        if response.status in (400, 405):
-            # filter by some firewall
-            common.GAE_CRLF = 0
         return response
     data = response.read(4)
     if len(data) < 4:
@@ -2139,8 +2132,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if not response:
                 return
             logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
-            if response.status in (400, 405):
-                common.GAE_CRLF = 0
             self.wfile.write(('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))))
             while True:
                 data = response.read(8192)
@@ -2230,10 +2221,6 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return
                     else:
                         logging.error('All APPID Over Quota')
-                # bad request, disable CRLF injection
-                if response.app_status in (400, 405):
-                    http_util.crlf = 0
-                    continue
                 if response.app_status == 500 and need_autorange:
                     fetchserver = get_fetchserver(None)
                     logging.warning('500 with range in query, trying another fetchserver=%r', fetchserver)
