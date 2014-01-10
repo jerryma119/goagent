@@ -16,7 +16,8 @@ conf = {'GENERAL': {'PARENT_PROXY': PARENT_PROXY,
                     'HOSTS_TO_BYPASS_PARENT_PROXY': '',
                     'MAX_CONNECTION_BACKLOG': '5',
                     'PARENT_PROXY_TIMEOUT': '15',
-                    'URL_LOG': '0'},
+                    'URL_LOG': '0',
+                    'VERSION': '1.0'},
         'NTLM_AUTH': {'USER': USER,
                       'PASSWORD': PASSWORD,
                       'NT_DOMAIN': NT_DOMAIN,
@@ -36,7 +37,7 @@ conf = {'GENERAL': {'PARENT_PROXY': PARENT_PROXY,
                   'SCR_DEBUG': '0'},}
 
 #--------------------------------------------------------------
-print 'NTLM authorization Proxy Server v1.0'
+print 'NTLM authorization Proxy Server v%s' % conf['GENERAL']['VERSION']
 print 'Copyright (C) 2001-2009 by Dmitry Rozmanov, Darryl Dixon, and others.'
 
 if conf['NTLM_AUTH']['NTLM_TO_BASIC'] == '0' and conf['NTLM_AUTH']['USER'] == 'username_to_use':
