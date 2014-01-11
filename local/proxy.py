@@ -1834,6 +1834,7 @@ class RangeFetch(object):
             try:
                 self.wfile.write(data)
                 self.expect_begin += len(data)
+                del data
             except Exception as e:
                 logging.info('RangeFetch client connection aborted(%s).', e)
                 break
@@ -1988,19 +1989,6 @@ def expand_google_hk_iplist(domains, max_count=100):
     logging.info('expand_google_hk_iplist end. iplist=%s', ip_connection_time)
 
 
-def pipe_response_to_queue(response, queueobj, bufsize=8192):
-    try:
-        while not response.isclosed():
-            data = response.read(bufsize)
-            if not data:
-                queueobj.put(StopIteration)
-                break
-            queueobj.put(data)
-    except Exception as e:
-        logging.info('pipe_response error: %r', e)
-        queueobj.put(e)
-
-
 class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     bufsize = 256*1024
@@ -2138,6 +2126,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if not data:
                     break
                 self.wfile.write(data)
+                del data
             response.close()
         except NetWorkIOError as e:
             if response:
@@ -2261,6 +2250,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         return
                     start += len(data)
                     self.wfile.write(data)
+                    del data
                     if start >= end:
                         response.close()
                         return
@@ -2541,6 +2531,7 @@ class PHPProxyHandler(GAEProxyHandler):
                 if cipher:
                     data = cipher.encrypt(data)
                 self.wfile.write(data)
+                del data
         except NetWorkIOError as e:
             # Connection closed before proxy return
             if response:
