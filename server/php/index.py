@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '3.1.2'
+__version__ = '3.1.4'
 __password__ = '123456'
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -164,6 +164,7 @@ def application(environ, start_response):
             if need_encrypt:
                 data = cipher.encrypt(data)
             yield data
+            del data
     except Exception as e:
         import traceback
         if not header_sent:
