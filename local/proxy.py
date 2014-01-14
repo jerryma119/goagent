@@ -34,8 +34,9 @@
 #      cnfuyu            <cnfuyu@gmail.com>
 #      cuixin            <steven.cuixin@gmail.com>
 #      s2marine0         <s2marine0@gmail.com>
+#      Toshio Xiang      <snachx@gmail.com>
 
-__version__ = '3.1.4'
+__version__ = '3.1.5'
 
 import sys
 import os
