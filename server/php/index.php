@@ -150,7 +150,9 @@ function post() {
     if ($body) {
         $headers['Content-Length'] = strval(strlen($body));
     }
-    $headers['Connection'] = 'close';
+    if (isset($headers['Connection'])) {
+        $headers['Connection'] = 'close';
+    }
 
     $header_array = array();
     foreach ($headers as $key => $value) {
