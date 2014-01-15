@@ -33,18 +33,22 @@ function write_function($ch, $content) {
 }
 
 
-function post() {
+function main() {
+    $timeout = $GLOBALS['__timeout__'];
+    $method = $_SERVER['REQUEST_METHOD'] ;
     $url = $GLOBALS['__relay__'];
     $host = $GLOBALS['__hosts__'][array_rand($GLOBALS['__hosts__'])];
     $headers = php_getallheaders();
-    $body = $GLOBALS['HTTP_RAW_POST_DATA'];
+    $body = isset($GLOBALS['HTTP_RAW_POST_DATA']) ? $GLOBALS['HTTP_RAW_POST_DATA'] : '';
 
     $urlparts = parse_url($url);
 
     if ($body && !isset($headers['Content-Length'])) {
         $headers['Content-Length'] = strval(strlen($body));
     }
-    $headers['Connection'] = 'close';
+    if (isset($headers['Connection'])) {
+        $headers['Connection'] = 'close';
+    }
     $headers['Host'] = $urlparts['host'];
 
     $header_array = array();
@@ -52,12 +56,23 @@ function post() {
         $header_array[] = "$key: $value";
     }
 
-    $timeout = $GLOBALS['__timeout__'];
-
     $curl_opt = array();
 
-    $curl_opt[CURLOPT_POST] = true;
-    $curl_opt[CURLOPT_POSTFIELDS] = $body;
+    switch (strtoupper($method)) {
+        case 'HEAD':
+            $curl_opt[CURLOPT_NOBODY] = true;
+            break;
+        case 'GET':
+            break;
+        case 'POST':
+            $curl_opt[CURLOPT_POST] = true;
+            $curl_opt[CURLOPT_POSTFIELDS] = $body;
+            break;
+        default:
+            $curl_opt[CURLOPT_CUSTOMREQUEST] = $method;
+            $curl_opt[CURLOPT_POSTFIELDS] = $body;
+            break;
+    }
 
     $curl_opt[CURLOPT_HTTPHEADER] = $header_array;
     $curl_opt[CURLOPT_RETURNTRANSFER] = true;
@@ -76,43 +91,24 @@ function post() {
     $curl_opt[CURLOPT_SSL_VERIFYPEER] = false;
     $curl_opt[CURLOPT_SSL_VERIFYHOST] = false;
 
-    $newurl = preg_replace('@//[^/]+@', "//$host", $url) . '?' . $_SERVER['QUERY_STRING'];
+    $new_url = preg_replace('@//[^/]+@', "//$host", $url) . '?' . $_SERVER['QUERY_STRING'];
 
-    //var_dump(array('newurl' => $newurl, 'headers' => $headers, 'curl_opt' => $curl_opt));
+    //var_dump(array('new_url' => $new_url, 'headers' => $headers, 'curl_opt' => $curl_opt));
     //exit(0);
 
-    $ch = curl_init($newurl);
+    $ch = curl_init($new_url);
     curl_setopt_array($ch, $curl_opt);
     $ret = curl_exec($ch);
     $errno = curl_errno($ch);
 
     if ($errno) {
         if (!headers_sent()) {
+            header('HTTP/1.1 502 Gateway Error');
             header('Content-Type: text/plain');
         }
-        echo "HTTP/1.0 502\r\nContent-Type: text/plain\r\n\r\n";
         echo "502 Urlfetch Error\r\nPHP Urlfetch Error: curl($errno)\r\n"  . curl_error($ch);
     }
     curl_close($ch);
-}
-
-function get() {
-    $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : $_SERVER['SERVER_NAME'];
-    $domain = preg_replace('/.*\\.(.+\\..+)$/', '$1', $host);
-    if ($host && $host != $domain && $host != 'www'.$domain) {
-        header('Location: http://www.' . $domain);
-    } else {
-        header('Location: https://www.google.com');
-    }
-}
-
-
-function main() {
-    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-        post();
-    } else {
-        get();
-    }
 }
 
 main();
