@@ -91,7 +91,10 @@ function main() {
     $curl_opt[CURLOPT_SSL_VERIFYPEER] = false;
     $curl_opt[CURLOPT_SSL_VERIFYHOST] = false;
 
-    $new_url = preg_replace('@//[^/]+@', "//$host", $url) . '?' . $_SERVER['QUERY_STRING'];
+    $new_url = preg_replace('@//[^/]+@', "//$host", $url);
+    if ($_SERVER['QUERY_STRING']) {
+        $new_url .= '?' . $_SERVER['QUERY_STRING'];
+    }
 
     //var_dump(array('new_url' => $new_url, 'headers' => $headers, 'curl_opt' => $curl_opt));
     //exit(0);
