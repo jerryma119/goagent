@@ -1026,7 +1026,7 @@ class HTTPUtil(object):
         for i in range(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
             addresses.sort(key=get_connection_time)
-            addrs = addresses[:window] + random.sample(addresses, min(window, self.max_window-window))
+            addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
             queobj = Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(_create_connection, (addr, timeout, queobj))
@@ -1174,7 +1174,7 @@ class HTTPUtil(object):
         for i in range(self.max_retry):
             window = min((self.max_window+1)//2 + i, len(addresses))
             addresses.sort(key=self.ssl_connection_time.__getitem__)
-            addrs = addresses[:window] + random.sample(addresses, min(window, self.max_window-window))
+            addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
             queobj = Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection, (addr, timeout, queobj))
