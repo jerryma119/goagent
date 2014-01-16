@@ -249,33 +249,36 @@ def application(environ, start_response):
 
 
 def jtapi(environ, start_response):
-    twitter_host = 'twitter.com'
+    TWITTER_HOST = 'twitter.com'
+    server_name = '%s.appspot.com' % os.environ['APPLICATION_ID'].lstrip('s~')
     scheme = environ['wsgi.url_scheme']
     method = environ['REQUEST_METHOD']
     path_info = environ['PATH_INFO']
     query_string = environ['QUERY_STRING']
-    headers = dict((k[5:].title().replace('_', '-'), v) for k, v in environ.items() if k.startswith('HTTP_'))
-    path = '%s?%s' % (path_info, query_string) if query_string else path_info
-    url = '%s://%s/%s' % (scheme, twitter_host, path)
-    payload = environ['wsgi.input'].read() if headers.get('Content-Length') else ''
+    original_host = environ['HTTP_HOST']
 
-    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
-    #logging.info('request headers=%s', headers)
+    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, path_info, 'HTTP/1.1')
 
-    original_host = headers.pop('Host', '')
-    headers['Host'] = twitter_host
+    subdomain = original_host.rstrip(server_name).rstrip('.')
 
-    if path_info == '/':
+    if not subdomain and path_info == '/':
         start_response('200 OK', [('Content-Type', 'text/plain')])
         yield 'JTAPI %s is running!\n' % os.environ['CURRENT_VERSION_ID']
         yield '--------------------------------\n'
-        yield 'Rest Base URL:          %s://api.%s/1.1/\n' % (scheme, original_host)
-        yield 'OAuth Base URL:         %s://api.%s/oauth/\n' % (scheme, original_host)
+        yield 'Rest Base URL:          %s://api.%s/1.1/\n' % (scheme, server_name)
+        yield 'OAuth Base URL:         %s://api.%s/oauth/\n' % (scheme, server_name)
         yield '--------------------------------\n'
         yield 'How to use with Twidere:\n'
         yield 'Enable "Ignore SSL Error", then set above URLs (It"s better to use HTTPS.)\n'
         yield '--------------------------------\n'
         raise StopIteration
+
+    twitter_host = '%s.%s' % (subdomain, TWITTER_HOST) if subdomain else TWITTER_HOST
+    headers = dict((k[5:].title().replace('_', '-'), v) for k, v in environ.items() if k.startswith('HTTP_'))
+    headers['Host'] = twitter_host
+    path = '%s?%s' % (path_info, query_string) if query_string else path_info
+    url = '%s://%s/%s' % (scheme, twitter_host, path)
+    payload = environ['wsgi.input'].read() if headers.get('Content-Length') else ''
 
     fetchmethod = getattr(urlfetch, method, None)
     if not fetchmethod:
