@@ -5,7 +5,6 @@ __version__ = '3.1.2'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
-__relay__ = 'twitter.com'
 
 import os
 import re
@@ -249,18 +248,21 @@ def application(environ, start_response):
         yield rc4crypt(data, __password__)
 
 
-def relay(environ, start_response):
+def jtap(environ, start_response):
+    twitter_host = 'twitter.com'
     method = environ['REQUEST_METHOD']
+    path_info = environ['PATH_INFO']
+    query_string = environ['QUERY_STRING']
     headers = dict((k[5:].title().replace('_', '-'), v) for k, v in environ.items() if k.startswith('HTTP_'))
-    path = '%s?%s' % (environ['PATH_INFO'], environ['QUERY_STRING']) if environ['QUERY_STRING'] else environ['PATH_INFO']
-    url = '%s://%s/%s' % (environ['wsgi.url_scheme'], __relay__, path)
+    path = '%s?%s' % (path_info, query_string) if query_string else path_info
+    url = '%s://%s/%s' % (environ['wsgi.url_scheme'], twitter_host, path)
     payload = environ['wsgi.input'].read() if headers.get('Content-Length') else ''
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
     #logging.info('request headers=%s', headers)
 
     original_host = headers.pop('Host', '')
-    headers['Host'] = __relay__
+    headers['Host'] = twitter_host
 
     fetchmethod = getattr(urlfetch, method, None)
     if not fetchmethod:
@@ -314,10 +316,13 @@ def relay(environ, start_response):
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
     response_status = response.status_code
     response_headers = dict((k.title(), v) for k, v in response.headers.items() if not k.startswith('x-google-'))
+    response_content = response.content
     if 300 <= response_status < 400 and 'Location' in response_headers and original_host:
-        response_headers['Location'] = re.sub(r'(?<=://)%s(?=/)' % __relay__, original_host, response_headers['Location'])
+        response_headers['Location'] = re.sub(r'(?<=://)%s(?=/)' % twitter_host, original_host, response_headers['Location'])
     start_response(str(response_status), response_headers.items())
-    yield response.content
+    if path_info == '/oauth/authorize':
+        response_content = response_content.replace(twitter_host, original_host)
+    yield response_content
 
 
 class LegacyHandler(object):
