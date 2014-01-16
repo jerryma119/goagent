@@ -5,6 +5,10 @@ api_version: 1
 threadsafe: true
 
 handlers:
+- url: /_g
+  script: gae.application
+  secure: optional
+
 - url: /2
   script: gae.application
   secure: optional
