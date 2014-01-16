@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
 
-__version__ = '3.1.2'
+__version__ = '3.1.5'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
@@ -249,7 +249,7 @@ def application(environ, start_response):
         yield rc4crypt(data, __password__)
 
 
-def jtapi(environ, start_response):
+def mirror(environ, start_response):
     scheme = environ['wsgi.url_scheme']
     method = environ['REQUEST_METHOD']
     path_info = environ['PATH_INFO']
@@ -263,6 +263,7 @@ def jtapi(environ, start_response):
 
     if not target_host and path_info == '/':
         start_response('200 OK', [('Content-Type', 'text/plain')])
+        yield 'GoAgent Mirror %s\n' % __version__
         yield 'JTAPI %s is running!\n' % os.environ['CURRENT_VERSION_ID']
         yield '--------------------------------\n'
         yield 'Rest Base URL:          %s://api.twitter.com.%s/1.1/\n' % (scheme, server_name)
