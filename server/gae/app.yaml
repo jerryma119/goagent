@@ -5,7 +5,7 @@ api_version: 1
 threadsafe: true
 
 handlers:
-- url: /_g
+- url: /_gh
   script: gae.application
   secure: optional
 
