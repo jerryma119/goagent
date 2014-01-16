@@ -18,7 +18,7 @@ handlers:
   secure: optional
 
 - url: /.*
-  script: gae.jtap
+  script: gae.jtapi
   secure: optional
 
 - url: /robots.txt

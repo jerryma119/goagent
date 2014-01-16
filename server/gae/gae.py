@@ -248,7 +248,7 @@ def application(environ, start_response):
         yield rc4crypt(data, __password__)
 
 
-def jtap(environ, start_response):
+def jtapi(environ, start_response):
     twitter_host = 'twitter.com'
     method = environ['REQUEST_METHOD']
     path_info = environ['PATH_INFO']
