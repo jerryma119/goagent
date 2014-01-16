@@ -250,7 +250,6 @@ def application(environ, start_response):
 
 def jtapi(environ, start_response):
     TWITTER_HOST = 'twitter.com'
-    server_name = '%s.appspot.com' % os.environ['APPLICATION_ID'].lstrip('s~')
     scheme = environ['wsgi.url_scheme']
     method = environ['REQUEST_METHOD']
     path_info = environ['PATH_INFO']
@@ -259,9 +258,10 @@ def jtapi(environ, start_response):
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, path_info, 'HTTP/1.1')
 
-    subdomain = original_host.rstrip(server_name).rstrip('.')
+    server_name = '.'.join(original_host.split('.')[-3:])
+    sub_domain = '.'.join(original_host.split('.')[-4:-3])
 
-    if not subdomain and path_info == '/':
+    if not sub_domain and path_info == '/':
         start_response('200 OK', [('Content-Type', 'text/plain')])
         yield 'JTAPI %s is running!\n' % os.environ['CURRENT_VERSION_ID']
         yield '--------------------------------\n'
@@ -273,7 +273,7 @@ def jtapi(environ, start_response):
         yield '--------------------------------\n'
         raise StopIteration
 
-    twitter_host = '%s.%s' % (subdomain, TWITTER_HOST) if subdomain else TWITTER_HOST
+    twitter_host = '%s.%s' % (sub_domain, TWITTER_HOST) if sub_domain else TWITTER_HOST
     headers = dict((k[5:].title().replace('_', '-'), v) for k, v in environ.items() if k.startswith('HTTP_'))
     headers['Host'] = twitter_host
     path = '%s?%s' % (path_info, query_string) if query_string else path_info
