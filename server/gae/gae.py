@@ -11,6 +11,7 @@ import re
 import time
 import struct
 import zlib
+import gzip
 import base64
 import logging
 import urlparse
@@ -249,7 +250,6 @@ def application(environ, start_response):
 
 
 def jtapi(environ, start_response):
-    TWITTER_HOST = 'twitter.com'
     scheme = environ['wsgi.url_scheme']
     method = environ['REQUEST_METHOD']
     path_info = environ['PATH_INFO']
@@ -259,25 +259,24 @@ def jtapi(environ, start_response):
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, path_info, 'HTTP/1.1')
 
     server_name = '.'.join(original_host.split('.')[-3:])
-    sub_domain = '.'.join(original_host.split('.')[-4:-3])
+    target_host = '.'.join(original_host.split('.')[:-3])
 
-    if not sub_domain and path_info == '/':
+    if not target_host and path_info == '/':
         start_response('200 OK', [('Content-Type', 'text/plain')])
         yield 'JTAPI %s is running!\n' % os.environ['CURRENT_VERSION_ID']
         yield '--------------------------------\n'
-        yield 'Rest Base URL:          %s://api.%s/1.1/\n' % (scheme, server_name)
-        yield 'OAuth Base URL:         %s://api.%s/oauth/\n' % (scheme, server_name)
+        yield 'Rest Base URL:          %s://api.twitter.com.%s/1.1/\n' % (scheme, server_name)
+        yield 'OAuth Base URL:         %s://api.twitter.com.%s/oauth/\n' % (scheme, server_name)
         yield '--------------------------------\n'
         yield 'How to use with Twidere:\n'
         yield 'Enable "Ignore SSL Error", then set above URLs (It"s better to use HTTPS.)\n'
         yield '--------------------------------\n'
         raise StopIteration
 
-    twitter_host = '%s.%s' % (sub_domain, TWITTER_HOST) if sub_domain else TWITTER_HOST
     headers = dict((k[5:].title().replace('_', '-'), v) for k, v in environ.items() if k.startswith('HTTP_'))
-    headers['Host'] = twitter_host
+    headers['Host'] = target_host
     path = '%s?%s' % (path_info, query_string) if query_string else path_info
-    url = '%s://%s/%s' % (scheme, twitter_host, path)
+    url = '%s://%s/%s' % (scheme, target_host, path)
     payload = environ['wsgi.input'].read() if headers.get('Content-Length') else ''
 
     fetchmethod = getattr(urlfetch, method, None)
@@ -333,11 +332,21 @@ def jtapi(environ, start_response):
     response_status = response.status_code
     response_headers = dict((k.title(), v) for k, v in response.headers.items() if not k.startswith('x-google-'))
     response_content = response.content
+    content_encoding = response_headers.get('Content-Encoding', '')
+    content_type = response_headers.get('Content-Type', '')
     if 300 <= response_status < 400 and 'Location' in response_headers and original_host:
-        response_headers['Location'] = re.sub(r'(?<=://)%s(?=/)' % twitter_host, original_host, response_headers['Location'])
+        response_headers['Location'] = re.sub(r'(?<=://)%s(?=/)' % target_host, original_host, response_headers['Location'])
+    if content_encoding in ('gzip', 'deflate'):
+        if content_encoding == 'gzip':
+            response_content = gzip.GzipFile(fileobj=io.BytesIO(response_content)).read()
+        elif content_encoding == 'deflate':
+            response_content = zlib.decompress(response_content, -zlib.MAX_WBITS)
+        del response_headers['Content-Encoding']
+    if 'Content-Encoding' not in response_headers and content_type.startswith(('text/', 'application/json', 'application/javascript', 'application/x-javascript')):
+        response_content = response_content.replace(target_host, original_host)
+        if content_type.startswith('text/html'):
+            response_content = re.sub(r'(?i)//([a-z0-9\-\_\.]+)', '//\\1.%s' % server_name, response_content)
     start_response(str(response_status), response_headers.items())
-    if path_info == '/oauth/authorize':
-        response_content = response_content.replace(twitter_host, original_host)
     yield response_content
 
 
