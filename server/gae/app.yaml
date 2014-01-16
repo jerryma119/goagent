@@ -17,6 +17,10 @@ handlers:
   script: gae.LegacyHandler.application
   secure: optional
 
+- url: /.*
+  script: gae.relay
+  secure: optional
+
 - url: /robots.txt
   static_files: robots.txt
   upload: robots.txt

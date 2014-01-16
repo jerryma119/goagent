@@ -5,6 +5,7 @@ __version__ = '3.1.2'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
+__relay__ = 'twitter.com'
 
 import os
 import re
@@ -246,6 +247,77 @@ def application(environ, start_response):
         yield struct.pack('!hh', int(response.status_code), len(response_headers_data))
         yield rc4crypt(response_headers_data, __password__)
         yield rc4crypt(data, __password__)
+
+
+def relay(environ, start_response):
+    method = environ['REQUEST_METHOD']
+    headers = dict((k[5:].title().replace('_', '-'), v) for k, v in environ.items() if k.startswith('HTTP_'))
+    path = '%s?%s' % (environ['PATH_INFO'], environ['QUERY_STRING']) if environ['QUERY_STRING'] else environ['PATH_INFO']
+    url = '%s://%s/%s' % (environ['wsgi.url_scheme'], __relay__, path)
+    payload = environ['wsgi.input'].read() if headers.get('Content-Length') else ''
+
+    logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
+    #logging.info('request headers=%s', headers)
+
+    original_host = headers.pop('Host', '')
+    headers['Host'] = __relay__
+
+    fetchmethod = getattr(urlfetch, method, None)
+    if not fetchmethod:
+        start_response('405 Method Not Allowed', [('Content-Type', 'text/html')])
+        yield 'Method Not Allowed: %r' % method
+        raise StopIteration
+
+    deadline = URLFETCH_TIMEOUT
+    errors = []
+    for i in xrange(URLFETCH_MAX):
+        try:
+            response = urlfetch.fetch(url, payload, fetchmethod, headers, allow_truncated=True, follow_redirects=False, deadline=deadline, validate_certificate=False)
+            break
+        except apiproxy_errors.OverQuotaError as e:
+            time.sleep(5)
+        except urlfetch.DeadlineExceededError as e:
+            errors.append('%r, deadline=%s' % (e, deadline))
+            logging.error('DeadlineExceededError(deadline=%s, url=%r)', deadline, url)
+            time.sleep(1)
+            deadline = URLFETCH_TIMEOUT * 2
+        except urlfetch.DownloadError as e:
+            errors.append('%r, deadline=%s' % (e, deadline))
+            logging.error('DownloadError(deadline=%s, url=%r)', deadline, url)
+            time.sleep(1)
+            deadline = URLFETCH_TIMEOUT * 2
+        except urlfetch.ResponseTooLargeError as e:
+            errors.append('%r, deadline=%s' % (e, deadline))
+            response = e.response
+            logging.error('ResponseTooLargeError(deadline=%s, url=%r) response(%r)', deadline, url, response)
+            m = re.search(r'=\s*(\d+)-', headers.get('Range') or headers.get('range') or '')
+            if m is None:
+                headers['Range'] = 'bytes=0-%d' % URLFETCH_MAXSIZE
+            else:
+                headers.pop('Range', '')
+                headers.pop('range', '')
+                start = int(m.group(1))
+                headers['Range'] = 'bytes=%s-%d' % (start, start+URLFETCH_MAXSIZE)
+            deadline = URLFETCH_TIMEOUT * 2
+        except urlfetch.SSLCertificateError as e:
+            errors.append('%r, should validate=0 ?' % e)
+            logging.error('%r, deadline=%s', e, deadline)
+        except Exception as e:
+            errors.append(str(e))
+            if i == 0 and method == 'GET':
+                deadline = URLFETCH_TIMEOUT * 2
+    else:
+        start_response('500 Internal Server Error', [('Content-Type', 'text/plain')])
+        yield 'Internal Server Error'
+        raise StopIteration
+
+    #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
+    response_status = response.status_code
+    response_headers = dict((k.title(), v) for k, v in response.headers.items() if not k.startswith('x-google-'))
+    if 300 <= response_status < 400 and 'Location' in response_headers and original_host:
+        response_headers['Location'] = re.sub(r'(?<=://)twitter.com(?=/)', original_host, response_headers['Location'])
+    start_response(str(response_status), response_headers.items())
+    yield response.content
 
 
 class LegacyHandler(object):
