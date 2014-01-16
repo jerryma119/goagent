@@ -250,12 +250,13 @@ def application(environ, start_response):
 
 def jtapi(environ, start_response):
     twitter_host = 'twitter.com'
+    scheme = environ['wsgi.url_scheme']
     method = environ['REQUEST_METHOD']
     path_info = environ['PATH_INFO']
     query_string = environ['QUERY_STRING']
     headers = dict((k[5:].title().replace('_', '-'), v) for k, v in environ.items() if k.startswith('HTTP_'))
     path = '%s?%s' % (path_info, query_string) if query_string else path_info
-    url = '%s://%s/%s' % (environ['wsgi.url_scheme'], twitter_host, path)
+    url = '%s://%s/%s' % (scheme, twitter_host, path)
     payload = environ['wsgi.input'].read() if headers.get('Content-Length') else ''
 
     logging.info('%s "%s %s %s" - -', environ['REMOTE_ADDR'], method, url, 'HTTP/1.1')
@@ -263,6 +264,18 @@ def jtapi(environ, start_response):
 
     original_host = headers.pop('Host', '')
     headers['Host'] = twitter_host
+
+    if path_info == '/':
+        start_response('200 OK', [('Content-Type', 'text/plain')])
+        yield 'JTAPI %s is running!\n' % os.environ['CURRENT_VERSION_ID']
+        yield '--------------------------------\n'
+        yield 'Rest Base URL:          %s://api.%s/1.1/\n' % (scheme, original_host)
+        yield 'OAuth Base URL:         %s://api.%s/oauth/\n' % (scheme, original_host)
+        yield '--------------------------------\n'
+        yield 'How to use with Twidere:\n'
+        yield 'Enable "Ignore SSL Error", then set above URLs (It"s better to use HTTPS.)\n'
+        yield '--------------------------------\n'
+        raise StopIteration
 
     fetchmethod = getattr(urlfetch, method, None)
     if not fetchmethod:
