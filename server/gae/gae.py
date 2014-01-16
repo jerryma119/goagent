@@ -315,7 +315,7 @@ def relay(environ, start_response):
     response_status = response.status_code
     response_headers = dict((k.title(), v) for k, v in response.headers.items() if not k.startswith('x-google-'))
     if 300 <= response_status < 400 and 'Location' in response_headers and original_host:
-        response_headers['Location'] = re.sub(r'(?<=://)twitter.com(?=/)', original_host, response_headers['Location'])
+        response_headers['Location'] = re.sub(r'(?<=://)%s(?=/)' % __relay__, original_host, response_headers['Location'])
     start_response(str(response_status), response_headers.items())
     yield response.content
 
