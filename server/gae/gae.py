@@ -327,7 +327,7 @@ def mirror(environ, start_response):
                 deadline = URLFETCH_TIMEOUT * 2
     else:
         start_response('500 Internal Server Error', [('Content-Type', 'text/plain')])
-        yield 'Internal Server Error'
+        yield 'Internal Server Error: %s' % errors
         raise StopIteration
 
     #logging.debug('url=%r response.status_code=%r response.headers=%r response.content[:1024]=%r', url, response.status_code, dict(response.headers), response.content[:1024])
