@@ -339,6 +339,8 @@ def mirror(environ, start_response):
     content_type = response_headers.get('Content-Type', '')
     if 300 <= response_status < 400 and 'Location' in response_headers and original_host:
         response_headers['Location'] = re.sub(r'(?<=://)%s(?=/)' % target_host, original_host, response_headers['Location'])
+    if 'Set-Cookie' in response_headers:
+        response_headers['Set-Cookie'] = response_headers['Set-Cookie'].replace(target_host, original_host)
     if content_encoding in ('gzip', 'deflate'):
         if content_encoding == 'gzip':
             response_content = gzip.GzipFile(fileobj=io.BytesIO(response_content)).read()
