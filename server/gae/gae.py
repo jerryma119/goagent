@@ -5,6 +5,7 @@ __version__ = '3.1.5'
 __password__ = ''
 __hostsdeny__ = ()  # __hostsdeny__ = ('.youtube.com', '.youku.com')
 __content_type__ = 'image/gif'
+__mirror_userjs__ = ()  # __mirror_userjs__ = '//www.example.com/user.js'
 
 import os
 import re
@@ -347,6 +348,10 @@ def mirror(environ, start_response):
         response_content = response_content.replace(target_host, original_host)
         if content_type.startswith('text/html'):
             response_content = re.sub(r'(?<=[:\'"]//)([a-z0-9\-\_\.]+)', lambda m: '%s.%s' % (m.group(1), server_name) if not m.group(1).endswith(server_name) else m.group(1), response_content)
+            pos = response_content.find('</body>')
+            if pos > 0 and __mirror_userjs__:
+                script = '\n<script>var _gh_userjs = document.createElement("script");_gh_userjs.setAttribute("src", "%s"); document.getElementsByTagName("head")[0].appendChild(_gh_userjs);</script>\n' % __mirror_userjs__
+                response_content = response_content[:pos] + script + response_content[pos:]
     start_response(str(response_status), response_headers.items())
     yield response_content
 
