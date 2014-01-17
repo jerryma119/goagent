@@ -346,7 +346,7 @@ def mirror(environ, start_response):
     if 'Content-Encoding' not in response_headers and content_type.startswith(('text/', 'application/json', 'application/javascript', 'application/x-javascript')):
         response_content = response_content.replace(target_host, original_host)
         if content_type.startswith('text/html'):
-            response_content = re.sub(r'(?i)(?<=//)([a-z0-9\-\_\.]+)', lambda m: '%s.%s' % (m.group(1), server_name) if not m.group(1).endswith(server_name) else m.group(1), response_content)
+            response_content = re.sub(r'(?<=[:\'"]//)([a-z0-9\-\_\.]+)', lambda m: '%s.%s' % (m.group(1), server_name) if not m.group(1).endswith(server_name) else m.group(1), response_content)
     start_response(str(response_status), response_headers.items())
     yield response_content
 
