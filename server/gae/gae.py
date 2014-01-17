@@ -263,7 +263,7 @@ def mirror(environ, start_response):
 
     if not target_host and path_info == '/':
         start_response('200 OK', [('Content-Type', 'text/plain')])
-        yield 'GoAgent Mirror %s\n' % __version__
+        yield 'GoAgent Mirror %s\n\n' % __version__
         yield 'JTAPI %s is running!\n' % os.environ['CURRENT_VERSION_ID']
         yield '--------------------------------\n'
         yield 'Rest Base URL:          %s://api.twitter.com.%s/1.1/\n' % (scheme, server_name)
@@ -346,7 +346,7 @@ def mirror(environ, start_response):
     if 'Content-Encoding' not in response_headers and content_type.startswith(('text/', 'application/json', 'application/javascript', 'application/x-javascript')):
         response_content = response_content.replace(target_host, original_host)
         if content_type.startswith('text/html'):
-            response_content = re.sub(r'(?i)//([a-z0-9\-\_\.]+)', '//\\1.%s' % server_name, response_content)
+            response_content = re.sub(r'(?i)(?<=//)([a-z0-9\-\_\.]+)', lambda m: '%s.%s' % (m.group(1), server_name) if not m.group(1).endswith(server_name) else m.group(1), response_content)
     start_response(str(response_status), response_headers.items())
     yield response_content
 
