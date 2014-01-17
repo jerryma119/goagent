@@ -277,6 +277,7 @@ def mirror(environ, start_response):
 
     headers = dict((k[5:].title().replace('_', '-'), v) for k, v in environ.items() if k.startswith('HTTP_'))
     headers['Host'] = target_host
+    headers.pop('Accept-Encoding', '')
     path = '%s?%s' % (path_info, query_string) if query_string else path_info
     url = '%s://%s/%s' % (scheme, target_host, path)
     payload = environ['wsgi.input'].read() if headers.get('Content-Length') else ''
