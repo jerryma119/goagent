@@ -5,7 +5,7 @@ api_version: 1
 threadsafe: true
 
 handlers:
-- url: /_gh
+- url: /_gh/.+
   script: gae.application
   secure: optional
 
@@ -17,13 +17,13 @@ handlers:
   script: gae.LegacyHandler.application
   secure: optional
 
-- url: /.*
-  script: gae.mirror
-  secure: optional
-
 - url: /robots.txt
   static_files: robots.txt
   upload: robots.txt
+
+- url: /.*
+  script: gae.mirror
+  secure: optional
 
 libraries:
 - name: pycrypto
