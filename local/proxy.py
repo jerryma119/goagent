@@ -1483,7 +1483,6 @@ class Common(object):
         self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
         self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
         self.DNS_REMOTE = self.CONFIG.get('dns', 'remote')
-        self.DNS_EXPIRED = self.CONFIG.getint('dns', 'expired')
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
