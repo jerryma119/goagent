@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 # coding:utf-8
+# TODO: 1. improve LRU Cache performance
+#       2. sort reply rdata by ip latency
+#       3. add tcp query mode
+
 
 __version__ = '1.0'
 
@@ -101,10 +105,10 @@ class DNSServer(gevent.server.DatagramServer):
                             reply = dnslib.DNSRecord.parse(reply_data)
                             iplist = [str(x.rdata) for x in reply.rr]
                             if any(x in self.dns_backlist for x in iplist):
-                                logging.warning('query %r return bad rdata=%r', qname, [str(x.rdata) for x in reply.rr])
+                                logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
                                 reply_data = ''
                             else:
-                                logging.info('qname=%r reply iplist=%s', qname, iplist)
+                                logging.info('query qname=%r reply iplist=%s', qname, iplist)
                                 break
             except socket.error as e:
                 logging.warning('handle dns data=%r socket: %r', data, e)
