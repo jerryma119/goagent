@@ -21,7 +21,6 @@ gevent.monkey.patch_all(subprocess=True)
 import time
 import logging
 import collections
-import heapq
 import socket
 import select
 import dnslib
@@ -66,8 +65,10 @@ class ExpireDict(object):
         any(self.delete(k) for k, et in self.__expire_times.iteritems() if et < t)
         #If we have more than self.max_size items, delete the oldest
         over_size = len(self.__values) - self.max_size
-        if over_size > 0:
-            any(self.delete(x) for x in heapq.nsmallest(over_size, self.__expire_times, key=self.__expire_times.get))
+        if over_size == 1:
+            self.delete(next(self.__expire_times.iterkeys()))
+        elif over_size > 1:
+            any(self.delete(x) for i, x in enumerate(self.__expire_times) if i < over_size)
 
 
 class DNSServer(gevent.server.DatagramServer):
