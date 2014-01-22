@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
-# TODO: 1. improve LRU Cache performance
-#       2. sort reply rdata by ip latency
-#       3. add tcp query mode
+# TODO: 1. sort reply rdata by ip latency
+#       2. add tcp query mode
 
 
 __version__ = '1.0'
@@ -72,7 +71,7 @@ class ExpireDict(object):
 
 
 class DNSServer(gevent.server.DatagramServer):
-    """DNS TCP Proxy based on gevent/dnslib"""
+    """DNS Proxy based on gevent/dnslib"""
 
     def __init__(self, dns_servers, dns_backlist, *args, **kwargs):
         super(self.__class__, self).__init__(*args, **kwargs)
