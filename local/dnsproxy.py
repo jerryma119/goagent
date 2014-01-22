@@ -68,7 +68,7 @@ class ExpireDict(object):
         if over_size == 1:
             self.delete(next(self.__expire_times.iterkeys()))
         elif over_size > 1:
-            any(self.delete(x) for i, x in enumerate(self.__expire_times) if i < over_size)
+            any(self.delete(k) for k in [x for i, x in enumerate(self.__expire_times) if i < over_size])
 
 
 class DNSServer(gevent.server.DatagramServer):
