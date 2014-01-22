@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # coding:utf-8
-# TODO: 1. sort reply rdata by ip latency
-#       2. add tcp query mode
+# TODO: 1. improve LRU Cache performance
+#       2. sort reply rdata by ip latency
+#       3. add tcp query mode
 
 
 __version__ = '1.0'
@@ -71,7 +72,7 @@ class ExpireDict(object):
 
 
 class DNSServer(gevent.server.DatagramServer):
-    """DNS Proxy based on gevent/dnslib"""
+    """DNS TCP Proxy based on gevent/dnslib"""
 
     def __init__(self, dns_servers, dns_backlist, *args, **kwargs):
         super(self.__class__, self).__init__(*args, **kwargs)
@@ -122,6 +123,7 @@ class DNSServer(gevent.server.DatagramServer):
                                 if reply.rr:
                                     reply_ttl = max(x.ttl for x in reply.rr)
                                 logging.info('query qname=%r reply iplist=%s, ttl=%r', qname, iplist, reply_ttl)
+                                self.dns_cache.set((qname, qtype), reply_data, reply_ttl * 2)
                                 break
             except socket.error as e:
                 logging.warning('handle dns data=%r socket: %r', data, e)
@@ -130,7 +132,6 @@ class DNSServer(gevent.server.DatagramServer):
         for sock in socks:
             sock.close()
         if reply_data:
-            self.dns_cache.set((qname, qtype), reply_data, reply_ttl * 2)
             return self.sendto(data[:2] + reply_data[2:], address)
 
 
