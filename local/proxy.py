@@ -2522,7 +2522,6 @@ class PHPProxyHandler(GAEProxyHandler):
             if response.status != 200:
                 self.wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k, v) for k, v in response.getheaders())))
 
-
             cipher = response.status == 200 and response.getheader('Content-Type', '') == 'image/gif' and XORCipher(common.PHP_PASSWORD[0])
             while True:
                 data = response.read(8192)
@@ -2788,7 +2787,7 @@ def main():
         try:
             from dnsproxy import DNSServer
             host, port = common.DNS_LISTEN.split(':')
-            server = DNSServer(common.DNS_REMOTE.split('|'), DNSUtil.blacklist, common.DNS_EXPIRED, (host, int(port)))
+            server = DNSServer(common.DNS_REMOTE.split('|'), DNSUtil.blacklist, (host, int(port)))
             thread.start_new_thread(server.serve_forever, tuple())
         except ImportError:
             logging.critical('GoAgent DNSServer requires dnslib and gevent 1.0')
