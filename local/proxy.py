@@ -42,6 +42,7 @@ import sys
 import os
 import glob
 
+sys.dont_write_bytecode = True
 sys.path += glob.glob('%s/*.egg' % os.path.dirname(os.path.abspath(__file__)))
 
 try:
@@ -89,10 +90,6 @@ try:
     import OpenSSL
 except ImportError:
     OpenSSL = None
-try:
-    import dnslib
-except ImportError:
-    dnslib = None
 try:
     import pacparser
 except ImportError:
@@ -1486,8 +1483,7 @@ class Common(object):
         self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
         self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
         self.DNS_REMOTE = self.CONFIG.get('dns', 'remote')
-        self.DNS_TIMEOUT = self.CONFIG.getint('dns', 'timeout')
-        self.DNS_CACHESIZE = self.CONFIG.getint('dns', 'cachesize')
+        self.DNS_EXPIRED = self.CONFIG.getint('dns', 'expired')
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
@@ -2526,14 +2522,11 @@ class PHPProxyHandler(GAEProxyHandler):
             if response.status != 200:
                 self.wfile.write('HTTP/1.1 %s\r\n%s\r\n' % (response.status, ''.join('%s: %s\r\n' % (k, v) for k, v in response.getheaders())))
 
-            cipher = response.status == 200 and response.getheader('Content-Type', '') == 'image/gif' and XORCipher(common.PHP_PASSWORD[0])
             while True:
                 data = response.read(8192)
                 if not data:
                     response.close()
                     break
-                if cipher:
-                    data = cipher.encrypt(data)
                 self.wfile.write(data)
                 del data
         except NetWorkIOError as e:
@@ -2672,99 +2665,6 @@ class PACProxyHandler(GAEProxyHandler):
             GAEProxyHandler.do_METHOD_AGENT(self)
 
 
-class DNSServer(gevent.server.DatagramServer if gevent and hasattr(gevent.server, 'DatagramServer') else object):
-    """DNS TCP Proxy based on gevent/dnslib"""
-
-    blacklist = set(['1.1.1.1',
-                     '255.255.255.255',
-                     # for google+
-                     '74.125.127.102',
-                     '74.125.155.102',
-                     '74.125.39.102',
-                     '74.125.39.113',
-                     '209.85.229.138',
-                     # other ip list
-                     '4.36.66.178',
-                     '8.7.198.45',
-                     '37.61.54.158',
-                     '46.82.174.68',
-                     '59.24.3.173',
-                     '64.33.88.161',
-                     '64.33.99.47',
-                     '64.66.163.251',
-                     '65.104.202.252',
-                     '65.160.219.113',
-                     '66.45.252.237',
-                     '72.14.205.104',
-                     '72.14.205.99',
-                     '78.16.49.15',
-                     '93.46.8.89',
-                     '128.121.126.139',
-                     '159.106.121.75',
-                     '169.132.13.103',
-                     '192.67.198.6',
-                     '202.106.1.2',
-                     '202.181.7.85',
-                     '203.161.230.171',
-                     '203.98.7.65',
-                     '207.12.88.98',
-                     '208.56.31.43',
-                     '209.145.54.50',
-                     '209.220.30.174',
-                     '209.36.73.33',
-                     '209.85.229.138',
-                     '211.94.66.147',
-                     '213.169.251.35',
-                     '216.221.188.182',
-                     '216.234.179.13',
-                     '243.185.187.3',
-                     '243.185.187.39'])
-    dnsservers = ['8.8.8.8', '114.114.114.114']
-    timeout = 2
-    max_cache_size = 2000
-
-    def __init__(self, *args, **kwargs):
-        super(DNSServer, self).__init__(*args, **kwargs)
-        self.dns_cache = LRUCache(4096)
-
-    def _dns_resolver(self, qname, qtype, qdata, dnsserver, result_queue):
-        sock = gevent.socket.socket(socket.AF_INET6 if qtype == dnslib.QTYPE.AAAA else socket.AF_INET, socket.SOCK_DGRAM)
-        sock.sendto(qdata, (dnsserver, 53))
-        sock.sendto(qdata, (dnsserver, 53))
-        for _ in xrange(2):
-            data, _ = sock.recvfrom(512)
-            reply = dnslib.DNSRecord.parse(data)
-            if any(str(x.rdata) in self.blacklist for x in reply.rr):
-                logging.warning('query %r return bad rdata=%r', qname, [str(x.rdata) for x in reply.rr])
-            else:
-                result_queue.put(data)
-                sock.close()
-                break
-
-    def handle(self, data, address):
-        logging.debug('receive from %r data=%r', address, data)
-        request = dnslib.DNSRecord.parse(data)
-        qname = str(request.q.qname)
-        qtype = request.q.qtype
-        try:
-            reply_data = self.dns_cache[qname, qtype]
-        except KeyError:
-            reply_data = ''
-        if not reply_data:
-            result_queue = gevent.queue.Queue()
-            for dnsserver in self.dnsservers:
-                gevent.spawn(self._dns_resolver, qname, qtype, data, dnsserver, result_queue)
-            while True:
-                try:
-                    data = result_queue.get(timeout=self.timeout)
-                    self.dns_cache[qname, qtype] = reply_data = data
-                    break
-                except gevent.queue.Empty:
-                    logging.warning('query %r timed out', qname)
-                    return
-        return self.sendto(data[:2] + reply_data[2:], address)
-
-
 def get_process_list():
     import os
     import glob
@@ -2853,10 +2753,6 @@ def pre_start():
         pac_ip = ProxyUtil.get_listen_ip() if common.PAC_IP in ('', '::', '0.0.0.0') else common.PAC_IP
         url = 'http://%s:%d/%s' % (pac_ip, common.PAC_PORT, common.PAC_FILE)
         spawn_later(600, urllib2.build_opener(urllib2.ProxyHandler({})).open, url)
-    if common.DNS_ENABLE:
-        if dnslib is None or gevent.version_info[0] < 1:
-            logging.critical('GoAgent DNSServer requires dnslib and gevent 1.0')
-            sys.exit(-1)
     if not OpenSSL:
         logging.warning('python-openssl not found, please install it!')
     if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
@@ -2885,12 +2781,14 @@ def main():
         thread.start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
-        host, port = common.DNS_LISTEN.split(':')
-        server = DNSServer((host, int(port)))
-        server.dnsservers = common.DNS_REMOTE.split('|')
-        server.timeout = common.DNS_TIMEOUT
-        server.max_cache_size = common.DNS_CACHESIZE
-        thread.start_new_thread(server.serve_forever, tuple())
+        try:
+            from dnsproxy import DNSServer
+            host, port = common.DNS_LISTEN.split(':')
+            server = DNSServer(common.DNS_REMOTE.split('|'), DNSUtil.blacklist, common.DNS_EXPIRED, (host, int(port)))
+            thread.start_new_thread(server.serve_forever, tuple())
+        except ImportError:
+            logging.critical('GoAgent DNSServer requires dnslib and gevent 1.0')
+            sys.exit(-1)
 
     server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
     server.serve_forever()
