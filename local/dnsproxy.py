@@ -20,52 +20,132 @@ gevent.monkey.patch_all(subprocess=True)
 
 import time
 import logging
+import collections
 import socket
 import select
 import dnslib
 
+# https://github.com/stucchio/Python-LRU-cache
+class LRUCacheDict(object):
+    """ A dictionary-like object, supporting LRU caching semantics.
 
-class LRUCache(object):
-    """http://pypi.python.org/pypi/lru/"""
+    >>> d = LRUCacheDict(max_size=3, expiration=3)
+    >>> d['foo'] = 'bar'
+    >>> d['foo']
+    'bar'
+    >>> import time
+    >>> time.sleep(4) # 4 seconds > 3 second cache expiry of d
+    >>> d['foo']
+    Traceback (most recent call last):
+        ...
+    KeyError: 'foo'
+    >>> d['a'] = 'A'
+    >>> d['b'] = 'B'
+    >>> d['c'] = 'C'
+    >>> d['d'] = 'D'
+    >>> d['a'] # Should return value error, since we exceeded the max cache size
+    Traceback (most recent call last):
+        ...
+    KeyError: 'a'
+    """
+    def __init__(self, max_size=1024, expiration=15*60):
+        self.max_size = max_size
+        self.expiration = expiration
 
-    def __init__(self, max_items=100):
-        self.cache = {}
-        self.key_order = []
-        self.max_items = max_items
+        self.__values = {}
+        self.__expire_times = collections.OrderedDict()
+        self.__access_times = collections.OrderedDict()
+
+    def size(self):
+        return len(self.__values)
+
+    def clear(self):
+        """
+        Clears the dict.
+
+        >>> d = LRUCacheDict(max_size=3, expiration=1)
+        >>> d['foo'] = 'bar'
+        >>> d['foo']
+        'bar'
+        >>> d.clear()
+        >>> d['foo']
+        Traceback (most recent call last):
+        ...
+        KeyError: 'foo'
+        """
+        self.__values.clear()
+        self.__expire_times.clear()
+        self.__access_times.clear()
+
+    def has_key(self, key):
+        """
+        This method should almost NEVER be used. The reason is that between the time
+        has_key is called, and the key is accessed, the key might vanish.
+
+        You should ALWAYS use a try: ... except KeyError: ... block.
+
+        >>> d = LRUCacheDict(max_size=3, expiration=1)
+        >>> d['foo'] = 'bar'
+        >>> d['foo']
+        'bar'
+        >>> import time
+        >>> if d.has_key('foo'):
+        ...    time.sleep(2) #Oops, the key 'foo' is gone!
+        ...    d['foo']
+        Traceback (most recent call last):
+        ...
+        KeyError: 'foo'
+        """
+        return self.__values.has_key(key)
 
     def __setitem__(self, key, value):
-        self.cache[key] = value
-        self._mark(key)
+        t = int(time.time())
+        self.__delete__(key)
+        self.__values[key] = value
+        self.__access_times[key] = t
+        self.__expire_times[key] = t + self.expiration
+        self.cleanup()
 
     def __getitem__(self, key):
-        value = self.cache[key]
-        self._mark(key)
-        return value
+        t = int(time.time())
+        del self.__access_times[key]
+        self.__access_times[key] = t
+        self.cleanup()
+        return self.__values[key]
 
-    def __delitem__(self, key):
-        del self.cache[key]
-        self.key_order.remove(key)
+    def __delete__(self, key):
+        if self.__values.has_key(key):
+            del self.__values[key]
+            del self.__expire_times[key]
+            del self.__access_times[key]
 
-    def _mark(self, key):
-        if key in self.key_order:
-            self.key_order.remove(key)
-        self.key_order.insert(0, key)
-        if len(self.key_order) > self.max_items:
-            remove = self.key_order[self.max_items]
-            del self.cache[remove]
-            self.key_order.pop(self.max_items)
+    def cleanup(self):
+        if self.expiration is None:
+            return None
+        t = int(time.time())
+        #Delete expired
+        for k in self.__expire_times.iterkeys():
+            if self.__expire_times[k] < t:
+                self.__delete__(k)
+            else:
+                break
+        #If we have more than self.max_size items, delete the oldest
+        while (len(self.__values) > self.max_size):
+            for k in self.__access_times.iterkeys():
+                self.__delete__(k)
+                break
 
 
 class DNSServer(gevent.server.DatagramServer):
     """DNS TCP Proxy based on gevent/dnslib"""
 
-    def __init__(self, dns_servers, dns_backlist, dns_timeout, *args, **kwargs):
+    def __init__(self, dns_servers, dns_backlist, dns_expiration, *args, **kwargs):
         super(self.__class__, self).__init__(*args, **kwargs)
         self.dns_v4_servers = [x for x in dns_servers if ':' not in x]
         self.dns_v6_servers = [x for x in dns_servers if ':' in x]
         self.dns_backlist = frozenset(dns_backlist)
-        self.dns_timeout = int(dns_timeout)
-        self.dns_cache = LRUCache(2048)
+        self.dns_expiration = int(dns_expiration)
+        self.dns_cache = LRUCacheDict(max_size=4096, expiration=self.dns_expiration)
 
     def handle(self, data, address):
         logging.debug('receive from %r data=%r', address, data)
@@ -73,10 +153,7 @@ class DNSServer(gevent.server.DatagramServer):
         qname = str(request.q.qname)
         qtype = request.q.qtype
         try:
-            reply_data, mtime = self.dns_cache[qname, qtype]
-            if time.time() - mtime > self.dns_timeout:
-                del self.dns_cache[qname, qtype]
-                reply_data = ''
+            reply_data = self.dns_cache[qname, qtype]
         except KeyError:
             reply_data = ''
         sock_v4 = sock_v6 = None
@@ -117,7 +194,7 @@ class DNSServer(gevent.server.DatagramServer):
         for sock in socks:
             sock.close()
         if reply_data:
-            self.dns_cache[qname, qtype] = (reply_data, time.time())
+            self.dns_cache[qname, qtype] = reply_data
             return self.sendto(data[:2] + reply_data[2:], address)
 
 
