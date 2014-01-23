@@ -21,6 +21,7 @@ import time
 import logging
 import collections
 import itertools
+import heapq
 import socket
 import select
 import dnslib
@@ -30,7 +31,8 @@ class ExpireDict(object):
     def __init__(self, max_size=1024):
         self.max_size = max_size
         self.__values = {}
-        self.__expire_times = collections.OrderedDict()
+        self.__expire_times = {}
+        self.__expire_heap = []
 
     def size(self):
         return len(self.__values)
@@ -38,20 +40,21 @@ class ExpireDict(object):
     def clear(self):
         self.__values.clear()
         self.__expire_times.clear()
+        del self.__expire_heap[:]
 
     def exists(self, key):
         return key in self.__values
 
-    def set(self, key, value, expire=0):
+    def set(self, key, value, expire):
+        et = int(time.time() + expire)
+        self.__expire_times[key] = et
+        heapq.heappush(self.__expire_heap, (et, key))
         self.__values[key] = value
-        if expire:
-            self.__expire_times[key] = int(time.time() + expire)
         self.cleanup()
 
     def get(self, key):
-        et = self.__expire_times.get(key, None)
-        if et and et < time.time():
-            del self.__values[key], self.__expire_times[key]
+        et = self.__expire_times[key]
+        if et < time.time():
             self.cleanup()
             raise KeyError(key)
         return self.__values[key]
@@ -61,14 +64,14 @@ class ExpireDict(object):
 
     def cleanup(self):
         t = int(time.time())
+        eh = self.__expire_heap
+        ets = self.__expire_times
+        v = self.__values
+        heappop = heapq.heappop
         #Delete expired, ticky
-        any(self.delete(k) for k in itertools.takewhile(lambda x: self.__expire_times[x]<t, self.__expire_times))
-        #If we have more than self.max_size items, delete the oldest, tricky
-        over_size = len(self.__values) - self.max_size
-        if over_size == 1:
-            self.delete(next(self.__expire_times.iterkeys()))
-        elif over_size > 1:
-            any(self.delete(k) for k in [x for i, x in enumerate(self.__expire_times) if i < over_size])
+        while eh[0] <= t or len(ets) > self.max_size:
+            et, key = heappop(eh)
+            del v[key], ets[key]
 
 
 class DNSServer(gevent.server.DatagramServer):
