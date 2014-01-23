@@ -45,7 +45,10 @@ class ExpireCache(object):
 
     def set(self, key, value, expire):
         try:
-            self.delete(key)
+            et = self.__expire_times[key]
+            pos = self.__expire_heap.index((et, key))
+            del self.__expire_heap[pos]
+            heapq._siftup(self.__expire_heap, pos)
         except KeyError:
             pass
         et = int(time.time() + expire)
@@ -63,8 +66,9 @@ class ExpireCache(object):
 
     def delete(self, key):
         et = self.__expire_times.pop(key)
-        self.__expire_heap.remove((et, key))
-        heapq.heapify(self.__expire_heap)
+        pos = self.__expire_heap.index((et, key))
+        del self.__expire_heap[pos]
+        heapq._siftup(self.__expire_heap, pos)
         del self.__values[key]
 
     def cleanup(self):
