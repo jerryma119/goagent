@@ -19,17 +19,15 @@ gevent.monkey.patch_all(subprocess=True)
 
 import time
 import logging
-import collections
-import itertools
 import heapq
 import socket
 import select
 import dnslib
 
-class ExpireDict(object):
+class ExpireCache(object):
     """ A dictionary-like object, supporting expire semantics."""
     def __init__(self, max_size=1024):
-        self.max_size = max_size
+        self.__maxsize = max_size
         self.__values = {}
         self.__expire_times = {}
         self.__expire_heap = []
@@ -67,10 +65,11 @@ class ExpireDict(object):
         eh = self.__expire_heap
         ets = self.__expire_times
         v = self.__values
+        size = self.__maxsize
         heappop = heapq.heappop
         #Delete expired, ticky
-        while eh[0] <= t or len(ets) > self.max_size:
-            et, key = heappop(eh)
+        while eh[0][0] <= t or len(ets) > size:
+            _, key = heappop(eh)
             del v[key], ets[key]
 
 
@@ -82,7 +81,7 @@ class DNSServer(gevent.server.DatagramServer):
         self.dns_v4_servers = [x for x in dns_servers if ':' not in x]
         self.dns_v6_servers = [x for x in dns_servers if ':' in x]
         self.dns_backlist = set(dns_backlist)
-        self.dns_cache = ExpireDict(max_size=65536)
+        self.dns_cache = ExpireCache(max_size=65536)
 
     def handle(self, data, address):
         logging.debug('receive from %r data=%r', address, data)
