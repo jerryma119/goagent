@@ -68,7 +68,7 @@ class ExpireCache(object):
         size = self.__maxsize
         heappop = heapq.heappop
         #Delete expired, ticky
-        while eh[0][0] <= t or len(ets) > size:
+        while eh and eh[0][0] <= t or len(ets) > size:
             _, key = heappop(eh)
             del v[key], ets[key]
 
