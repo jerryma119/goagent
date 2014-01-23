@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # coding:utf-8
-# TODO: 1. improve LRU Cache performance
-#       2. sort reply rdata by ip latency
-#       3. add tcp query mode
+# TODO: 1. sort reply rdata by ip latency
+#       3. reduce socket fd usage
 
 
 __version__ = '1.0'
@@ -21,6 +20,7 @@ gevent.monkey.patch_all(subprocess=True)
 import time
 import logging
 import collections
+import itertools
 import socket
 import select
 import dnslib
@@ -61,9 +61,9 @@ class ExpireDict(object):
 
     def cleanup(self):
         t = int(time.time())
-        #Delete expired
-        any(self.delete(k) for k, et in self.__expire_times.iteritems() if et < t)
-        #If we have more than self.max_size items, delete the oldest
+        #Delete expired, ticky
+        any(self.delete(k) for k in itertools.takewhile(lambda x: self.__expire_times[x]<t, self.__expire_times))
+        #If we have more than self.max_size items, delete the oldest, tricky
         over_size = len(self.__values) - self.max_size
         if over_size == 1:
             self.delete(next(self.__expire_times.iterkeys()))
@@ -72,14 +72,14 @@ class ExpireDict(object):
 
 
 class DNSServer(gevent.server.DatagramServer):
-    """DNS TCP Proxy based on gevent/dnslib"""
+    """DNS Proxy based on gevent/dnslib"""
 
     def __init__(self, dns_servers, dns_backlist, *args, **kwargs):
         super(self.__class__, self).__init__(*args, **kwargs)
         self.dns_v4_servers = [x for x in dns_servers if ':' not in x]
         self.dns_v6_servers = [x for x in dns_servers if ':' in x]
         self.dns_backlist = set(dns_backlist)
-        self.dns_cache = ExpireDict(max_size=4096)
+        self.dns_cache = ExpireDict(max_size=65536)
 
     def handle(self, data, address):
         logging.debug('receive from %r data=%r', address, data)
@@ -98,7 +98,6 @@ class DNSServer(gevent.server.DatagramServer):
         if self.dns_v6_servers:
             sock_v6 = gevent.socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
             socks.append(sock_v6)
-        reply_ttl = 600
         for _ in xrange(2):
             if reply_data:
                 break
@@ -120,10 +119,9 @@ class DNSServer(gevent.server.DatagramServer):
                                 logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
                                 reply_data = ''
                             else:
-                                if reply.rr:
-                                    reply_ttl = max(x.ttl for x in reply.rr)
-                                logging.info('query qname=%r reply iplist=%s, ttl=%r', qname, iplist, reply_ttl)
-                                self.dns_cache.set((qname, qtype), reply_data, reply_ttl * 2)
+                                ttl = max(x.ttl for x in reply.rr) if reply.rr else 600
+                                logging.info('query qname=%r reply iplist=%s, ttl=%r', qname, iplist, ttl)
+                                self.dns_cache.set((qname, qtype), reply_data, ttl*2)
                                 break
             except socket.error as e:
                 logging.warning('handle dns data=%r socket: %r', data, e)
