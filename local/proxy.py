@@ -1480,9 +1480,12 @@ class Common(object):
         self.FETCHMAX_LOCAL = self.CONFIG.getint('fetchmax', 'local') if self.CONFIG.get('fetchmax', 'local') else 3
         self.FETCHMAX_SERVER = self.CONFIG.get('fetchmax', 'server')
 
-        self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
-        self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
-        self.DNS_REMOTE = self.CONFIG.get('dns', 'remote')
+        if self.CONFIG.has_section('dns'):
+            self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
+            self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
+            self.DNS_REMOTE = self.CONFIG.get('dns', 'remote')
+        else:
+            self.DNS_ENABLE = 0
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
         self.USERAGENT_STRING = self.CONFIG.get('useragent', 'string')
@@ -2786,7 +2789,9 @@ def main():
         try:
             from dnsproxy import DNSServer
             host, port = common.DNS_LISTEN.split(':')
-            server = DNSServer(common.DNS_REMOTE.split('|'), DNSUtil.blacklist, (host, int(port)))
+            dns_servers = common.DNS_REMOTE.split('|')
+            dns_backlist = DNSUtil.blacklist
+            server = DNSServer((host, int(port)), dns_servers=dns_servers, dns_backlist=dns_backlist)
             thread.start_new_thread(server.serve_forever, tuple())
         except ImportError:
             logging.critical('GoAgent DNSServer requires dnslib and gevent 1.0')
