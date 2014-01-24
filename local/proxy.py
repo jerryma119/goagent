@@ -774,7 +774,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                             if any(x in blacklist for x in iplist):
                                 logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
                             else:
-                                logging.info('query qname=%r reply iplist=%s', qname, iplist)
+                                logging.debug('query qname=%r reply iplist=%s', qname, iplist)
                                 return iplist
             except socket.error as e:
                 logging.warning('handle dns query=%s socket: %r', query, e)
@@ -836,7 +836,7 @@ class HTTPUtil(object):
                             'DES-CBC3-SHA',
                             'TLS_EMPTY_RENEGOTIATION_INFO_SCSV'])
 
-    def __init__(self, max_window=4, max_timeout=8, max_retry=4, proxy='', dns_blacklist=()):
+    def __init__(self, max_window=4, max_timeout=8, max_retry=4, proxy='', dns_servers=[], dns_blacklist=set()):
         # http://docs.python.org/dev/library/ssl.html
         # http://blog.ivanristic.com/2009/07/examples-of-the-information-collected-from-ssl-handshakes.html
         # http://src.chromium.org/svn/trunk/src/net/third_party/nss/ssl/sslenum.c
@@ -857,6 +857,7 @@ class HTTPUtil(object):
             self.dns_resolve = self.__dns_resolve_withproxy
             self.create_connection = self.__create_connection_withproxy
             self.create_ssl_connection = self.__create_ssl_connection_withproxy
+        self.dns_servers = dns_servers
         self.dns_blacklist = dns_blacklist
 
     def set_openssl_option(self, validate=True, obfuscate=True):
@@ -880,7 +881,7 @@ class HTTPUtil(object):
             else:
                 iplist = dns_remote_resolve(host, dnsservers, self.dns_blacklist, timeout=2)
             if not iplist:
-                iplist = dns_remote_resolve(host, ['8.8.8.8', '8.8.4.4'], self.dns_blacklist, timeout=2)
+                iplist = dns_remote_resolve(host, self.dns_servers, self.dns_blacklist, timeout=2)
             if ipv4_only:
                 iplist = [ip for ip in iplist if re.match(r'\d+\.\d+\.\d+\.\d+', ip)]
             self.dns[host] = iplist = list(set(iplist))
@@ -1416,7 +1417,7 @@ class Common(object):
     def resolve_iplist(self):
         def do_remote_resolve(host, dnsservers, queue):
             try:
-                queue.put((host, dns_remote_resolve(host, dnsservers, self.DNS_BLACKLIST, timeout=2)))
+                queue.put((host, dnsservers, dns_remote_resolve(host, dnsservers, self.DNS_BLACKLIST, timeout=2)))
             except (socket.error, OSError) as e:
                 logging.error('resolve remote host=%r failed: %s', host, e)
         # https://support.google.com/websearch/answer/186669?hl=zh-Hans
@@ -1433,9 +1434,9 @@ class Common(object):
                     threading._start_new_thread(do_remote_resolve, (host, [dnsserver], result_queue))
             for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote)):
                 try:
-                    host, iplist = result_queue.get(timeout=2)
+                    host, dnsservers, iplist = result_queue.get(timeout=2)
                     resolved_iplist += iplist or []
-                    logging.debug('resolve remote host=%r from return iplist=%s', host, iplist)
+                    logging.debug('resolve remote host=%r from dnsservers=%s return iplist=%s', host, dnsservers, iplist)
                 except Queue.Empty:
                     logging.warn('resolve remote timeout, continue')
                     break
@@ -1480,7 +1481,7 @@ class Common(object):
         return info
 
 common = Common()
-http_util = HTTPUtil(max_window=common.GAE_WINDOW, proxy=common.proxy, dns_blacklist=common.DNS_BLACKLIST)
+http_util = HTTPUtil(max_window=common.GAE_WINDOW, proxy=common.proxy, dns_servers=common.DNS_SERVERS, dns_blacklist=common.DNS_BLACKLIST)
 
 
 def message_html(title, banner, detail=''):
