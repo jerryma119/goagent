@@ -2682,12 +2682,13 @@ def main():
 
     if common.DNS_ENABLE:
         try:
+            sys.path += ['.']
             from dnsproxy import DNSServer
             host, port = common.DNS_LISTEN.split(':')
             server = DNSServer((host, int(port)), dns_servers=common.DNS_SERVERS, dns_blacklist=common.DNS_BLACKLIST)
             thread.start_new_thread(server.serve_forever, tuple())
         except ImportError:
-            logging.critical('GoAgent DNSServer requires dnslib and gevent 1.0')
+            logging.exception('GoAgent DNSServer requires dnslib and gevent 1.0')
             sys.exit(-1)
 
     server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
