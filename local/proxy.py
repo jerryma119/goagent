@@ -757,6 +757,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
     if dns_v6_servers:
         sock_v6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         socks.append(sock_v6)
+    timeout_at = time.time() + timeout
     try:
         for _ in xrange(2):
             try:
@@ -764,22 +765,19 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                     sock_v4.sendto(query_data, (dnsserver, 53))
                 for dnsserver in dns_v6_servers:
                     sock_v6.sendto(query_data, (dnsserver, 53))
-                with gevent.timeout.Timeout(timeout):
-                    while True:
-                        ins, _, _ = select.select(socks, [], [], 0.1)
-                        for sock in ins:
-                            reply_data, _ = sock.recvfrom(512)
-                            reply = dnslib.DNSRecord.parse(reply_data)
-                            iplist = [str(x.rdata) for x in reply.rr if x.rtype == 1]
-                            if any(x in blacklist for x in iplist):
-                                logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
-                            else:
-                                logging.debug('query qname=%r reply iplist=%s', qname, iplist)
-                                return iplist
+                while time.time() < timeout_at:
+                    ins, _, _ = select.select(socks, [], [], 0.1)
+                    for sock in ins:
+                        reply_data, _ = sock.recvfrom(512)
+                        reply = dnslib.DNSRecord.parse(reply_data)
+                        iplist = [str(x.rdata) for x in reply.rr if x.rtype == 1]
+                        if any(x in blacklist for x in iplist):
+                            logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
+                        else:
+                            logging.debug('query qname=%r reply iplist=%s', qname, iplist)
+                            return iplist
             except socket.error as e:
                 logging.warning('handle dns query=%s socket: %r', query, e)
-            except gevent.timeout.Timeout as e:
-                logging.warning('handle dns query=%s timeout: %r', query, e)
     finally:
         for sock in socks:
             sock.close()
