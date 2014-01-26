@@ -1415,7 +1415,9 @@ class Common(object):
     def resolve_iplist(self):
         def do_resolve(host, dnsservers, queue):
             try:
-                queue.put((host, dnsservers, dns_remote_resolve(host, dnsservers, self.DNS_BLACKLIST, timeout=2)))
+                iplist = dns_remote_resolve(host, dnsservers, self.DNS_BLACKLIST, timeout=2)
+                if iplist:
+                    queue.put((host, dnsservers, iplist))
             except (socket.error, OSError) as e:
                 logging.error('resolve remote host=%r failed: %s', host, e)
         # https://support.google.com/websearch/answer/186669?hl=zh-Hans
@@ -1433,10 +1435,11 @@ class Common(object):
             for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote)):
                 try:
                     host, dnsservers, iplist = result_queue.get(timeout=2)
-                    resolved_iplist += iplist or socket.gethostbyname_ex(host)[-1]
+                    resolved_iplist += iplist or []
                     logging.debug('resolve remote host=%r from dnsservers=%s return iplist=%s', host, dnsservers, iplist)
                 except Queue.Empty:
-                    logging.warn('resolve remote timeout, continue')
+                    logging.warn('resolve remote timeout, try resolve local')
+                    resolved_iplist += socket.gethostbyname_ex(host)[-1]
                     break
             if name.startswith('google_') and name not in ('google_cn', 'google_hk'):
                 iplist_prefix = re.split(r'[\.:]', resolved_iplist[0])[0]
