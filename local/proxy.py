@@ -1418,7 +1418,6 @@ class Common(object):
                 queue.put((host, dnsservers, dns_remote_resolve(host, dnsservers, self.DNS_BLACKLIST, timeout=2)))
             except (socket.error, OSError) as e:
                 logging.error('resolve remote host=%r failed: %s', host, e)
-                queue.put((host, None, socket.gethostbyname_ex(host)[-1]))
         # https://support.google.com/websearch/answer/186669?hl=zh-Hans
         google_blacklist = ['216.239.32.20', '74.125.127.102', '74.125.155.102', '74.125.39.102', '74.125.39.113', '209.85.229.138']
         for name, need_resolve_hosts in list(self.IPLIST_MAP.items()):
@@ -1434,7 +1433,7 @@ class Common(object):
             for _ in xrange(len(self.DNS_SERVERS) * len(need_resolve_remote)):
                 try:
                     host, dnsservers, iplist = result_queue.get(timeout=2)
-                    resolved_iplist += iplist or []
+                    resolved_iplist += iplist or socket.gethostbyname_ex(host)[-1]
                     logging.debug('resolve remote host=%r from dnsservers=%s return iplist=%s', host, dnsservers, iplist)
                 except Queue.Empty:
                     logging.warn('resolve remote timeout, continue')
