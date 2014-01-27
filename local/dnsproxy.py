@@ -27,6 +27,10 @@ import struct
 import ctypes
 import ctypes.wintypes
 import dnslib
+try:
+    import pygeoip
+except ImportError:
+    pygeoip = None
 
 
 def win32dns_query_dnsserver_list():
@@ -115,10 +119,13 @@ class DNSServer(gevent.server.DatagramServer):
         self.dns_v4_servers = [x for x in self.dns_servers if ':' not in x]
         self.dns_v6_servers = [x for x in self.dns_servers if ':' in x]
         self.dns_intranet_servers = set([x for x in self.dns_servers if x.startswith(('10.', '172.', '192.168.'))])
-        self.dns_trust_servers = set(['8.8.8.8', '8.8.4.4'])
         self.dns_blacklist = set(dns_blacklist)
-        self.dns_cache = ExpireCache(max_size=65536)
         self.dns_timeout = int(dns_timeout)
+        self.dns_cache = ExpireCache(max_size=65536)
+        self.dns_trust_servers = set(['8.8.8.8', '8.8.4.4'])
+        if pygeoip and os.path.isfile('GeoIP.dat'):
+            geoip = pygeoip.GeoIP('GeoIP.dat')
+            self.dns_trust_servers = set(list(self.dns_trust_servers) + [x for x in self.dns_servers if geoip.country_name_by_addr(x) not in ('China',)])
 
     def handle(self, data, address):
         logging.debug('receive from %r data=%r', address, data)
