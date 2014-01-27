@@ -123,9 +123,15 @@ class DNSServer(gevent.server.DatagramServer):
         self.dns_timeout = int(dns_timeout)
         self.dns_cache = ExpireCache(max_size=65536)
         self.dns_trust_servers = set(['8.8.8.8', '8.8.4.4'])
-        if pygeoip and os.path.isfile('GeoIP.dat'):
-            geoip = pygeoip.GeoIP('GeoIP.dat')
-            self.dns_trust_servers = set(list(self.dns_trust_servers) + [x for x in self.dns_servers if geoip.country_name_by_addr(x) not in ('China',)])
+        if pygeoip:
+            for dirname in ('.', '/usr/share/GeoIP/', '/usr/local/share/GeoIP/'):
+                filename = os.path.join(dirname, 'GeoIP.dat')
+                if os.path.isfile(filename):
+                    geoip = pygeoip.GeoIP(filename)
+                    for dnsserver in self.dns_servers:
+                        if geoip.country_name_by_addr(dnsserver) not in ('China',):
+                            self.dns_trust_servers.add(dnsserver)
+                    break
 
     def handle(self, data, address):
         logging.debug('receive from %r data=%r', address, data)
