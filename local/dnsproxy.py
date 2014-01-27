@@ -131,7 +131,9 @@ class DNSServer(gevent.server.DatagramServer):
             reply_data = ''
         sock_v4 = sock_v6 = None
         socks = []
-        is_plain_hostname = '.' not in qname or qname.endswith('.' + os.environ['USERDNSDOMAIN'].lower())
+        is_plain_hostname = '.' not in qname
+        if 'USERDNSDOMAIN' in os.environ:
+            is_plain_hostname = '.' not in qname.rstrip('.' + os.environ['USERDNSDOMAIN'].lower())
         if is_plain_hostname and not self.dns_intranet_servers:
             logging.warning('qname=%r is a plain hostname, need intranet dns server!!!', qname)
             reply = dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, rcode=3))
