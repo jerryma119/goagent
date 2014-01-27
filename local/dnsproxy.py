@@ -94,6 +94,7 @@ class DNSServer(gevent.server.DatagramServer):
         dns_blacklist = kwargs.pop('dns_blacklist')
         dns_timeout = kwargs.pop('dns_timeout', 2)
         super(self.__class__, self).__init__(*args, **kwargs)
+        self.dns_servers = dns_servers
         self.dns_v4_servers = [x for x in dns_servers if ':' not in x]
         self.dns_v6_servers = [x for x in dns_servers if ':' in x]
         self.dns_blacklist = set(dns_blacklist)
@@ -126,22 +127,28 @@ class DNSServer(gevent.server.DatagramServer):
                 for dnsserver in self.dns_v6_servers:
                     sock_v6.sendto(data, (dnsserver, 53))
                 timeout_at = time.time() + self.dns_timeout
+                replied_servers = set()
                 while time.time() < timeout_at:
                     if reply_data:
                         break
                     ins, _, _ = select.select(socks, [], [], 0.1)
                     for sock in ins:
-                        reply_data, _ = sock.recvfrom(512)
+                        reply_data, reply_addr = sock.recvfrom(512)
                         reply = dnslib.DNSRecord.parse(reply_data)
                         iplist = [str(x.rdata) for x in reply.rr]
                         if any(x in self.dns_blacklist for x in iplist):
-                            logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
+                            logging.warning('query qname=%r reply bad iplist=%r, continue', qname, iplist)
                             reply_data = ''
-                        else:
-                            ttl = max(x.ttl for x in reply.rr) if reply.rr else 600
-                            logging.debug('query qname=%r qtype=%r reply iplist=%s, ttl=%r', qname, qtype, iplist, ttl)
-                            self.dns_cache.set((qname, qtype), reply_data, ttl*2)
-                            break
+                            continue
+                        if reply.header.rcode and len(replied_servers) < len(self.dns_servers):
+                            replied_servers.add(reply_addr[0])
+                            logging.warning('query qname=%r reply nonzero rcode=%r, try wait other dnsservers=%r reply, continue', qname, reply.header.rcode, set(self.dnsservers)-replied_servers)
+                            reply_data = ''
+                            continue
+                        ttl = max(x.ttl for x in reply.rr) if reply.rr else 600
+                        logging.debug('query qname=%r qtype=%r reply iplist=%s, ttl=%r', qname, qtype, iplist, ttl)
+                        self.dns_cache.set((qname, qtype), reply_data, ttl*2)
+                        break
             except socket.error as e:
                 logging.warning('handle dns data=%r socket: %r', data, e)
         for sock in socks:
