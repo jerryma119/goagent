@@ -1403,8 +1403,7 @@ class Common(object):
 
         self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
         self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
-        self.DNS_INTERNAL = [x.strip() for x in self.CONFIG.get('dns', 'internal').split('|') if x.strip()]
-        self.DNS_EXTERNAL = [x.strip() for x in self.CONFIG.get('dns', 'external').split('|') if x.strip()]
+        self.DNS_SERVERS = self.CONFIG.get('dns', 'servers').split('|')
         self.DNS_BLACKLIST = set(self.CONFIG.get('dns', 'blacklist').split('|'))
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
@@ -1478,12 +1477,12 @@ class Common(object):
             info += 'PHP FetchServer    : %s\n' % common.PHP_FETCHSERVER
         if common.DNS_ENABLE:
             info += 'DNS Listen         : %s\n' % common.DNS_LISTEN
-            info += 'DNS Servers        : %s\n' % '|'.join(common.DNS_INTERNAL+common.DNS_EXTERNAL)
+            info += 'DNS Servers        : %s\n' % '|'.join(common.DNS_SERVERS)
         info += '------------------------------------------------------\n'
         return info
 
 common = Common()
-http_util = HTTPUtil(max_window=common.GAE_WINDOW, proxy=common.proxy, dns_servers=(common.DNS_INTERNAL+common.DNS_EXTERNAL), dns_blacklist=common.DNS_BLACKLIST)
+http_util = HTTPUtil(max_window=common.GAE_WINDOW, proxy=common.proxy, dns_servers=common.DNS_SERVERS, dns_blacklist=common.DNS_BLACKLIST)
 
 
 def message_html(title, banner, detail=''):
@@ -2687,7 +2686,7 @@ def main():
             sys.path += ['.']
             from dnsproxy import DNSServer
             host, port = common.DNS_LISTEN.split(':')
-            server = DNSServer((host, int(port)), dns_internal_servers=common.DNS_INTERNAL, dns_external_servers=common.DNS_EXTERNAL, dns_blacklist=common.DNS_BLACKLIST)
+            server = DNSServer((host, int(port)), dns_servers=common.DNS_SERVERS, dns_blacklist=common.DNS_BLACKLIST)
             thread.start_new_thread(server.serve_forever, tuple())
         except ImportError:
             logging.exception('GoAgent DNSServer requires dnslib and gevent 1.0')

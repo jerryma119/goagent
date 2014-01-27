@@ -7,6 +7,7 @@
 __version__ = '1.0'
 
 import sys
+import os
 import glob
 
 sys.path += glob.glob('*.egg')
@@ -22,7 +23,23 @@ import logging
 import heapq
 import socket
 import select
+import struct
+import ctypes
+import ctypes.wintypes
 import dnslib
+
+
+def win32dns_query_dnsserver_list():
+    DNS_CONFIG_DNS_SERVER_LIST = 6
+    buf = ctypes.create_string_buffer(2048)
+    ctypes.windll.dnsapi.DnsQueryConfig(DNS_CONFIG_DNS_SERVER_LIST, 0, None, None, buf, ctypes.wintypes.DWORD(len(buf)))
+    ips = struct.unpack('I', buf[0:4])[0]
+    out = []
+    for i in xrange(ips):
+        start = (i+1) * 4
+        out.append(socket.inet_ntoa(buf[start:start+4]))
+    return out
+
 
 class ExpireCache(object):
     """ A dictionary-like object, supporting expire semantics."""
@@ -91,15 +108,14 @@ class DNSServer(gevent.server.DatagramServer):
 
     def __init__(self, *args, **kwargs):
         dns_blacklist = kwargs.pop('dns_blacklist')
-        dns_internal_servers = kwargs.pop('dns_internal_servers')
-        dns_external_servers = kwargs.pop('dns_external_servers')
+        dns_servers = kwargs.pop('dns_servers')
         dns_timeout = kwargs.pop('dns_timeout', 2)
         super(self.__class__, self).__init__(*args, **kwargs)
-        self.dns_internal_servers = dns_internal_servers
-        self.dns_external_servers = dns_external_servers
-        self.dns_servers = dns_internal_servers + dns_external_servers
+        self.dns_servers = dns_servers
         self.dns_v4_servers = [x for x in self.dns_servers if ':' not in x]
         self.dns_v6_servers = [x for x in self.dns_servers if ':' in x]
+        self.dns_intranet_servers = set([x for x in self.dns_servers if x.startswith(('10.', '172.', '192.168.'))])
+        self.dns_trust_servers = set(['8.8.8.8', '8.8.4.4'])
         self.dns_blacklist = set(dns_blacklist)
         self.dns_cache = ExpireCache(max_size=65536)
         self.dns_timeout = int(dns_timeout)
@@ -115,22 +131,32 @@ class DNSServer(gevent.server.DatagramServer):
             reply_data = ''
         sock_v4 = sock_v6 = None
         socks = []
-        if self.dns_v4_servers:
-            sock_v4 = gevent.socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        is_plain_hostname = '.' not in qname or qname.endswith('.' + os.environ['USERDNSDOMAIN'].lower())
+        if is_plain_hostname and not self.dns_intranet_servers:
+            logging.warning('qname=%r is a plain hostname, need intranet dns server!!!', qname)
+            reply = dnslib.DNSRecord(header=dnslib.DNSHeader(id=request.header.id, rcode=3))
+            self.sendto(reply.pack(), address)
+            return
+        dns_v4_servers = self.dns_v4_servers if not is_plain_hostname else [x for x in self.dns_intranet_servers if ':' not in x]
+        dns_v6_servers = self.dns_v6_servers if not is_plain_hostname else [x for x in self.dns_intranet_servers if ':' in x]
+        if dns_v4_servers:
+            sock_v4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             socks.append(sock_v4)
-        if self.dns_v6_servers:
-            sock_v6 = gevent.socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        if dns_v6_servers:
+            sock_v6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
             socks.append(sock_v6)
         for _ in xrange(2):
             if reply_data:
                 break
             try:
-                for dnsserver in self.dns_v4_servers:
+                need_reply_servers = set()
+                for dnsserver in dns_v4_servers:
                     sock_v4.sendto(data, (dnsserver, 53))
-                for dnsserver in self.dns_v6_servers:
+                    need_reply_servers.add(dnsserver)
+                for dnsserver in dns_v6_servers:
                     sock_v6.sendto(data, (dnsserver, 53))
+                    need_reply_servers.add(dnsserver)
                 timeout_at = time.time() + self.dns_timeout
-                need_reply_servers = set(self.dns_servers)
                 while time.time() < timeout_at:
                     if reply_data:
                         break
@@ -143,7 +169,7 @@ class DNSServer(gevent.server.DatagramServer):
                             logging.warning('query qname=%r reply bad iplist=%r, continue', qname, iplist)
                             reply_data = ''
                             continue
-                        if reply.header.rcode and need_reply_servers and reply_server not in self.dns_external_servers:
+                        if reply.header.rcode and need_reply_servers and reply_server not in self.dns_trust_servers:
                             try:
                                 need_reply_servers.remove(reply_server)
                             except KeyError:
@@ -168,11 +194,11 @@ class DNSServer(gevent.server.DatagramServer):
 
 def test():
     logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
-    dns_internal_servers = ['114.114.114.114', '114.114.115.115']
-    dns_external_servers = ['8.8.8.8', '8.8.4.4']
+    # dns_intranet_servers = win32dns_query_dnsserver_list()
+    dns_servers = ['114.114.114.114', '114.114.115.115', '8.8.8.8', '8.8.4.4']
     dns_blacklist = '1.1.1.1|255.255.255.255|74.125.127.102|74.125.155.102|74.125.39.102|74.125.39.113|209.85.229.138|4.36.66.178|8.7.198.45|37.61.54.158|46.82.174.68|59.24.3.173|64.33.88.161|64.33.99.47|64.66.163.251|65.104.202.252|65.160.219.113|66.45.252.237|72.14.205.104|72.14.205.99|78.16.49.15|93.46.8.89|128.121.126.139|159.106.121.75|169.132.13.103|192.67.198.6|202.106.1.2|202.181.7.85|203.161.230.171|203.98.7.65|207.12.88.98|208.56.31.43|209.145.54.50|209.220.30.174|209.36.73.33|209.85.229.138|211.94.66.147|213.169.251.35|216.221.188.182|216.234.179.13|243.185.187.3|243.185.187.39'.split('|')
     logging.info('serving at port 53...')
-    DNSServer(('', 53), dns_internal_servers=dns_internal_servers, dns_external_servers=dns_external_servers, dns_blacklist=dns_blacklist).serve_forever()
+    DNSServer(('', 53), dns_servers=dns_servers, dns_blacklist=dns_blacklist).serve_forever()
 
 
 if __name__ == '__main__':
