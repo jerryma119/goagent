@@ -24,8 +24,6 @@ import heapq
 import socket
 import select
 import struct
-import ctypes
-import ctypes.wintypes
 import dnslib
 try:
     import pygeoip
@@ -34,6 +32,7 @@ except ImportError:
 
 
 def win32dns_query_dnsserver_list():
+    import ctypes, ctypes.wintypes
     DNS_CONFIG_DNS_SERVER_LIST = 6
     buf = ctypes.create_string_buffer(2048)
     ctypes.windll.dnsapi.DnsQueryConfig(DNS_CONFIG_DNS_SERVER_LIST, 0, None, None, buf, ctypes.wintypes.DWORD(len(buf)))
