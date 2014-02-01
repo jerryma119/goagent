@@ -942,7 +942,7 @@ class HTTPUtil(object):
         else:
             get_connection_time = self.tcp_connection_time.__getitem__
         for i in range(self.max_retry):
-            window = min((self.max_window+1)//2 + i, len(addresses))
+            window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
             addresses.sort(key=get_connection_time)
             addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
             queobj = Queue.Queue()
@@ -1090,7 +1090,7 @@ class HTTPUtil(object):
         create_connection = _create_ssl_connection
         addresses = [(x, port) for x in self.dns_resolve(host)]
         for i in range(self.max_retry):
-            window = min((self.max_window+1)//2 + i, len(addresses))
+            window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
             addresses.sort(key=self.ssl_connection_time.__getitem__)
             addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
             queobj = Queue.Queue()
