@@ -183,7 +183,7 @@ class DNSServer(gevent.server.DatagramServer):
                             logging.warning('query qname=%r reply bad iplist=%r, continue', qname, iplist)
                             reply_data = ''
                             continue
-                        if reply.header.rcode and need_reply_servers and reply_server not in self.dns_trust_servers:
+                        if reply.header.rcode and not iplist and need_reply_servers and reply_server not in self.dns_trust_servers:
                             try:
                                 need_reply_servers.remove(reply_server)
                             except KeyError:
