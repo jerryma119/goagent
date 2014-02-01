@@ -2693,7 +2693,12 @@ def main():
             sys.exit(-1)
 
     server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except SystemError as e:
+        if ' (libev) select: Unknown error' in repr(e):
+            logging.error('PLEASE START GOAGENT BY uvent.bat')
+            sys.exit(-1)
 
 if __name__ == '__main__':
     main()
