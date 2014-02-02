@@ -196,7 +196,7 @@ class DNSServer(gevent.server.DatagramServer):
                                 logging.info('query qname=%r qtype=%r reply nonzero rcode=%r', qname, qtype, reply.header.rcode)
                         ttl = max(x.ttl for x in reply.rr) if reply.rr else 600
                         logging.debug('query qname=%r qtype=%r reply_server=%r reply iplist=%s, ttl=%r', qname, qtype, reply_server, iplist, ttl)
-                        if iplist:
+                        if iplist or qname.endswith('.in-addr.arpa'):
                             self.dns_cache.set((qname, qtype), reply_data, ttl*2)
                         break
             except socket.error as e:
