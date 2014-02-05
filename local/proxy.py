@@ -2526,7 +2526,14 @@ class PACProxyHandler(GAEProxyHandler):
             if self.path.endswith('.pac?flush'):
                 thread.start_new_thread(PacUtil.update_pacfile, (self.pacfile,))
             elif time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
-                thread.start_new_thread(lambda: os.utime(self.pacfile, (time.time(), time.time())) or PacUtil.update_pacfile(self.pacfile), tuple())
+                need_update = True
+                # check system uptime > 30 minutes
+                if os.name == 'nt':
+                    import ctypes
+                    if ctypes.windll.kernel32.GetTickCount64() < 1800 * 1000:
+                        need_update = False
+                if need_update:
+                    thread.start_new_thread(lambda: os.utime(self.pacfile, (time.time(), time.time())) or PacUtil.update_pacfile(self.pacfile), tuple())
             with open(filename, 'rb') as fp:
                 data = fp.read()
                 self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
