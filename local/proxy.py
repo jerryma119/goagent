@@ -900,7 +900,7 @@ class HTTPUtil(object):
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 # resize socket recv buffer 8K->32K to improve browser releated application performance
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
-                # disable negal algorithm to send http request quickly.
+                # disable nagle algorithm to send http request quickly.
                 sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
                 # set a short timeout to trigger timeout retry more quickly.
                 sock.settimeout(timeout or self.max_timeout)
