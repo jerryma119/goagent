@@ -2439,7 +2439,10 @@ class PHPProxyHandler(GAEProxyHandler):
 def get_uptime():
     if os.name == 'nt':
         import ctypes
-        tick = ctypes.windll.kernel32.GetTickCount64()
+        try:
+            tick = ctypes.windll.kernel32.GetTickCount64()
+        except AttributeError:
+            tick = ctypes.windll.kernel32.GetTickCount()
         return tick / 1000.0
     elif os.path.isfile('/proc/uptime'):
         with open('/proc/uptime', 'rb') as fp:
