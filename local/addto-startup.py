@@ -52,8 +52,8 @@ def addto_startup_osx():
             RunAtLoad = True,
             UserName = 'root',
             WorkingDirectory = os.path.dirname(__file__),
-            StandardOutPath = 'var/log/goagent.log',
-            StandardErrorPath = 'var/log/goagent.log',
+            StandardOutPath = '/var/log/goagent.log',
+            StandardErrorPath = '/var/log/goagent.log',
             KeepAlive = dict(
                 SuccessfulExit = False,
                 )
