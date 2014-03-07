@@ -784,17 +784,24 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
             sock.close()
 
 
-def win32dns_query_dnsserver_list():
-    import re, ctypes, ctypes.wintypes, struct, socket
-    DNS_CONFIG_DNS_SERVER_LIST = 6
-    buf = ctypes.create_string_buffer(2048)
-    ctypes.windll.dnsapi.DnsQueryConfig(DNS_CONFIG_DNS_SERVER_LIST, 0, None, None, ctypes.byref(buf), ctypes.byref(ctypes.wintypes.DWORD(len(buf))))
-    ips = struct.unpack('I', buf[0:4])[0]
-    out = []
-    for i in xrange(ips):
-        start = (i+1) * 4
-        out.append(socket.inet_ntoa(buf[start:start+4]))
-    return out
+def get_dnsserver_list():
+    if os.name == 'nt':
+        import ctypes, ctypes.wintypes, struct, socket
+        DNS_CONFIG_DNS_SERVER_LIST = 6
+        buf = ctypes.create_string_buffer(2048)
+        ctypes.windll.dnsapi.DnsQueryConfig(DNS_CONFIG_DNS_SERVER_LIST, 0, None, None, ctypes.byref(buf), ctypes.byref(ctypes.wintypes.DWORD(len(buf))))
+        ips = struct.unpack('I', buf[0:4])[0]
+        out = []
+        for i in xrange(ips):
+            start = (i+1) * 4
+            out.append(socket.inet_ntoa(buf[start:start+4]))
+        return out
+    elif os.path.isfile('/etc/resolv.conf'):
+        with open('/etc/resolv.conf', 'rb') as fp:
+            return re.findall(r'(?m)^nameserver\s+(\S+)', fp.read())
+    else:
+        logging.warning("get_dnsserver_list failed: unsupport platform '%s-%s'", sys.platform, os.name)
+        return []
 
 
 def spawn_later(seconds, target, *args, **kwargs):
@@ -2706,7 +2713,7 @@ def pre_start():
         logging.error('dnslib not found, please put dnslib-0.8.3.egg to %r!', os.path.dirname(os.path.abspath(__file__)))
         sys.exit(-1)
     if os.name == 'nt' and not common.DNS_ENABLE:
-        any(common.DNS_SERVERS.insert(0, x) for x in [y for y in win32dns_query_dnsserver_list() if y not in common.DNS_SERVERS])
+        any(common.DNS_SERVERS.insert(0, x) for x in [y for y in get_dnsserver_list() if y not in common.DNS_SERVERS])
     if not OpenSSL:
         logging.warning('python-openssl not found, please install it!')
     if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):

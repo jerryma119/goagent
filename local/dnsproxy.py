@@ -47,6 +47,7 @@ def get_dnsserver_list():
         with open('/etc/resolv.conf', 'rb') as fp:
             return re.findall(r'(?m)^nameserver\s+(\S+)', fp.read())
     else:
+        logging.warning("get_dnsserver_list failed: unsupport platform '%s-%s'", sys.platform, os.name)
         return []
 
 class ExpireCache(object):
