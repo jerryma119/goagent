@@ -310,7 +310,7 @@ class CertUtil(object):
 
     @staticmethod
     def get_cert(commonname, sans=()):
-        if commonname.count('.') >= 2 and len(commonname.split('.')[-2]) > 4:
+        if commonname.count('.') >= 2 and [len(x) for x in reversed(commonname.split('.'))] > [2, 4]:
             commonname = '.'+commonname.partition('.')[-1]
         certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
         if os.path.exists(certfile):
