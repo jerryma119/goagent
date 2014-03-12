@@ -672,12 +672,12 @@ class PacUtil(object):
                 if '/' not in line:
                     use_domain = True
                 else:
-                    if not line.startswith('http://'):
+                    if not line.startswith(('http://', 'https://')):
                         line = 'http://' + line
                     use_start = True
             elif '|' == line[0]:
                 line = line[1:]
-                if not line.startswith('http://'):
+                if not line.startswith(('http://', 'https://')):
                     line = 'http://' + line
                 use_start = True
             if line[-1] in ('^', '|'):
