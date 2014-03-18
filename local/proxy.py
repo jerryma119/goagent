@@ -771,7 +771,8 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                     for sock in ins:
                         reply_data, _ = sock.recvfrom(512)
                         reply = dnslib.DNSRecord.parse(reply_data)
-                        iplist = [str(x.rdata) for x in reply.rr if x.rtype == 1]
+                        rtypes = (1, 28) if sock is sock_v6 else (1,)
+                        iplist = [str(x.rdata) for x in reply.rr if x.rtype in rtypes]
                         if any(x in blacklist for x in iplist):
                             logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
                         else:
@@ -1367,6 +1368,7 @@ class Common(object):
         self.HTTP_CRLFSITES = tuple(self.CONFIG.get(http_section, 'crlfsites').split('|'))
         self.HTTP_FORCEHTTPS = set(self.CONFIG.get(http_section, 'forcehttps').split('|'))
         self.HTTP_FAKEHTTPS = set(self.CONFIG.get(http_section, 'fakehttps').split('|'))
+        self.HTTP_DNS = self.CONFIG.get(http_section, 'dns').split('|') if self.CONFIG.has_option(http_section, 'dns') else []
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOSTS_MAP.items() if k == v)
@@ -1424,7 +1426,7 @@ class Common(object):
 
         self.DNS_ENABLE = self.CONFIG.getint('dns', 'enable')
         self.DNS_LISTEN = self.CONFIG.get('dns', 'listen')
-        self.DNS_SERVERS = self.CONFIG.get('dns', 'servers').split('|')
+        self.DNS_SERVERS = self.HTTP_DNS or self.CONFIG.get('dns', 'servers').split('|')
         self.DNS_BLACKLIST = set(self.CONFIG.get('dns', 'blacklist').split('|'))
 
         self.USERAGENT_ENABLE = self.CONFIG.getint('useragent', 'enable')
@@ -2699,6 +2701,12 @@ def pre_start():
                 error = u'某些安全软件(如 %s)可能和本软件存在冲突，造成 CPU 占用过高。\n如有此现象建议暂时退出此安全软件来继续运行GoAgent' % ','.join(softwares)
                 ctypes.windll.user32.MessageBoxW(None, error, title, 0)
                 #sys.exit(0)
+    if os.path.isfile('/proc/cpuinfo'):
+        with open('/proc/cpuinfo', 'rb') as fp:
+            m = re.search(r'(?im)(BogoMIPS|cpu MHz)\s+:\s+([\d\.]+)', fp.read())
+            if m and float(m.group(2)) < 1000:
+                logging.critical("please set [gae]window=2")
+                sys.exit(0)
     if common.GAE_APPIDS[0] == 'goagent':
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
