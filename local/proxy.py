@@ -2706,8 +2706,7 @@ def pre_start():
         with open('/proc/cpuinfo', 'rb') as fp:
             m = re.search(r'(?im)(BogoMIPS|cpu MHz)\s+:\s+([\d\.]+)', fp.read())
             if m and float(m.group(2)) < 1000:
-                logging.critical("please set [gae]window=2")
-                sys.exit(0)
+                logging.warning("*NOTE*, Please set [gae]window=2")
     if common.GAE_APPIDS[0] == 'goagent':
         logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
         sys.exit(-1)
