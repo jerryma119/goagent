@@ -23,7 +23,7 @@ import logging
 import heapq
 import socket
 import select
-import struct
+import re
 import dnslib
 try:
     import pygeoip
@@ -115,6 +115,8 @@ class ExpireCache(object):
 class DNSServer(gevent.server.DatagramServer):
     """DNS Proxy based on gevent/dnslib"""
 
+    is_loacl_addr = re.compile(r'(?i)(?:[0-9a-f:]+0:5efe:)?(?:127(?:\.\d+){3}|10(?:\.\d+){3}|192\.168(?:\.\d+){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d+){2})').match
+
     def __init__(self, *args, **kwargs):
         dns_blacklist = kwargs.pop('dns_blacklist')
         dns_servers = kwargs.pop('dns_servers')
@@ -123,7 +125,7 @@ class DNSServer(gevent.server.DatagramServer):
         self.dns_servers = dns_servers
         self.dns_v4_servers = [x for x in self.dns_servers if ':' not in x]
         self.dns_v6_servers = [x for x in self.dns_servers if ':' in x]
-        self.dns_intranet_servers = set([x for x in self.dns_servers if x.startswith(('10.', '172.', '192.168.'))])
+        self.dns_intranet_servers = set([x for x in self.dns_servers if self.is_loacl_addr(x)])
         self.dns_blacklist = set(dns_blacklist)
         self.dns_timeout = int(dns_timeout)
         self.dns_cache = ExpireCache(max_size=65536)
