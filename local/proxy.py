@@ -1369,6 +1369,12 @@ class Common(object):
         self.HTTP_FORCEHTTPS = set(self.CONFIG.get(http_section, 'forcehttps').split('|'))
         self.HTTP_FAKEHTTPS = set(self.CONFIG.get(http_section, 'fakehttps').split('|'))
         self.HTTP_DNS = self.CONFIG.get(http_section, 'dns').split('|') if self.CONFIG.has_option(http_section, 'dns') else []
+        for hostname in [k for k, _ in self.CONFIG.items(hosts_section) if k.startswith(('http://', 'https://', 'https?://'))]:
+            m = re.search(r'(?<=//)(\-|\_|\w|\\.)+(?=/)', hostname)
+            if m:
+                host = m.group().replace('\\.', '.')
+                self.HTTP_FAKEHTTPS.add(host)
+                logging.info('add host=%r to fakehttps', host)
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOSTS_MAP.items() if k == v)
