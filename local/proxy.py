@@ -36,7 +36,7 @@
 #      s2marine0         <s2marine0@gmail.com>
 #      Toshio Xiang      <snachx@gmail.com>
 
-__version__ = '3.1.5'
+__version__ = '3.1.6'
 
 import sys
 import os
@@ -1228,12 +1228,12 @@ class HTTPUtil(object):
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None, return_sock=None):
         skip_headers = self.skip_headers
-        need_crlf = bool(crlf)
-        if need_crlf:
-            fakehost = 'www.' + ''.join(random.choice(('bcdfghjklmnpqrstvwxyz','aeiou')[x&1]) for x in xrange(random.randint(5,20))) + random.choice(['.net', '.com', '.org'])
-            request_data = 'GET / HTTP/1.1\r\nHost: %s\r\n\r\n\r\n\r\r' % fakehost
-        else:
-            request_data = ''
+        crlf_counter = 3 if crlf else 0
+        request_data = ''
+        if crlf_counter:
+            for _ in xrange(crlf_counter):
+                request_data += 'GET / HTTP/1.1\r\nContention: Keep-Alive\r\n\r\n'
+            request_data += '\r\n\r\n\r\n'
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
         request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items() if k.title() not in skip_headers)
         if self.proxy:
@@ -1254,14 +1254,16 @@ class HTTPUtil(object):
         else:
             raise TypeError('http_util.request(payload) must be a string or buffer, not %r' % type(payload))
 
-        if need_crlf:
-            try:
-                response = httplib.HTTPResponse(sock)
+        try:
+            while crlf_counter:
+                response = httplib.HTTPResponse(sock, buffering=False)
                 response.begin()
                 response.read()
-            except Exception:
-                logging.exception('crlf skip read')
-                return None
+                response.close()
+                crlf_counter -= 1
+        except Exception as e:
+            logging.exception('crlf skip read path=%r error: %r', path, e)
+            return None
 
         if return_sock:
             return sock
@@ -1369,7 +1371,7 @@ class Common(object):
         self.HTTP_FORCEHTTPS = set(self.CONFIG.get(http_section, 'forcehttps').split('|'))
         self.HTTP_FAKEHTTPS = set(self.CONFIG.get(http_section, 'fakehttps').split('|'))
         self.HTTP_DNS = self.CONFIG.get(http_section, 'dns').split('|') if self.CONFIG.has_option(http_section, 'dns') else []
-        for hostname in [k for k, _ in self.CONFIG.items(hosts_section) if k.startswith(('http://', 'https://', 'https?://'))]:
+        for hostname in [k for k, _ in self.CONFIG.items(hosts_section) if k.startswith(('https://', 'https?://'))]:
             m = re.search(r'(?<=//)(\-|\_|\w|\\.)+(?=/)', hostname)
             if m:
                 host = m.group().replace('\\.', '.')
@@ -2033,7 +2035,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 finally:
                     logging.info('%r matched local file %r, return', self.path, filename)
                     return
-            need_crlf = hostname.startswith('google_') or host.endswith(common.HTTP_CRLFSITES)
+            need_crlf = host.endswith(common.HTTP_CRLFSITES)
             hostname = hostname or host
             if hostname in common.IPLIST_MAP:
                 http_util.dns[host] = common.IPLIST_MAP[hostname]
