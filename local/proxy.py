@@ -1262,7 +1262,7 @@ class HTTPUtil(object):
                 response.close()
                 crlf_counter -= 1
         except Exception as e:
-            logging.exception('crlf skip read path=%r error: %r', path, e)
+            logging.exception('crlf skip read host=%r path=%r error: %r', headers.get('Host'), path, e)
             return None
 
         if return_sock:
