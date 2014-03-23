@@ -129,14 +129,14 @@ class DNSServer(gevent.server.DatagramServer):
         self.dns_blacklist = set(dns_blacklist)
         self.dns_timeout = int(dns_timeout)
         self.dns_cache = ExpireCache(max_size=65536)
-        self.dns_trust_servers = set(['8.8.8.8', '8.8.4.4'])
+        self.dns_trust_servers = set(['8.8.8.8', '8.8.4.4', '2001:4860:4860::8888', '2001:4860:4860::8844'])
         if pygeoip:
             for dirname in ('.', '/usr/share/GeoIP/', '/usr/local/share/GeoIP/'):
                 filename = os.path.join(dirname, 'GeoIP.dat')
                 if os.path.isfile(filename):
                     geoip = pygeoip.GeoIP(filename)
                     for dnsserver in self.dns_servers:
-                        if geoip.country_name_by_addr(dnsserver) not in ('China',):
+                        if ':' not in dnsserver and geoip.country_name_by_addr(dnsserver) not in ('China',):
                             self.dns_trust_servers.add(dnsserver)
                     break
 
