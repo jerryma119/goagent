@@ -655,23 +655,23 @@ class PacUtil(object):
                 else:
                     direct_domain_set.add(domain)
         jsLines = ',\n'.join('%s"%s": 1' % (' '*indent, x.lstrip('.')) for x in proxy_domain_set)
-        function = '''\
-var domains = {
-%s
-};
-function %s(url, host) {
-    var lastPos;
-    do {
-        if (domains.hasOwnProperty(host)) {
-            return 'PROXY %s';
-        }
-        lastPos = host.indexOf('.') + 1;
-        host = host.slice(lastPos);
-    } while (lastPos >= 1);
-    return '%s';
-}''' % (jsLines, func_name, proxy, default)
-        # return re.sub(r'(?m)^\s{0,8}', '', function)
-        return function
+        template = '''\
+                    var domains = {
+                    %s
+                    };
+                    function %s(url, host) {
+                        var lastPos;
+                        do {
+                            if (domains.hasOwnProperty(host)) {
+                                return 'PROXY %s';
+                            }
+                            lastPos = host.indexOf('.') + 1;
+                            host = host.slice(lastPos);
+                        } while (lastPos >= 1);
+                        return '%s';
+                    }'''
+        template = re.sub(r'(?m)^\s{%d}' % min(len(re.search(r' +', x).group()) for x in template.splitlines()), '', template)
+        return template % (jsLines, func_name, proxy, default)
 
     @staticmethod
     def urlfilter2pac(content, func_name='FindProxyForURLByUrlfilter', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
