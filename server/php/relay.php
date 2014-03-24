@@ -22,7 +22,7 @@ function php_getallheaders() {
 
 
 function header_function($ch, $header) {
-    header($header);
+    header($header, false);
     return strlen($header);
 }
 
