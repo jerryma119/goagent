@@ -1284,15 +1284,15 @@ class HTTPUtil(object):
 
     def _request(self, sock, method, path, protocol_version, headers, payload, bufsize=8192, crlf=None, return_sock=None):
         skip_headers = self.skip_headers
-        crlf_counter = 3 if crlf else 0
         request_data = ''
-        if crlf_counter:
+        crlf_counter = 0
+        if crlf:
             fakeheaders = dict((k.title(), v) for k, v in headers.items())
-            fakeheaders['Connection'] = 'Keep-Alive'
-            fakeheaders.pop('Host', None)
+            fakeheaders['Host'] = 'www.google.cn'
             fakeheaders_data = ''.join('%s: %s\r\n' % (k, v) for k, v in fakeheaders.items() if k not in skip_headers)
-            for _ in xrange(crlf_counter):
+            while crlf_counter < 2 or len(request_data) < 1500:
                 request_data += 'GET / HTTP/1.1\r\n%s\r\n' % fakeheaders_data
+                crlf_counter += 1
             request_data += '\r\n\r\n\r\n'
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
         request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items() if k.title() not in skip_headers)
