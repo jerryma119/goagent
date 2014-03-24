@@ -624,7 +624,7 @@ class PacUtil(object):
         direct_domain_set = set([])
         proxy_domain_set = set([])
         for line in content.splitlines()[1:]:
-            if line and not line.startswith("!"):
+            if line and not line.startswith(('!', '|!', '||!')):
                 use_proxy = True
                 if line.startswith("@@"):
                     line = line[2:]
@@ -648,14 +648,14 @@ class PacUtil(object):
                     pass
                 if '*' in domain:
                     domain = domain.split('*')[-1]
-                if not domain:
+                if not domain or re.match(r'^\w+$', domain):
                     continue
                 if use_proxy:
                     proxy_domain_set.add(domain)
                 else:
                     direct_domain_set.add(domain)
         jsLines = ',\n'.join('%s"%s": 1' % (' '*indent, x.lstrip('.')) for x in proxy_domain_set)
-        function = '''
+        function = '''\
 var domains = {
 %s
 };
