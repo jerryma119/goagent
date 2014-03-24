@@ -22,7 +22,9 @@ function php_getallheaders() {
 
 
 function header_function($ch, $header) {
-    header($header, false);
+    if (strpos(strtolower($header), 'transfer-encoding:') != 0) {
+        header($header, false);
+    }
     return strlen($header);
 }
 
