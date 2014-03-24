@@ -569,11 +569,11 @@ class PacUtil(object):
         try:
             logging.info('try download %r to update_pacfile(%r)', common.PAC_GFWLIST, filename)
             autoproxy_content = base64.b64decode(opener.open(common.PAC_GFWLIST).read())
-            logging.info('%r downloaded, try convert it with autoproxy2pac', common.PAC_GFWLIST)
+            logging.info('%r downloaded, try convert it with autoproxy2pac_lite', common.PAC_GFWLIST)
             if 'gevent' in sys.modules and time.sleep is getattr(sys.modules['gevent'], 'sleep', None) and hasattr(gevent.get_hub(), 'threadpool'):
-                jsrule = gevent.get_hub().threadpool.apply_e(Exception, PacUtil.autoproxy2pac, (autoproxy_content, 'FindProxyForURLByAutoProxy', autoproxy, default))
+                jsrule = gevent.get_hub().threadpool.apply_e(Exception, PacUtil.autoproxy2pac_lite, (autoproxy_content, 'FindProxyForURLByAutoProxy', autoproxy, default))
             else:
-                jsrule = PacUtil.autoproxy2pac(autoproxy_content, 'FindProxyForURLByAutoProxy', autoproxy, default)
+                jsrule = PacUtil.autoproxy2pac_lite(autoproxy_content, 'FindProxyForURLByAutoProxy', autoproxy, default)
             content += '\r\n' + jsrule + '\r\n'
             logging.info('%r downloaded and parsed', common.PAC_GFWLIST)
         except Exception as e:
@@ -616,6 +616,61 @@ class PacUtil(object):
                 else:
                     jsLines.insert(0, jsLine)
         function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
+        return function
+
+    @staticmethod
+    def autoproxy2pac_lite(content, func_name='FindProxyForURLByAutoProxy', proxy='127.0.0.1:8087', default='DIRECT', indent=4):
+        """Autoproxy to Pac, based on https://github.com/iamamac/autoproxy2pac"""
+        direct_domain_set = set([])
+        proxy_domain_set = set([])
+        for line in content.splitlines()[1:]:
+            if line and not line.startswith("!"):
+                use_proxy = True
+                if line.startswith("@@"):
+                    line = line[2:]
+                    use_proxy = False
+                domain = ''
+                if line.startswith('/') and line.endswith('/'):
+                    line = line[1:-1]
+                    if line.startswith('^https?:\\/\\/[^\\/]+') and re.match(r'^(\w|\\\-|\\\.)+$', line[18:]):
+                        domain = line[18:].replace(r'\.', '.')
+                    else:
+                        logging.warning('unsupport gfwlist regex: %r', line)
+                elif line.startswith('||'):
+                    domain = line[2:].lstrip('*').rstrip('/')
+                elif line.startswith('|'):
+                    domain = urlparse.urlparse(line[1:]).netloc.lstrip('*')
+                elif line.startswith(('http://', 'https://')):
+                    domain = urlparse.urlparse(line).netloc.lstrip('*')
+                elif re.search(r'^([\w\-\_\.]+)([\*\/]|$)', line):
+                    domain = re.split(r'[\*\/]', line)[0]
+                else:
+                    pass
+                if '*' in domain:
+                    domain = domain.split('*')[-1]
+                if not domain:
+                    continue
+                if use_proxy:
+                    proxy_domain_set.add(domain)
+                else:
+                    direct_domain_set.add(domain)
+        jsLines = ',\n'.join('%s"%s": 1' % (' '*indent, x.lstrip('.')) for x in proxy_domain_set)
+        function = '''
+var domains = {
+%s
+};
+function %s(url, host) {
+    var lastPos;
+    do {
+        if (domains.hasOwnProperty(host)) {
+            return 'PROXY %s';
+        }
+        lastPos = host.indexOf('.') + 1;
+        host = host.slice(lastPos);
+    } while (lastPos >= 1);
+    return '%s';
+}''' % (jsLines, func_name, proxy, default)
+        # return re.sub(r'(?m)^\s{0,8}', '', function)
         return function
 
     @staticmethod
