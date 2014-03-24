@@ -1289,6 +1289,8 @@ class HTTPUtil(object):
         if crlf:
             fakeheaders = dict((k.title(), v) for k, v in headers.items())
             fakeheaders['Host'] = 'www.google.cn'
+            fakeheaders['Cookie'] = ''.join(random.choice(string.letters) for _ in xrange(random.randint(800, 1000)))
+            fakeheaders.pop('Content-Length', None)
             fakeheaders_data = ''.join('%s: %s\r\n' % (k, v) for k, v in fakeheaders.items() if k not in skip_headers)
             while crlf_counter < 2 or len(request_data) < 1500:
                 request_data += 'GET / HTTP/1.1\r\n%s\r\n' % fakeheaders_data
