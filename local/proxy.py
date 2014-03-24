@@ -649,6 +649,7 @@ class PacUtil(object):
                 if '*' in domain:
                     domain = domain.split('*')[-1]
                 if not domain or re.match(r'^\w+$', domain):
+                    logging.debug('unsupport gfwlist rule: %r', line)
                     continue
                 if use_proxy:
                     proxy_domain_set.add(domain)
@@ -656,13 +657,13 @@ class PacUtil(object):
                     direct_domain_set.add(domain)
         jsLines = ',\n'.join('%s"%s": 1' % (' '*indent, x.lstrip('.')) for x in proxy_domain_set)
         template = '''\
-                    var domains = {
+                    var domainsFor%s = {
                     %s
                     };
                     function %s(url, host) {
                         var lastPos;
                         do {
-                            if (domains.hasOwnProperty(host)) {
+                            if (domainsFor%s.hasOwnProperty(host)) {
                                 return 'PROXY %s';
                             }
                             lastPos = host.indexOf('.') + 1;
@@ -671,7 +672,7 @@ class PacUtil(object):
                         return '%s';
                     }'''
         template = re.sub(r'(?m)^\s{%d}' % min(len(re.search(r' +', x).group()) for x in template.splitlines()), '', template)
-        return template % (jsLines, func_name, proxy, default)
+        return template % (func_name, jsLines, func_name, func_name, proxy, default)
 
     @staticmethod
     def urlfilter2pac(content, func_name='FindProxyForURLByUrlfilter', proxy='127.0.0.1:8086', default='DIRECT', indent=4):
