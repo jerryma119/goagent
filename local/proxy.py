@@ -1231,8 +1231,12 @@ class HTTPUtil(object):
         crlf_counter = 3 if crlf else 0
         request_data = ''
         if crlf_counter:
+            fakeheaders = dict((k.title(), v) for k, v in headers.items())
+            fakeheaders['Connection'] = 'Keep-Alive'
+            fakeheaders.pop('Host', None)
+            fakeheaders_data = ''.join('%s: %s\r\n' % (k, v) for k, v in fakeheaders.items() if k not in skip_headers)
             for _ in xrange(crlf_counter):
-                request_data += 'GET / HTTP/1.1\r\nContention: Keep-Alive\r\n\r\n'
+                request_data += 'GET / HTTP/1.1\r\n%s\r\n' % fakeheaders_data
             request_data += '\r\n\r\n\r\n'
         request_data += '%s %s %s\r\n' % (method, path, protocol_version)
         request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items() if k.title() not in skip_headers)
