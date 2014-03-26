@@ -787,9 +787,11 @@ class PacUtil(object):
             else:
                 white_conditions += jsCondition
         black_lines = ' ||\r\n'.join('%s%s' % (' '*(4+indent), x.replace('**', '*')) for x in black_conditions).strip()
-        white_lines = ' ||\r\n'.join('%s%s' % (' '*(4+indent), x.replace('**', '*')) for x in white_conditions).strip()
+        # white_lines = ' ||\r\n'.join('%s%s' % (' '*(4+indent), x.replace('**', '*')) for x in white_conditions).strip()
+        white_lines = 'false'
         template = '''\
                     function %s(url, host) {
+                        // untrusted ablock plus list, disable whitelist until chinalist come back.
                         if (%s) {
                             return "%s";
                         }
