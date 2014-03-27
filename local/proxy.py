@@ -1296,7 +1296,7 @@ class HTTPUtil(object):
             fakeheaders['Cookie'] = ''.join(random.choice(string.letters) for _ in xrange(random.randint(800, 1000)))
             fakeheaders.pop('Content-Length', None)
             fakeheaders_data = ''.join('%s: %s\r\n' % (k, v) for k, v in fakeheaders.items() if k not in skip_headers)
-            while crlf_counter < 2 or len(request_data) < 1500:
+            while crlf_counter < 5 or len(request_data) < 1500 * 2:
                 request_data += 'GET / HTTP/1.1\r\n%s\r\n' % fakeheaders_data
                 crlf_counter += 1
             request_data += '\r\n\r\n\r\n'
