@@ -729,13 +729,9 @@ class PacUtil(object):
                 if '/' not in line:
                     use_domain = True
                 else:
-                    if not line.startswith(('http://', 'https://')):
-                        line = 'http://' + line
                     use_start = True
             elif '|' == line[0]:
                 line = line[1:]
-                if not line.startswith(('http://', 'https://')):
-                    line = 'http://' + line
                 use_start = True
             if line[-1] in ('^', '|'):
                 line = line[:-1]
@@ -744,17 +740,17 @@ class PacUtil(object):
             line = line.replace('^', '*').strip('*')
             if use_start and use_end:
                 if '*' in line:
-                    jsCondition = ['shExpMatch(url, "%s")' % line]
+                    jsCondition = ['shExpMatch(url, "*%s")' % line]
                 else:
                     jsCondition = ['url == "%s"' % line]
             elif use_start:
                 if '*' in line:
                     if use_postfix:
-                        jsCondition = ['shExpMatch(url, "%s*%s")' % (line, x) for x in use_postfix]
+                        jsCondition = ['shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix]
                     else:
                         jsCondition = ['shExpMatch(url, "%s*")' % line]
                 else:
-                    jsCondition = ['url.indexOf("%s") == 0' % line]
+                    jsCondition = ['url.indexOf("%s") >= 0' % line]
             elif use_domain and use_end:
                 if '*' in line:
                     jsCondition = ['shExpMatch(host, "%s*")' % line]
@@ -792,9 +788,9 @@ class PacUtil(object):
         template = '''\
                     function %s(url, host) {
                         // untrusted ablock plus list, disable whitelist until chinalist come back.
-                        if (%s) {
-                            return "%s";
-                        }
+                        // if (%s) {
+                        //    return "%s";
+                        // }
                         if (%s) {
                             return "PROXY %s";
                         }
