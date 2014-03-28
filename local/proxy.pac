@@ -11,7 +11,8 @@ function FindProxyForURL(url, host) {
     } else if (FindProxyForURLByAdblock(url, host) != defaultproxy ||
                host == 'p.tanx.com' ||
                host == 'a.alimama.cn' ||
-               host == 'pagead2.googlesyndication.com') {
+               host == 'pagead2.googlesyndication.com' ||
+               dnsDomainIs(host, '.doubleclick.net')) {
         return blackhole;
     } else if (shExpMatch(host, '*.google*.*') ||
                dnsDomainIs(host, '.ggpht.com') ||
