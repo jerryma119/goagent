@@ -1292,9 +1292,14 @@ class HTTPUtil(object):
         crlf_counter = 0
         if crlf:
             fakeheaders = dict((k.title(), v) for k, v in headers.items())
-            fakeheaders['Host'] = 'www.google.cn'
-            fakeheaders['Cookie'] = ''.join(random.choice(string.letters) for _ in xrange(random.randint(800, 1000)))
             fakeheaders.pop('Content-Length', None)
+            fakeheaders.pop('Cookie', None)
+            if 'User-Agent' not in fakeheaders:
+                fakeheaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1878.0 Safari/537.36'
+            if 'Accept-Language' not in fakeheaders:
+                fakeheaders['Accept-Language'] = 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
+            if 'Accept' not in fakeheaders:
+                fakeheaders['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
             fakeheaders_data = ''.join('%s: %s\r\n' % (k, v) for k, v in fakeheaders.items() if k not in skip_headers)
             while crlf_counter < 5 or len(request_data) < 1500 * 2:
                 request_data += 'GET / HTTP/1.1\r\n%s\r\n' % fakeheaders_data
