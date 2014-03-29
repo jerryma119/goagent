@@ -71,7 +71,7 @@ import io
 import fnmatch
 import traceback
 import random
-import subprocess
+import pygeoip
 import base64
 import string
 import hashlib
@@ -1421,6 +1421,7 @@ class Common(object):
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
         self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
+        self.GAE_REGIONS = frozenset(x.title() for x in self.CONFIG.get('gae', 'regions').split('|'))
 
         hosts_section, http_section = '%s/hosts' % self.GAE_PROFILE, '%s/http' % self.GAE_PROFILE
 
@@ -1443,12 +1444,6 @@ class Common(object):
         self.HTTP_FORCEHTTPS = set(self.CONFIG.get(http_section, 'forcehttps').split('|'))
         self.HTTP_FAKEHTTPS = set(self.CONFIG.get(http_section, 'fakehttps').split('|'))
         self.HTTP_DNS = self.CONFIG.get(http_section, 'dns').split('|') if self.CONFIG.has_option(http_section, 'dns') else []
-        # for hostname in [k for k, _ in self.CONFIG.items(hosts_section) if k.startswith(('https://', 'https?://'))]:
-        #     m = re.search(r'(?<=//)(\-|\_|\w|\\.)+(?=/)', hostname)
-        #     if m:
-        #         host = m.group().replace('\\.', '.')
-        #         self.HTTP_FAKEHTTPS.add(host)
-        #         logging.info('add host=%r to fakehttps', host)
 
         self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOSTS_MAP.items() if k == v)
@@ -1992,6 +1987,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     urlfetch = staticmethod(gae_urlfetch)
     normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
     normattachment = functools.partial(re.compile(r'filename=([^"\']+)').sub, 'filename="\\1"')
+    geoip = pygeoip.GeoIP('GeoIP.dat') if common.GAE_REGIONS else None
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
@@ -2060,8 +2056,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_METHOD_FWD()
         if any(x(self.path) for x in common.METHOD_REMATCH_MAP) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
             return self.do_METHOD_FWD()
-        else:
-            return self.do_METHOD_AGENT()
+        if common.GAE_REGIONS:
+            iplist = http_util.dns_resolve(host)
+            if iplist and self.geoip.country_name_by_addr(iplist[0]) in common.GAE_REGIONS:
+                return self.do_METHOD_FWD()
+        return self.do_METHOD_AGENT()
 
     def do_METHOD_FWD(self):
         """Direct http forward"""
@@ -2282,8 +2281,11 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_CONNECT_FWD()
         elif host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
             return self.do_CONNECT_FWD()
-        else:
-            return self.do_CONNECT_AGENT()
+        if common.GAE_REGIONS:
+            iplist = http_util.dns_resolve(host)
+            if iplist and self.geoip.country_name_by_addr(iplist[0]) in common.GAE_REGIONS:
+                return self.do_METHOD_FWD()
+        return self.do_CONNECT_AGENT()
 
     def do_CONNECT_FWD(self):
         """socket forward for http CONNECT command"""
