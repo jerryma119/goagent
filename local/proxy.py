@@ -1924,6 +1924,7 @@ class RangeFetch(object):
 class LocalProxyServer(SocketServer.ThreadingTCPServer):
     """Local Proxy Server"""
     allow_reuse_address = True
+    daemon_threads = True
 
     def close_request(self, request):
         try:
