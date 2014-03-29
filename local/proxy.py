@@ -71,7 +71,6 @@ import io
 import fnmatch
 import traceback
 import random
-import pygeoip
 import base64
 import string
 import hashlib
@@ -95,6 +94,10 @@ try:
     import OpenSSL
 except ImportError:
     OpenSSL = None
+try:
+    import pygeoip
+except ImportError:
+    pygeoip = None
 
 
 HAS_PYPY = hasattr(sys, 'pypy_version_info')
@@ -2715,6 +2718,9 @@ def pre_start():
         sys.exit(-1)
     if common.GAE_MODE == 'http' and common.GAE_PASSWORD == '':
         logging.critical('to enable http mode, you should set %r [gae]password = <your_pass> and [gae]options = rc4', common.CONFIG_FILENAME)
+        sys.exit(-1)
+    if common.GAE_REGIONS and not pygeoip:
+        logging.critical('to enable [gae]regions mode, you should install pygeoip')
         sys.exit(-1)
     if common.PAC_ENABLE:
         pac_ip = ProxyUtil.get_listen_ip() if common.PAC_IP in ('', '::', '0.0.0.0') else common.PAC_IP
