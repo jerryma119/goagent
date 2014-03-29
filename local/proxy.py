@@ -1424,7 +1424,7 @@ class Common(object):
         self.GAE_VALIDATE = self.CONFIG.getint('gae', 'validate')
         self.GAE_OBFUSCATE = self.CONFIG.getint('gae', 'obfuscate')
         self.GAE_OPTIONS = self.CONFIG.get('gae', 'options')
-        self.GAE_REGIONS = frozenset(x.title() for x in self.CONFIG.get('gae', 'regions').split('|'))
+        self.GAE_REGIONS = frozenset(x.upper() for x in self.CONFIG.get('gae', 'regions').split('|'))
 
         hosts_section, http_section = '%s/hosts' % self.GAE_PROFILE, '%s/http' % self.GAE_PROFILE
 
@@ -2061,7 +2061,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_METHOD_FWD()
         if common.GAE_REGIONS:
             iplist = http_util.dns_resolve(host)
-            if iplist and self.geoip.country_name_by_addr(iplist[0]) in common.GAE_REGIONS:
+            # http://dev.maxmind.com/geoip/legacy/codes/iso3166/
+            if iplist and self.geoip.country_code_by_addr(iplist[0]) in common.GAE_REGIONS:
                 return self.do_METHOD_FWD()
         return self.do_METHOD_AGENT()
 
@@ -2286,7 +2287,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_CONNECT_FWD()
         if common.GAE_REGIONS:
             iplist = http_util.dns_resolve(host)
-            if iplist and self.geoip.country_name_by_addr(iplist[0]) in common.GAE_REGIONS:
+            # http://dev.maxmind.com/geoip/legacy/codes/iso3166/
+            if iplist and self.geoip.country_code_by_addr(iplist[0]) in common.GAE_REGIONS:
                 return self.do_METHOD_FWD()
         return self.do_CONNECT_AGENT()
 
