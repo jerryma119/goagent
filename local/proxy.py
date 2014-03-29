@@ -95,10 +95,6 @@ try:
     import OpenSSL
 except ImportError:
     OpenSSL = None
-try:
-    import pacparser
-except ImportError:
-    pacparser = None
 
 
 HAS_PYPY = hasattr(sys, 'pypy_version_info')
@@ -1578,7 +1574,6 @@ class Common(object):
         if common.PAC_ENABLE:
             info += 'Pac Server         : http://%s:%d/%s\n' % (self.PAC_IP, self.PAC_PORT, self.PAC_FILE)
             info += 'Pac File           : file://%s\n' % os.path.join(os.path.dirname(os.path.abspath(__file__)), self.PAC_FILE).replace('\\', '/')
-            info += 'Pac Parser Version : %s\n' % pacparser.version() if pacparser else ''
         if common.PHP_ENABLE:
             info += 'PHP Listen         : %s\n' % common.PHP_LISTEN
             info += 'PHP FetchServer    : %s\n' % common.PHP_FETCHSERVER
@@ -2578,83 +2573,17 @@ def get_uptime():
         return None
 
 
-class PACProxyHandler(GAEProxyHandler):
+class PACProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
-    localhosts = ('127.0.0.1', 'localhost')
-    first_run_lock = threading.Lock()
     pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
     pacfile_mtime = os.path.getmtime(pacfile)
-    pacparser_lrucache = LRUCache(4096)
 
-    def first_run(self):
-        try:
-            self.__class__.localhosts = tuple(set(list(self.localhosts) + [ProxyUtil.get_listen_ip(), socket.gethostname()] + socket.gethostbyname_ex(socket.gethostname())[-1]))
-        except socket.error:
-            pass
-        if pacparser:
-            pacparser.init()
-            pacparser.parse_pac_file(self.pacfile)
-            threading._start_new_thread(self.__pacparser_update)
-        return True
+    def address_string(self):
+        return '%s:%s' % self.client_address[:2]
 
-    def setup(self):
-        if isinstance(self.__class__.first_run, collections.Callable):
-            try:
-                with self.__class__.first_run_lock:
-                    if isinstance(self.__class__.first_run, collections.Callable):
-                        self.first_run()
-                        self.__class__.first_run = None
-            except Exception as e:
-                logging.exception('GAEProxyHandler.first_run() return %r', e)
-        self.__class__.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
-        self.__class__.do_GET = self.__class__.do_METHOD
-        self.__class__.do_PUT = self.__class__.do_METHOD
-        self.__class__.do_POST = self.__class__.do_METHOD
-        self.__class__.do_HEAD = self.__class__.do_METHOD
-        self.__class__.do_DELETE = self.__class__.do_METHOD
-        self.__class__.do_OPTIONS = self.__class__.do_METHOD
-        self.setup()
-
-    def __pacparser_update(self):
-        while True:
-            try:
-                time.sleep(300)
-                mtime = os.path.getmtime(self.pacfile)
-                if mtime > self.__class__.pacfile_mtime:
-                    logging.info('%r updated, parse it')
-                    pacparser.parse_pac_file(self.pacfile)
-                    self.__class__.pacfile_mtime = mtime
-                    self.pacparser_lrucache.clear()
-            except Exception as e:
-                logging.exception('pacparser %r update error: %r', self.pacfile, e)
-                time.sleep(600)
-
-    def find_proxy_with_lrucache(self, url):
-        try:
-            return self.pacparser_lrucache[url]
-        except KeyError:
-            self.pacparser_lrucache[url] = pac_proxy = pacparser.find_proxy(url)
-            return pac_proxy
-
-    def do_CONNECT(self):
-        if not pacparser:
-            self.wfile.write(b'HTTP/1.1 403 Forbidden\r\n\r\n')
-            return
-        pac_proxy = self.find_proxy_with_lrucache('https://%s/' % self.path.rpartition(':')[0])
-        if pac_proxy == 'DIRECT':
-            return self.do_CONNECT_FWD()
-        else:
-            return GAEProxyHandler.do_CONNECT(self)
-
-    def do_METHOD(self):
+    def do_GET(self):
         if self.path[0] == '/':
-            host = self.headers.getheader('Host')
-            if not pacparser or not host or host.startswith(self.localhosts):
-                return self.do_METHOD_LOCAL()
-            else:
-                self.path = 'http://%s%s' % (host, self.path)
-        if pacparser:
-            return GAEProxyHandler.do_METHOD(self)
+            return self.do_METHOD_LOCAL()
         else:
             return self.do_METHOD_BLACKHOLE()
 
@@ -2691,22 +2620,9 @@ class PACProxyHandler(GAEProxyHandler):
                        'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
         else:
             content += '\r\n'
+        logging.info('%s "%s %s HTTP/1.1" 200 0', self.address_string(), self.command, self.path)
         self.wfile.write(content)
-
-    def do_METHOD_AGENT(self):
-        pac_proxy = self.find_proxy_with_lrucache(self.path)
-        if pac_proxy == 'DIRECT' and re.sub(r':\d+$', '', self.url_parts.netloc) not in common.HTTP_WITHGAE:
-            return self.do_METHOD_FWD()
-        elif pac_proxy.startswith('PROXY '):
-            host, _, port = pac_proxy.split()[1].rpartition(':')
-            if host in self.localhosts and int(port) == common.PAC_PORT:
-                return self.do_METHOD_BLACKHOLE()
-            elif host in self.localhosts and int(port) == common.LISTEN_PORT:
-                return GAEProxyHandler.do_METHOD_AGENT(self)
-            else:
-                return self.do_METHOD_FWD()
-        else:
-            GAEProxyHandler.do_METHOD_AGENT(self)
+        self.wfile.close()
 
 
 def get_process_list():
