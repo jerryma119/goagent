@@ -1392,6 +1392,166 @@ class HTTPUtil(object):
                     continue
 
 
+class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    """SimpleProxyHandler for GoAgent 3.x"""
+
+    protocol_version = 'HTTP/1.1'
+    bufsize = 256 * 1024
+    first_run_lock = threading.Lock()
+
+    def __init__(self, *args, **kwargs):
+        BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
+
+    def setup(self):
+        if isinstance(self.__class__.first_run, collections.Callable):
+            try:
+                with self.__class__.first_run_lock:
+                    if isinstance(self.__class__.first_run, collections.Callable):
+                        self.first_run()
+                        self.__class__.first_run = None
+            except Exception as e:
+                logging.exception('%s.first_run() return %r', self.__class__, e)
+        self.__class__.setup = BaseHTTPServer.BaseHTTPRequestHandler.setup
+        self.__class__.do_CONNECT = self.__class__.do_METHOD
+        self.__class__.do_GET = self.__class__.do_METHOD
+        self.__class__.do_PUT = self.__class__.do_METHOD
+        self.__class__.do_POST = self.__class__.do_METHOD
+        self.__class__.do_HEAD = self.__class__.do_METHOD
+        self.__class__.do_DELETE = self.__class__.do_METHOD
+        self.__class__.do_OPTIONS = self.__class__.do_METHOD
+        self.setup()
+
+    def first_run(self):
+        pass
+
+    def __gethostbyname2(self, hostname):
+        return socket.gethostbyname_ex(hostname)[-1]
+
+    def __create_connection(self, hostname, port, timeout, *args, **kwargs):
+        return socket.create_connection((hostname, port), timeout)
+
+    def __urlfetch(self, method, url, headers, body, fetchserver, **kwargs):
+        assert fetchserver
+        scheme, netloc, path, _, query, _ = urlparse.urlparse(url)
+        connection = httplib.HTTPSConnection(netloc) if scheme == 'https' else httplib.HTTPConnection(netloc)
+        connection.request(method, '%s?%s' % (path, query) if query else path, body=body, headers=headers)
+        response = connection.getresponse(buffering=True)
+        return response
+
+    def do_METHOD_MOCK(self, status, headers, content):
+        """mock response"""
+        if 'Content-Length' not in headers:
+            headers['Content-Length'] = len(content)
+        self.wfile.write('%s %s %s' % (self.protocol_version, status, httplib.responses.get(status, 'Unknown')))
+        for key, value in headers.items():
+            self.wfile.write('%s: %s\r\n' % key, value)
+        self.wfile.write('\r\n')
+        self.wfile.write(content)
+
+    def do_METHOD_STRIPSSL(self):
+        """strip ssl"""
+        host, _, port = self.path.rpartition(':')
+        port = int(port)
+        certfile = CertUtil.get_cert(host)
+        logging.info('%s "AGENT %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
+        self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
+        try:
+            ssl_sock = ssl.wrap_socket(self.connection, keyfile=certfile, certfile=certfile, server_side=True)
+        except Exception as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
+                logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
+            return
+        self.connection = ssl_sock
+        self.rfile = self.connection.makefile('rb', self.bufsize)
+        self.wfile = self.connection.makefile('wb', 0)
+        try:
+            self.raw_requestline = self.rfile.readline(65537)
+            if len(self.raw_requestline) > 65536:
+                self.requestline = ''
+                self.request_version = ''
+                self.command = ''
+                self.send_error(414)
+                return
+            if not self.raw_requestline:
+                self.close_connection = 1
+                return
+            if not self.parse_request():
+                return
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                raise
+        if self.path[0] == '/' and host:
+            self.path = 'https://%s%s' % (self.headers['Host'], self.path)
+        try:
+            self.do_METHOD()
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
+                raise
+
+    def do_METHOD_FORWARD(self, hostname, port, timeout):
+        """forward socket"""
+        local, remote = None, None
+        try:
+            tick = 1
+            bufsize = self.bufsize
+            local = self.connection
+            remote = self.__create_connection(hostname, port, timeout)
+            timecount = timeout
+            while 1:
+                timecount -= tick
+                if timecount <= 0:
+                    break
+                (ins, _, errors) = select.select([local, remote], [], [local, remote], tick)
+                if errors:
+                    break
+                if ins:
+                    for sock in ins:
+                        data = sock.recv(bufsize)
+                        if data:
+                            if sock is remote:
+                                local.sendall(data)
+                                timecount = timeout
+                            else:
+                                remote.sendall(data)
+                                timecount = timeout
+                        else:
+                            return
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.ENOTCONN, errno.EPIPE):
+                raise
+        finally:
+            if local:
+                local.close()
+            if remote:
+                remote.close()
+
+    def do_METHOD_URLFETCH(self, fetchserver, **kwargs):
+        """urlfetch from fetchserver"""
+        method = self.command
+        url = self.path
+        headers = {k.title(): v for k, v in self.headers.items()}
+        body = self.rfile.read(int(headers.get('Content-Length', 0)))
+        response = self.__urlfetch(method, url, headers, body, fetchserver, **kwargs)
+        self.wfile.write('%s %s %s' % (self.protocol_version, response.status, httplib.responses.get(response.status, 'Unknown')))
+        for key, value in response.getheaders():
+            self.wfile.write('%s: %s\r\n' % key.title(), value)
+        self.wfile.write('\r\n')
+        while True:
+            data = response.read(8192)
+            if not data:
+                break
+            self.wfile.write(data)
+            del data
+        response.close()
+
+    def do_METHOD(self):
+        if self.command == 'CONNTECT':
+            hostname, _, port = self.path.partition(':')
+            return self.do_METHOD_FORWARD(hostname, int(port), 60)
+        else:
+            return self.do_METHOD_URLFETCH('dummyserver')
+
+
 class Common(object):
     """Global Config Object"""
 
