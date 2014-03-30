@@ -1538,7 +1538,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers['Content-Length'] = len(content)
         self.wfile.write('%s %d %s' % (self.protocol_version, status, httplib.responses.get(status, 'Unknown')))
         for key, value in headers.items():
-            self.wfile.write('%s: %s\r\n' % key, value)
+            self.wfile.write('%s: %s\r\n' % (key, value))
         self.wfile.write('\r\n')
         self.wfile.write(content)
 
@@ -2847,69 +2847,27 @@ def get_uptime():
         return None
 
 
-class PACProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class PACProxyHandler(SimpleProxyHandler):
 
     pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
-    pacfile_mtime = os.path.getmtime(pacfile)
-    bufsize = 8192
 
-    def address_string(self):
-        return '%s:%s' % self.client_address[:2]
-
-    def do_CONNECT(self):
-        """deploy fake cert to client"""
-        host, _, port = self.path.rpartition(':')
-        port = int(port)
-        certfile = CertUtil.get_cert(host)
-        logging.info('%s "AGENT %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
-        self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
-        try:
-            ssl_sock = ssl.wrap_socket(self.connection, keyfile=certfile, certfile=certfile, server_side=True)
-        except Exception as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
-                logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
-            return
-        self.connection = ssl_sock
-        self.rfile = self.connection.makefile('rb', self.bufsize)
-        self.wfile = self.connection.makefile('wb', 0)
-        try:
-            self.raw_requestline = self.rfile.readline(65537)
-            if len(self.raw_requestline) > 65536:
-                self.requestline = ''
-                self.request_version = ''
-                self.command = ''
-                self.send_error(414)
-                return
-            if not self.raw_requestline:
-                self.close_connection = 1
-                return
-            if not self.parse_request():
-                return
-        except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
-                raise
-        if self.path[0] == '/' and host:
-            self.path = 'https://%s%s' % (self.headers['Host'], self.path)
-        try:
-            self.do_GET()
-        except NetWorkIOError as e:
-            if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
-                raise
-
-    def do_GET(self):
-        if self.path[0] == '/':
-            return self.do_GET_LOCAL()
-        else:
-            return self.do_GET_BLACKHOLE()
-
-    def do_GET_LOCAL(self):
+    def do_METHOD(self):
+        if self.command == 'CONNECT':
+            return self.do_METHOD_STRIPSSL()
+        status = 404
+        headers = {'Content-Type': 'text/plain', 'Connection': 'close'}
+        content = '404 Not Found'
+        if self.path[0] != '/':
+            status = 200
+            headers = {'Cache-Control': 'max-age=86400', 'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT', 'Connection': 'close'}
+            content = ''
+            if urlparse.urlsplit(self.path).path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
+                headers['Content-Type'] = 'image/gif'
+                content = 'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
         filename = os.path.normpath('./' + urlparse.urlsplit(self.path).path)
         if os.path.isfile(filename):
-            logging.info('%s "%s %s HTTP/1.1" 200 -', self.address_string(), self.command, self.path)
-            if filename.endswith('.pac'):
-                mimetype = 'text/plain'
-            else:
-                mimetype = 'application/octet-stream'
+            status = 200
+            headers['Content-Type'] = 'text/plain' if filename.endswith('.pac') else 'application/octet-stream'
             if self.path.endswith('.pac?flush'):
                 thread.start_new_thread(PacUtil.update_pacfile, (self.pacfile,))
             elif time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
@@ -2918,25 +2876,9 @@ class PACProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if uptime and uptime > 1800:
                     thread.start_new_thread(lambda: os.utime(self.pacfile, (time.time(), time.time())) or PacUtil.update_pacfile(self.pacfile), tuple())
             with open(filename, 'rb') as fp:
-                data = fp.read()
-                self.wfile.write(('HTTP/1.1 200\r\nContent-Type: %s\r\nContent-Length: %s\r\n\r\n' % (mimetype, len(data))).encode())
-                self.wfile.write(data)
-        else:
-            logging.info('%s "%s %s HTTP/1.1" 404 -', self.address_string(), self.command, self.path)
-            self.wfile.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
-
-    def do_GET_BLACKHOLE(self):
-        content = 'HTTP/1.1 200 OK\r\n'\
-                  'Cache-Control: max-age=86400\r\n'\
-                  'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n'\
-                  'Connection: close\r\n'
-        if urlparse.urlsplit(self.path).path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
-            content += 'Content-Type: image/gif\r\n\r\n'\
-                       'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
-        else:
-            content += '\r\n'
-        logging.info('%s "%s %s HTTP/1.1" 200 0', self.address_string(), self.command, self.path)
-        self.wfile.write(content)
+                content = fp.read()
+        logging.info('%s "%s %s HTTP/1.1" %d %d', self.address_string(), self.command, self.path, status, len(content))
+        return self.do_METHOD_MOCK(status, headers, content)
 
 
 def get_process_list():
@@ -3067,7 +3009,7 @@ def main():
         server = LocalProxyServer((common.PAC_IP, common.PAC_PORT), PACProxyHandler)
         thread.start_new_thread(server.serve_forever, tuple())
 
-    if True:
+    if False:
         server = LocalProxyServer(('', 9001), SimpleProxyHandler)
         thread.start_new_thread(server.serve_forever, tuple())
 
