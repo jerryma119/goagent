@@ -638,9 +638,9 @@ class PacUtil(object):
                 elif line.startswith('||'):
                     domain = line[2:].lstrip('*').rstrip('/')
                 elif line.startswith('|'):
-                    domain = urlparse.urlparse(line[1:]).netloc.lstrip('*')
+                    domain = urlparse.urlsplit(line[1:]).netloc.lstrip('*')
                 elif line.startswith(('http://', 'https://')):
-                    domain = urlparse.urlparse(line).netloc.lstrip('*')
+                    domain = urlparse.urlsplit(line).netloc.lstrip('*')
                 elif re.search(r'^([\w\-\_\.]+)([\*\/]|$)', line):
                     domain = re.split(r'[\*\/]', line)[0]
                 else:
@@ -1347,7 +1347,7 @@ class HTTPUtil(object):
         return response
 
     def request(self, method, url, payload=None, headers={}, realhost='', bufsize=8192, crlf=None, validate=None, return_sock=None, connection_cache_key=None):
-        scheme, netloc, path, _, query, _ = urlparse.urlparse(url)
+        scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
             host = netloc
@@ -1445,12 +1445,12 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         return socket.create_connection((hostname, port), timeout)
 
     def __create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        sock = self.__create_connection(host, port, timeout, *args, **kwargs)
+        sock = self.__create_connection(hostname, port, timeout, **kwargs)
         ssl_sock = ssl.wrap_socket(sock)
         return ssl_sock
 
-    def __create_http_request(self, method, url, body=None, headers={}, realhost='', timeout=16, max_retry=3, bufsize=8192, crlf=None, validate=None, return_sock=None, connection_cache_key=None):
-        scheme, netloc, path, _, query, _ = urlparse.urlparse(url)
+    def __create_http_request(self, method, url, body=None, headers={}, realhost='', timeout=16, max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
+        scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
             host = netloc
@@ -1469,7 +1469,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for _ in range(max_retry):
             try:
                 create_connection = self.__create_ssl_connection if scheme == 'https' else self.__create_connection
-                sock = create_connection((realhost or host, port), timeout, validate=validate, cache_key=connection_cache_key)
+                sock = create_connection(realhost or host, port, timeout, validate=validate, cache_key=connection_cache_key)
                 if sock and not isinstance(sock, Exception):
                     break
             except Exception as e:
@@ -1519,8 +1519,6 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except Exception as e:
             logging.exception('crlf skip read host=%r path=%r error: %r', headers.get('Host'), path, e)
             return None
-        if return_sock:
-            return sock
         response = httplib.HTTPResponse(sock, buffering=True)
         try:
             response.begin()
@@ -1530,10 +1528,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def __urlfetch(self, method, url, headers, body, fetchserver, **kwargs):
         assert fetchserver
-        scheme, netloc, path, _, query, _ = urlparse.urlparse(url)
-        connection = httplib.HTTPSConnection(netloc) if scheme == 'https' else httplib.HTTPConnection(netloc)
-        connection.request(method, '%s?%s' % (path, query) if query else path, body=body, headers=headers)
-        response = connection.getresponse(buffering=True)
+        response = self.__create_http_request(method, url, body=body, headers=headers)
         return response
 
     def do_METHOD_MOCK(self, status, headers, content):
@@ -1588,15 +1583,16 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD_FORWARD(self, hostname, port, timeout, do_ssl_handshake=False):
         """forward socket"""
-        local, remote = None, None
+        local = self.connection
+        if do_ssl_handshake:
+            remote = self.__create_ssl_connection(hostname, port, timeout)
+        else:
+            remote = self.__create_connection(hostname, port, timeout)
+        if remote and not isinstance(remote, Exception):
+            self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
         try:
             tick = 1
             bufsize = self.bufsize
-            local = self.connection
-            if do_ssl_handshake:
-                remote = self.__create_ssl_connection(hostname, port, timeout)
-            else:
-                remote = self.__create_connection(hostname, port, timeout)
             timecount = timeout
             while 1:
                 timecount -= tick
@@ -1633,11 +1629,11 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.rfile.read(int(headers.get('Content-Length', 0)))
         response = self.__urlfetch(method, url, headers, body, fetchserver, **kwargs)
-        self.wfile.write('%s %s %s' % (self.protocol_version, response.status, httplib.responses.get(response.status, 'Unknown')))
+        self.wfile.write('%s %s %s\r\n' % (self.protocol_version, response.status, httplib.responses.get(response.status, 'Unknown')))
         for key, value in response.getheaders():
             if key == 'Set-Cookie':
                 value = self.normcookie(value)
-            self.wfile.write('%s: %s\r\n' % key.title(), value)
+            self.wfile.write('%s: %s\r\n' % (key.title(), value))
         self.wfile.write('\r\n')
         while True:
             data = response.read(8192)
@@ -1648,7 +1644,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response.close()
 
     def do_METHOD(self):
-        if self.command == 'CONNTECT':
+        if self.command == 'CONNECT':
             hostname, _, port = self.path.partition(':')
             return self.do_METHOD_FORWARD(hostname, int(port), 60)
         else:
@@ -2310,8 +2306,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         if self.path[0] == '/' and host:
             self.path = 'http://%s%s' % (host, self.path)
         elif not host and '://' in self.path:
-            host = urlparse.urlparse(self.path).netloc
-        self.url_parts = urlparse.urlparse(self.path)
+            host = urlparse.urlsplit(self.path).netloc
+        self.url_parts = urlparse.urlsplit(self.path)
         if common.USERAGENT_ENABLE:
             self.headers['User-Agent'] = common.USERAGENT_STRING
         if host in common.HTTP_WITHGAE:
@@ -2692,7 +2688,7 @@ def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     app_headers = {'Content-Length': len(app_payload), 'Content-Type': 'application/octet-stream'}
     fetchserver += '?%s' % random.random()
     crlf = 0 if fetchserver.startswith('https') else common.PHP_CRLF
-    connection_cache_key = '%s//:%s' % urlparse.urlparse(fetchserver)[:2]
+    connection_cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
     response = http_util.request('POST', fetchserver, app_payload, app_headers, crlf=crlf, connection_cache_key=connection_cache_key)
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
@@ -2713,7 +2709,7 @@ class PHPProxyHandler(GAEProxyHandler):
     def first_run(self):
         if not common.PROXY_ENABLE:
             common.resolve_iplist()
-            fetchhost = re.sub(r':\d+$', '', urlparse.urlparse(common.PHP_FETCHSERVER).netloc)
+            fetchhost = re.sub(r':\d+$', '', urlparse.urlsplit(common.PHP_FETCHSERVER).netloc)
             logging.info('resolve common.PHP_FETCHSERVER domain=%r to iplist', fetchhost)
             if common.PHP_USEHOSTS and fetchhost in common.HOSTS_MAP:
                 hostname = common.HOSTS_MAP[fetchhost]
@@ -2899,7 +2895,7 @@ class PACProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_GET_BLACKHOLE()
 
     def do_GET_LOCAL(self):
-        filename = os.path.normpath('./' + urlparse.urlparse(self.path).path)
+        filename = os.path.normpath('./' + urlparse.urlsplit(self.path).path)
         if os.path.isfile(filename):
             logging.info('%s "%s %s HTTP/1.1" 200 -', self.address_string(), self.command, self.path)
             if filename.endswith('.pac'):
@@ -2926,7 +2922,7 @@ class PACProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                   'Cache-Control: max-age=86400\r\n'\
                   'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n'\
                   'Connection: close\r\n'
-        if urlparse.urlparse(self.path).path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
+        if urlparse.urlsplit(self.path).path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
             content += 'Content-Type: image/gif\r\n\r\n'\
                        'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
         else:
@@ -3061,6 +3057,10 @@ def main():
 
     if common.PAC_ENABLE:
         server = LocalProxyServer((common.PAC_IP, common.PAC_PORT), PACProxyHandler)
+        thread.start_new_thread(server.serve_forever, tuple())
+
+    if True:
+        server = LocalProxyServer(('', 9001), SimpleProxyHandler)
         thread.start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
