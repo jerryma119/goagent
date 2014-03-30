@@ -1533,9 +1533,10 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def do_METHOD_MOCK(self, status, headers, content):
         """mock response"""
+        logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
         if 'Content-Length' not in headers:
             headers['Content-Length'] = len(content)
-        self.wfile.write('%s %s %s' % (self.protocol_version, status, httplib.responses.get(status, 'Unknown')))
+        self.wfile.write('%s %d %s' % (self.protocol_version, status, httplib.responses.get(status, 'Unknown')))
         for key, value in headers.items():
             self.wfile.write('%s: %s\r\n' % key, value)
         self.wfile.write('\r\n')
@@ -1546,7 +1547,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         host, _, port = self.path.rpartition(':')
         port = int(port)
         certfile = CertUtil.get_cert(host)
-        logging.info('%s "AGENT %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
+        logging.info('%s "STRIPSSL %s %s:%d %s" - -', self.address_string(), self.command, host, port, self.protocol_version)
         self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
         try:
             ssl_sock = ssl.wrap_socket(self.connection, keyfile=certfile, certfile=certfile, server_side=True)
@@ -1590,6 +1591,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             remote = self.__create_connection(hostname, port, timeout)
         if remote and not isinstance(remote, Exception):
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
+        logging.info('%s "FORWARD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
         try:
             tick = 1
             bufsize = self.bufsize
@@ -1629,17 +1631,23 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.rfile.read(int(headers.get('Content-Length', 0)))
         response = self.__urlfetch(method, url, headers, body, fetchserver, **kwargs)
-        self.wfile.write('%s %s %s\r\n' % (self.protocol_version, response.status, httplib.responses.get(response.status, 'Unknown')))
-        for key, value in response.getheaders():
-            if key == 'Set-Cookie':
-                value = self.normcookie(value)
-            self.wfile.write('%s: %s\r\n' % (key.title(), value))
-        self.wfile.write('\r\n')
+        logging.info('%s "URLFETCH %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
+        response_headers = {k.title(): v for k, v in response.getheaders()}
+        if 'Set-Cookie' in response_headers:
+            response_headers['Set-Cookie'] = self.normcookie(response_headers['Set-Cookie'])
+        self.wfile.write('%s %s %s\r\n%s\r\n' % (self.protocol_version, response.status, httplib.responses.get(response.status, 'Unknown'), ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items())))
+        need_chunked = 'Transfer-Encoding' in response_headers
         while True:
             data = response.read(8192)
             if not data:
+                if need_chunked:
+                    self.wfile.write('0\r\n\r\n')
                 break
+            if need_chunked:
+                self.wfile.write('%x\r\n' % len(data))
             self.wfile.write(data)
+            if need_chunked:
+                self.wfile.write('\r\n')
             del data
         response.close()
 
