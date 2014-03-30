@@ -2584,17 +2584,58 @@ class PACProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
     pacfile_mtime = os.path.getmtime(pacfile)
+    bufsize = 8192
 
     def address_string(self):
         return '%s:%s' % self.client_address[:2]
 
+    def do_CONNECT(self):
+        """deploy fake cert to client"""
+        host, _, port = self.path.rpartition(':')
+        port = int(port)
+        certfile = CertUtil.get_cert(host)
+        logging.info('%s "AGENT %s %s:%d HTTP/1.1" - -', self.address_string(), self.command, host, port)
+        self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
+        try:
+            ssl_sock = ssl.wrap_socket(self.connection, keyfile=certfile, certfile=certfile, server_side=True)
+        except Exception as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET):
+                logging.exception('ssl.wrap_socket(self.connection=%r) failed: %s', self.connection, e)
+            return
+        self.connection = ssl_sock
+        self.rfile = self.connection.makefile('rb', self.bufsize)
+        self.wfile = self.connection.makefile('wb', 0)
+        try:
+            self.raw_requestline = self.rfile.readline(65537)
+            if len(self.raw_requestline) > 65536:
+                self.requestline = ''
+                self.request_version = ''
+                self.command = ''
+                self.send_error(414)
+                return
+            if not self.raw_requestline:
+                self.close_connection = 1
+                return
+            if not self.parse_request():
+                return
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
+                raise
+        if self.path[0] == '/' and host:
+            self.path = 'https://%s%s' % (self.headers['Host'], self.path)
+        try:
+            self.do_GET()
+        except NetWorkIOError as e:
+            if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
+                raise
+
     def do_GET(self):
         if self.path[0] == '/':
-            return self.do_METHOD_LOCAL()
+            return self.do_GET_LOCAL()
         else:
-            return self.do_METHOD_BLACKHOLE()
+            return self.do_GET_BLACKHOLE()
 
-    def do_METHOD_LOCAL(self):
+    def do_GET_LOCAL(self):
         filename = os.path.normpath('./' + urlparse.urlparse(self.path).path)
         if os.path.isfile(filename):
             logging.info('%s "%s %s HTTP/1.1" 200 -', self.address_string(), self.command, self.path)
@@ -2617,8 +2658,8 @@ class PACProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             logging.info('%s "%s %s HTTP/1.1" 404 -', self.address_string(), self.command, self.path)
             self.wfile.write(b'HTTP/1.1 404\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n404 Not Found')
 
-    def do_METHOD_BLACKHOLE(self):
-        content = 'HTTP/1.1 200\r\n'\
+    def do_GET_BLACKHOLE(self):
+        content = 'HTTP/1.1 200 OK\r\n'\
                   'Cache-Control: max-age=86400\r\n'\
                   'Expires:Oct, 01 Aug 2100 00:00:00 GMT\r\n'\
                   'Connection: close\r\n'
@@ -2629,7 +2670,6 @@ class PACProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             content += '\r\n'
         logging.info('%s "%s %s HTTP/1.1" 200 0', self.address_string(), self.command, self.path)
         self.wfile.write(content)
-        self.wfile.close()
 
 
 def get_process_list():
