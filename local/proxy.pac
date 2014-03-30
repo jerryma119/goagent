@@ -5,7 +5,6 @@ function FindProxyForURL(url, host) {
     var defaultproxy = 'DIRECT';
     if (isPlainHostName(host) ||
         shExpMatch(host, 'localhost.*') ||
-        host == 'localhost' ||
         host == '127.0.0.1') {
         return "DIRECT";
     } else if (FindProxyForURLByAdblock(url, host) != defaultproxy ||
