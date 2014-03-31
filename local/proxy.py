@@ -2269,7 +2269,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     urlfetch = staticmethod(gae_urlfetch)
     normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
     normattachment = functools.partial(re.compile(r'filename=([^"\']+)').sub, 'filename="\\1"')
-    geoip = pygeoip.GeoIP('GeoIP.dat') if pygeoip and common.GAE_REGIONS else None
+    geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
