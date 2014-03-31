@@ -1295,6 +1295,7 @@ class HTTPUtil(object):
             fakeheaders = dict((k.title(), v) for k, v in headers.items())
             fakeheaders.pop('Content-Length', None)
             fakeheaders.pop('Cookie', None)
+            fakeheaders.pop('Host', None)
             if 'User-Agent' not in fakeheaders:
                 fakeheaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1878.0 Safari/537.36'
             if 'Accept-Language' not in fakeheaders:
