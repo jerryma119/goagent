@@ -35,6 +35,7 @@
 #      cuixin            <steven.cuixin@gmail.com>
 #      s2marine0         <s2marine0@gmail.com>
 #      Toshio Xiang      <snachx@gmail.com>
+#      Bo Tian           <dxmtb@163.com>
 
 __version__ = '3.1.6'
 
@@ -1694,16 +1695,16 @@ class Common(object):
         self.GAE_REGIONS = frozenset(x.upper() for x in self.CONFIG.get('gae', 'regions').split('|') if x.strip())
 
         if self.GAE_PROFILE == 'auto':
-                try:
-                        s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-                        s.settimeout(1)
-                        s.connect(('ipv6.google.com', 80))
-                        s.close()
-                        self.GAE_PROFILE = 'ipv6'
-                        logging.info("Use profile ipv6")
-                except:
-                        self.GAE_PROFILE = 'ipv4'
-                        logging.info("Use profile ipv4")
+            try:
+                s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                s.settimeout(1)
+                s.connect(('ipv6.google.com', 80))
+                s.close()
+                self.GAE_PROFILE = 'ipv6'
+                logging.info('Use profile ipv6')
+            except Exception as e:
+                self.GAE_PROFILE = 'ipv4'
+                logging.info('Use profile ipv6 %r, switch to ipv4', e)
         hosts_section, http_section = '%s/hosts' % self.GAE_PROFILE, '%s/http' % self.GAE_PROFILE
 
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
