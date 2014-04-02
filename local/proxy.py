@@ -1609,6 +1609,12 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 class AdvancedProxyHandler(SimpleProxyHandler):
     """Advanced Proxy Handler"""
+    dns_cache = {}
+    tcp_connection_time = collections.defaultdict(float)
+    tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+    ssl_connection_time = collections.defaultdict(float)
+    ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+
     def __gethostbyname2(self, hostname):
         raise NotImplementedError
 
