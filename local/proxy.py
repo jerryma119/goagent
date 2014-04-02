@@ -1440,18 +1440,18 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def first_run(self):
         pass
 
-    def __gethostbyname2(self, hostname):
+    def _gethostbyname2(self, hostname):
         return socket.gethostbyname_ex(hostname)[-1]
 
-    def __create_connection(self, hostname, port, timeout, **kwargs):
+    def _create_connection(self, hostname, port, timeout, **kwargs):
         return socket.create_connection((hostname, port), timeout)
 
-    def __create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        sock = self.__create_connection(hostname, port, timeout, **kwargs)
+    def _create_ssl_connection(self, hostname, port, timeout, **kwargs):
+        sock = self._create_connection(hostname, port, timeout, **kwargs)
         ssl_sock = ssl.wrap_socket(sock)
         return ssl_sock
 
-    def __create_http_request(self, method, url, headers, body, timeout, **kwargs):
+    def _create_http_request(self, method, url, headers, body, timeout, **kwargs):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1472,7 +1472,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = connection.getresponse(buffering=True)
         return response
 
-    def __create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
+    def _create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         raise NotImplementedError
 
     def do_METHOD_MOCK(self, status, headers, content):
@@ -1530,9 +1530,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """forward socket"""
         local = self.connection
         if do_ssl_handshake:
-            remote = self.__create_ssl_connection(hostname, port, timeout)
+            remote = self._create_ssl_connection(hostname, port, timeout)
         else:
-            remote = self.__create_connection(hostname, port, timeout)
+            remote = self._create_connection(hostname, port, timeout)
         if remote and not isinstance(remote, Exception):
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
         logging.info('%s "FORWARD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
@@ -1575,9 +1575,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.rfile.read(int(headers.get('Content-Length', 0)))
         if fetchserver:
-            response = self.__create_http_request_withserver(fetchserver, method, url, headers, body, **kwargs)
+            response = self._create_http_request_withserver(fetchserver, method, url, headers, body, timeout=16, **kwargs)
         else:
-            response = self.__create_http_request(method, url, headers, body, **kwargs)
+            response = self._create_http_request(method, url, headers, body, timeout=16, **kwargs)
         logging.info('%s "URLFETCH %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
         response_headers = {k.title(): v for k, v in response.getheaders()}
         if 'Set-Cookie' in response_headers:
@@ -1603,13 +1603,13 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             hostname, _, port = self.path.partition(':')
             return self.do_METHOD_FORWARD(hostname, int(port), 60)
         else:
-            return self.do_METHOD_URLFETCH('dummyserver')
+            return self.do_METHOD_URLFETCH('')
 
 class ProxyChainMixin:
     """proxy chain mixin"""
     proxy = ''
 
-    def __create_connection(self, hostname, port, timeout, **kwargs):
+    def _create_connection(self, hostname, port, timeout, **kwargs):
         _, proxyuser, proxypass, proxyaddress = ProxyUtil.parse_proxy(self.proxy)
         proxyhost, _, proxyport = proxyaddress.rpartition(':')
         sock = socket.create_connection((proxyhost, int(proxyport)))
@@ -1624,8 +1624,8 @@ class ProxyChainMixin:
             raise httplib.BadStatusLine('%s %s %s' % (response.version, response.status, response.reason))
         return sock
 
-    def __create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        sock = self.__create_connection(hostname, port, timeout, **kwargs)
+    def _create_ssl_connection(self, hostname, port, timeout, **kwargs):
+        sock = self._create_connection(hostname, port, timeout, **kwargs)
         ssl_sock = ssl.wrap_socket(sock)
         return ssl_sock
 
@@ -1637,15 +1637,17 @@ class AdvancedProxyHandler(SimpleProxyHandler):
     tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_time = collections.defaultdict(float)
     ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
+    max_window = 4
+    max_timeout = 16
 
-    def __gethostbyname2(self, hostname):
+    def _gethostbyname2(self, hostname):
         try:
             iplist = self.dns_cache[hostname]
         except KeyError:
-            self.dns[host] = iplist = socket.gethostbyname_ex(host)[-1]
+            self.dns_cache[hostname] = iplist = socket.gethostbyname_ex(hostname)[-1]
         return iplist
 
-    def __create_connection(self, hostname, port, timeout, **kwargs):
+    def _create_connection(self, hostname, port, timeout, **kwargs):
         connection_cache_key = kwargs.get('cache_key')
         def create_connection(ipaddr, timeout, queobj):
             sock = None
@@ -1691,14 +1693,13 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     return sock
         except Queue.Empty:
             pass
-        host, port = address
         result = None
-        addresses = [(x, port) for x in self.__gethostbyname2(host)]
+        addresses = [(x, port) for x in self._gethostbyname2(hostname)]
         if port == 443:
             get_connection_time = lambda addr: self.ssl_connection_time.__getitem__(addr) or self.tcp_connection_time.__getitem__(addr)
         else:
             get_connection_time = self.tcp_connection_time.__getitem__
-        for i in range(self.max_retry):
+        for i in range(3):
             window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
             addresses.sort(key=get_connection_time)
             addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
@@ -1715,7 +1716,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                         # only output first error
                         logging.warning('create_connection to %s return %r, try again.', addrs, result)
 
-    def __create_ssl_connection(self, hostname, port, timeout, **kwargs):
+    def _create_ssl_connection(self, hostname, port, timeout, **kwargs):
         connection_cache_key = kwargs.get('cache_key')
         validate = kwargs.get('validate')
         def create_ssl_connection(ipaddr, timeout, queobj):
@@ -1754,11 +1755,11 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 # verify SSL certificate.
-                if validate and address[0].endswith('.appspot.com'):
+                if validate and hostname.endswith('.appspot.com'):
                     cert = ssl_sock.getpeercert()
                     orgname = next((v for ((k, v),) in cert['subject'] if k == 'organizationName'))
                     if not orgname.lower().startswith('google '):
-                        raise ssl.SSLError("%r certificate organizationName(%r) not startswith 'Google'" % (address[0], orgname))
+                        raise ssl.SSLError("%r certificate organizationName(%r) not startswith 'Google'" % (hostname, orgname))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except (socket.error, ssl.SSLError, OSError) as e:
@@ -1787,7 +1788,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # set a short timeout to trigger timeout retry more quickly.
                 sock.settimeout(timeout or self.max_timeout)
                 # pick up the certificate
-                server_hostname = b'www.google.com' if address[0].endswith('.appspot.com') else None
+                server_hostname = b'www.google.com' if hostname.endswith('.appspot.com') else None
                 ssl_sock = SSLConnection(self.openssl_context, sock)
                 ssl_sock.set_connect_state()
                 if server_hostname:
@@ -1807,11 +1808,11 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
                 ssl_sock.sock = sock
                 # verify SSL certificate.
-                if validate and address[0].endswith('.appspot.com'):
+                if validate and hostname.endswith('.appspot.com'):
                     cert = ssl_sock.get_peer_certificate()
                     commonname = next((v for k, v in cert.get_subject().get_components() if k == 'CN'))
                     if '.google' not in commonname and not commonname.endswith('.appspot.com'):
-                        raise socket.error("Host name '%s' doesn't match certificate host '%s'" % (address[0], commonname))
+                        raise socket.error("Host name '%s' doesn't match certificate host '%s'" % (hostname, commonname))
                 # put ssl socket object to output queobj
                 queobj.put(ssl_sock)
             except (socket.error, OpenSSL.SSL.Error, OSError) as e:
@@ -1841,12 +1842,11 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     return sock
         except Queue.Empty:
             pass
-        host, port = address
         result = None
         # create_connection = create_ssl_connection if not validate else _create_openssl_connection
         create_connection = create_ssl_connection
-        addresses = [(x, port) for x in self.__gethostbyname2(host)]
-        for i in range(self.max_retry):
+        addresses = [(x, port) for x in self._gethostbyname2(hostname)]
+        for i in range(3):
             window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
             addresses.sort(key=self.ssl_connection_time.__getitem__)
             addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
@@ -1863,7 +1863,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                         # only output first error
                         logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
 
-    def __create_http_request(self, method, url, headers, body, timeout, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
+    def _create_http_request(self, method, url, headers, body, timeout, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1882,12 +1882,12 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         errors = []
         for _ in range(max_retry):
             try:
-                create_connection = self.__create_ssl_connection if scheme == 'https' else self.__create_connection
+                create_connection = self._create_ssl_connection if scheme == 'https' else self._create_connection
                 sock = create_connection(realhost or host, port, timeout, validate=validate, cache_key=connection_cache_key)
                 if sock and not isinstance(sock, Exception):
                     break
             except Exception as e:
-                logging.debug('__create_http_request "%s %s" failed:%s', method, url, e)
+                logging.exception('create_http_request "%s %s" failed:%s', method, url, e)
                 errors.append(e)
                 continue
         if not sock and errors:
@@ -3303,7 +3303,7 @@ def main():
         thread.start_new_thread(server.serve_forever, tuple())
 
     if False:
-        server = LocalProxyServer(('', 9001), SimpleProxyHandler)
+        server = LocalProxyServer(('', 9001), AdvancedProxyHandler)
         thread.start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
