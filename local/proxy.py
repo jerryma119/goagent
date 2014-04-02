@@ -1451,7 +1451,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         ssl_sock = ssl.wrap_socket(sock)
         return ssl_sock
 
-    def __create_http_request(self, method, url, body=None, headers={}, realhost='', timeout=16, max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
+    def __create_http_request(self, method, url, headers, body, **kwargs):
+        timeout = kwargs.pop('timeout', 16)
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1466,72 +1467,14 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             headers['Host'] = host
         if body and 'Content-Length' not in headers:
             headers['Content-Length'] = str(len(body))
-        sock = None
-        errors = []
-        for _ in range(max_retry):
-            try:
-                create_connection = self.__create_ssl_connection if scheme == 'https' else self.__create_connection
-                sock = create_connection(realhost or host, port, timeout, validate=validate, cache_key=connection_cache_key)
-                if sock and not isinstance(sock, Exception):
-                    break
-            except Exception as e:
-                logging.debug('__create_http_request "%s %s" failed:%s', method, url, e)
-                errors.append(e)
-                continue
-        if not sock and errors:
-            raise errors[-1]
-        request_data = ''
-        crlf_counter = 0
-        if scheme != 'https' and crlf:
-            fakeheaders = dict((k.title(), v) for k, v in headers.items())
-            fakeheaders.pop('Content-Length', None)
-            fakeheaders.pop('Cookie', None)
-            if 'User-Agent' not in fakeheaders:
-                fakeheaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1878.0 Safari/537.36'
-            if 'Accept-Language' not in fakeheaders:
-                fakeheaders['Accept-Language'] = 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
-            if 'Accept' not in fakeheaders:
-                fakeheaders['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-            fakeheaders_data = ''.join('%s: %s\r\n' % (k, v) for k, v in fakeheaders.items() if k not in self.skip_headers)
-            while crlf_counter < 5 or len(request_data) < 1500 * 2:
-                request_data += 'GET / HTTP/1.1\r\n%s\r\n' % fakeheaders_data
-                crlf_counter += 1
-            request_data += '\r\n\r\n\r\n'
-        request_data += '%s %s %s\r\n' % (method, path, self.protocol_version)
-        request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items() if k.title() not in self.skip_headers)
-        request_data += '\r\n'
-        if isinstance(body, bytes):
-            sock.sendall(request_data.encode() + body)
-        elif hasattr(body, 'read'):
-            sock.sendall(request_data)
-            while 1:
-                data = body.read(bufsize)
-                if not data:
-                    break
-                sock.sendall(data)
-        else:
-            raise TypeError('http_util.request(body) must be a string or buffer, not %r' % type(body))
-        try:
-            while crlf_counter:
-                response = httplib.HTTPResponse(sock, buffering=False)
-                response.begin()
-                response.read()
-                response.close()
-                crlf_counter -= 1
-        except Exception as e:
-            logging.exception('crlf skip read host=%r path=%r error: %r', headers.get('Host'), path, e)
-            return None
-        response = httplib.HTTPResponse(sock, buffering=True)
-        try:
-            response.begin()
-        except httplib.BadStatusLine:
-            response = None
+        ConnectionType = httplib.HTTPSConnection if scheme == 'https' else httplib.HTTPConnection
+        connection = ConnectionType(netloc, timeout=timeout)
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse(buffering=True)
         return response
 
-    def __urlfetch(self, method, url, headers, body, fetchserver, **kwargs):
-        assert fetchserver
-        response = self.__create_http_request(method, url, body=body, headers=headers)
-        return response
+    def __create_http_request_withserver(self, fetchserver, method, url, headers, body, **kwargs):
+        raise NotImplementedError
 
     def do_METHOD_MOCK(self, status, headers, content):
         """mock response"""
@@ -1632,7 +1575,10 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         url = self.path
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.rfile.read(int(headers.get('Content-Length', 0)))
-        response = self.__urlfetch(method, url, headers, body, fetchserver, **kwargs)
+        if fetchserver:
+            response = self.__create_http_request_withserver(fetchserver, method, url, headers, body, **kwargs)
+        else:
+            response = self.__create_http_request(method, url, headers, body, **kwargs)
         logging.info('%s "URLFETCH %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
         response_headers = {k.title(): v for k, v in response.getheaders()}
         if 'Set-Cookie' in response_headers:
@@ -1659,6 +1605,95 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             return self.do_METHOD_FORWARD(hostname, int(port), 60)
         else:
             return self.do_METHOD_URLFETCH('dummyserver')
+
+
+class AdvancedProxyHandler(SimpleProxyHandler):
+    """Advanced Proxy Handler"""
+    def __gethostbyname2(self, hostname):
+        raise NotImplementedError
+
+    def __create_connection(self, hostname, port, timeout, **kwargs):
+        raise NotImplementedError
+
+    def __create_ssl_connection(self, hostname, port, timeout, **kwargs):
+        raise NotImplementedError
+
+    def __create_http_request(self, method, url, headers, body, timeout=16, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
+        scheme, netloc, path, query, _ = urlparse.urlsplit(url)
+        if netloc.rfind(':') <= netloc.rfind(']'):
+            # no port number
+            host = netloc
+            port = 443 if scheme == 'https' else 80
+        else:
+            host, _, port = netloc.rpartition(':')
+            port = int(port)
+        if query:
+            path += '?' + query
+        if 'Host' not in headers:
+            headers['Host'] = host
+        if body and 'Content-Length' not in headers:
+            headers['Content-Length'] = str(len(body))
+        sock = None
+        errors = []
+        for _ in range(max_retry):
+            try:
+                create_connection = self.__create_ssl_connection if scheme == 'https' else self.__create_connection
+                sock = create_connection(realhost or host, port, timeout, validate=validate, cache_key=connection_cache_key)
+                if sock and not isinstance(sock, Exception):
+                    break
+            except Exception as e:
+                logging.debug('__create_http_request "%s %s" failed:%s', method, url, e)
+                errors.append(e)
+                continue
+        if not sock and errors:
+            raise errors[-1]
+        request_data = ''
+        crlf_counter = 0
+        if scheme != 'https' and crlf:
+            fakeheaders = dict((k.title(), v) for k, v in headers.items())
+            fakeheaders.pop('Content-Length', None)
+            fakeheaders.pop('Cookie', None)
+            if 'User-Agent' not in fakeheaders:
+                fakeheaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1878.0 Safari/537.36'
+            if 'Accept-Language' not in fakeheaders:
+                fakeheaders['Accept-Language'] = 'zh-CN,zh;q=0.8,en-US;q=0.6,en;q=0.4'
+            if 'Accept' not in fakeheaders:
+                fakeheaders['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+            fakeheaders_data = ''.join('%s: %s\r\n' % (k, v) for k, v in fakeheaders.items() if k not in self.skip_headers)
+            while crlf_counter < 5 or len(request_data) < 1500 * 2:
+                request_data += 'GET / HTTP/1.1\r\n%s\r\n' % fakeheaders_data
+                crlf_counter += 1
+            request_data += '\r\n\r\n\r\n'
+        request_data += '%s %s %s\r\n' % (method, path, self.protocol_version)
+        request_data += ''.join('%s: %s\r\n' % (k.title(), v) for k, v in headers.items() if k.title() not in self.skip_headers)
+        request_data += '\r\n'
+        if isinstance(body, bytes):
+            sock.sendall(request_data.encode() + body)
+        elif hasattr(body, 'read'):
+            sock.sendall(request_data)
+            while 1:
+                data = body.read(bufsize)
+                if not data:
+                    break
+                sock.sendall(data)
+        else:
+            raise TypeError('http_util.request(body) must be a string or buffer, not %r' % type(body))
+        try:
+            while crlf_counter:
+                response = httplib.HTTPResponse(sock, buffering=False)
+                response.begin()
+                response.read()
+                response.close()
+                crlf_counter -= 1
+        except Exception as e:
+            logging.exception('crlf skip read host=%r path=%r error: %r', headers.get('Host'), path, e)
+            return None
+        response = httplib.HTTPResponse(sock, buffering=True)
+        try:
+            response.begin()
+        except httplib.BadStatusLine:
+            response = None
+        return response
 
 
 class Common(object):
