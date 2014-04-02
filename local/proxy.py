@@ -1451,8 +1451,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         ssl_sock = ssl.wrap_socket(sock)
         return ssl_sock
 
-    def __create_http_request(self, method, url, headers, body, **kwargs):
-        timeout = kwargs.pop('timeout', 16)
+    def __create_http_request(self, method, url, headers, body, timeout, **kwargs):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1473,7 +1472,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response = connection.getresponse(buffering=True)
         return response
 
-    def __create_http_request_withserver(self, fetchserver, method, url, headers, body, **kwargs):
+    def __create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         raise NotImplementedError
 
     def do_METHOD_MOCK(self, status, headers, content):
@@ -1606,6 +1605,30 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             return self.do_METHOD_URLFETCH('dummyserver')
 
+class ProxyChainMixin:
+    """proxy chain mixin"""
+    proxy = ''
+
+    def __create_connection(self, hostname, port, timeout, **kwargs):
+        _, proxyuser, proxypass, proxyaddress = ProxyUtil.parse_proxy(self.proxy)
+        proxyhost, _, proxyport = proxyaddress.rpartition(':')
+        sock = socket.create_connection((proxyhost, int(proxyport)))
+        request_data = 'CONNECT %s:%s HTTP/1.1\r\n' % (hostname, port)
+        if proxyuser and proxypass:
+            request_data += 'Proxy-authorization: Basic %s\r\n' % base64.b64encode(('%s:%s' % (proxyuser, proxypass)).encode()).decode().strip()
+        request_data += '\r\n'
+        sock.sendall(request_data)
+        response = httplib.HTTPResponse(sock, buffering=False)
+        response.begin()
+        if response.status >= 400:
+            raise httplib.BadStatusLine('%s %s %s' % (response.version, response.status, response.reason))
+        return sock
+
+    def __create_ssl_connection(self, hostname, port, timeout, **kwargs):
+        sock = self.__create_connection(hostname, port, timeout, **kwargs)
+        ssl_sock = ssl.wrap_socket(sock)
+        return ssl_sock
+
 
 class AdvancedProxyHandler(SimpleProxyHandler):
     """Advanced Proxy Handler"""
@@ -1624,7 +1647,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
     def __create_ssl_connection(self, hostname, port, timeout, **kwargs):
         raise NotImplementedError
 
-    def __create_http_request(self, method, url, headers, body, timeout=16, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
+    def __create_http_request(self, method, url, headers, body, timeout, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
