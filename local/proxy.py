@@ -80,6 +80,7 @@ import thread
 import socket
 import ssl
 import select
+import cgi
 import Queue
 import SocketServer
 import ConfigParser
@@ -1394,6 +1395,15 @@ class HTTPUtil(object):
                     continue
 
 
+class SimpleProxyHandlerFilter(object):
+    def filter(self, handler):
+        if handler.command == 'CONNECT':
+            hostname, _, port = handler.path.partition(':')
+            return 'forward %s %s' % (hostname, port)
+        else:
+            return 'urlfetch'
+
+
 class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     """SimpleProxyHandler for GoAgent 3.x"""
 
@@ -1402,7 +1412,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     normcookie = functools.partial(re.compile(', ([^ =]+(?:=|$))').sub, '\\r\\nSet-Cookie: \\1')
     normattachment = functools.partial(re.compile(r'filename=([^"\']+)').sub, 'filename="\\1"')
     bufsize = 256 * 1024
+    max_timeout = 16
     first_run_lock = threading.Lock()
+    handler_filters = [SimpleProxyHandlerFilter()]
 
     def __init__(self, *args, **kwargs):
         BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
@@ -1599,11 +1611,31 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response.close()
 
     def do_METHOD(self):
-        if self.command == 'CONNECT':
-            hostname, _, port = self.path.partition(':')
-            return self.do_METHOD_FORWARD(hostname, int(port), 60)
-        else:
-            return self.do_METHOD_URLFETCH('')
+        for handler_filter in self.handler_filters:
+            action = handler_filter.filter(self)
+            if action:
+                args = action.split()
+                routine = args.pop(0).upper()
+                if routine == 'FORWARD':
+                    hostname, port = args[0], int(args[1])
+                    return self.do_METHOD_FORWARD(hostname, port, self.max_timeout)
+                elif routine == 'URLFETCH':
+                    if args:
+                        fetchserver = args[0]
+                        kwargs = dict(cgi.parse_qsl(args[1]))
+                        return self.do_METHOD_URLFETCH(fetchserver, **kwargs)
+                    else:
+                        return self.do_METHOD_URLFETCH(None)
+                elif routine == 'STRIPSSL':
+                    return self.do_METHOD_STRIPSSL()
+                elif routine == 'MOCK':
+                    status = int(args[0])
+                    headers = dict(cgi.parse_qsl(args[1]))
+                    content = base64.b64decode(args[2])
+                    return self.do_METHOD_MOCK(status, headers, content)
+                else:
+                    raise ValueError('Unknown action=%r from handler_filter=%r', action, handler_filter)
+
 
 class ProxyChainMixin:
     """proxy chain mixin"""
@@ -1638,7 +1670,6 @@ class AdvancedProxyHandler(SimpleProxyHandler):
     ssl_connection_time = collections.defaultdict(float)
     ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     max_window = 4
-    max_timeout = 16
 
     def _gethostbyname2(self, hostname):
         try:
