@@ -1632,20 +1632,236 @@ class ProxyChainMixin:
 
 class AdvancedProxyHandler(SimpleProxyHandler):
     """Advanced Proxy Handler"""
-    dns_cache = {}
+    dns_cache = LRUCache(64*1024)
     tcp_connection_time = collections.defaultdict(float)
     tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_time = collections.defaultdict(float)
     ssl_connection_cache = collections.defaultdict(Queue.PriorityQueue)
 
     def __gethostbyname2(self, hostname):
-        raise NotImplementedError
+        try:
+            iplist = self.dns_cache[hostname]
+        except KeyError:
+            self.dns[host] = iplist = socket.gethostbyname_ex(host)[-1]
+        return iplist
 
     def __create_connection(self, hostname, port, timeout, **kwargs):
-        raise NotImplementedError
+        connection_cache_key = kwargs.get('cache_key')
+        def create_connection(ipaddr, timeout, queobj):
+            sock = None
+            try:
+                # create a ipv4/ipv6 socket object
+                sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
+                # set reuseaddr option to avoid 10048 socket error
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # resize socket recv buffer 8K->32K to improve browser releated application performance
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
+                # disable nagle algorithm to send http request quickly.
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
+                # set a short timeout to trigger timeout retry more quickly.
+                sock.settimeout(timeout or self.max_timeout)
+                # start connection time record
+                start_time = time.time()
+                # TCP connect
+                sock.connect(ipaddr)
+                # record TCP connection time
+                self.tcp_connection_time[ipaddr] = time.time() - start_time
+                # put ssl socket object to output queobj
+                queobj.put(sock)
+            except (socket.error, OSError) as e:
+                # any socket.error, put Excpetions to output queobj.
+                queobj.put(e)
+                # reset a large and random timeout to the ipaddr
+                self.tcp_connection_time[ipaddr] = self.max_timeout+random.random()
+                # close tcp socket
+                if sock:
+                    sock.close()
+        def close_connection(count, queobj):
+            for i in range(count):
+                sock = queobj.get()
+                if sock and not isinstance(sock, Exception):
+                    if connection_cache_key and i == 0:
+                        self.tcp_connection_cache[connection_cache_key].put((time.time(), sock))
+                    else:
+                        sock.close()
+        try:
+            while connection_cache_key:
+                ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
+                if time.time() - ctime < 30:
+                    return sock
+        except Queue.Empty:
+            pass
+        host, port = address
+        result = None
+        addresses = [(x, port) for x in self.__gethostbyname2(host)]
+        if port == 443:
+            get_connection_time = lambda addr: self.ssl_connection_time.__getitem__(addr) or self.tcp_connection_time.__getitem__(addr)
+        else:
+            get_connection_time = self.tcp_connection_time.__getitem__
+        for i in range(self.max_retry):
+            window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
+            addresses.sort(key=get_connection_time)
+            addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
+            queobj = Queue.Queue()
+            for addr in addrs:
+                thread.start_new_thread(create_connection, (addr, timeout, queobj))
+            for i in range(len(addrs)):
+                result = queobj.get()
+                if not isinstance(result, (socket.error, OSError)):
+                    thread.start_new_thread(close_connection, (len(addrs)-i-1, queobj))
+                    return result
+                else:
+                    if i == 0:
+                        # only output first error
+                        logging.warning('create_connection to %s return %r, try again.', addrs, result)
 
     def __create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        raise NotImplementedError
+        connection_cache_key = kwargs.get('cache_key')
+        validate = kwargs.get('validate')
+        def create_ssl_connection(ipaddr, timeout, queobj):
+            sock = None
+            ssl_sock = None
+            try:
+                # create a ipv4/ipv6 socket object
+                sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
+                # set reuseaddr option to avoid 10048 socket error
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # resize socket recv buffer 8K->32K to improve browser releated application performance
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
+                # disable negal algorithm to send http request quickly.
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
+                # set a short timeout to trigger timeout retry more quickly.
+                sock.settimeout(timeout or self.max_timeout)
+                # pick up the certificate
+                if not validate:
+                    ssl_sock = ssl.wrap_socket(sock, do_handshake_on_connect=False)
+                else:
+                    ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs=os.path.join(os.path.dirname(os.path.abspath(__file__)),'cacert.pem'), do_handshake_on_connect=False)
+                ssl_sock.settimeout(timeout or self.max_timeout)
+                # start connection time record
+                start_time = time.time()
+                # TCP connect
+                ssl_sock.connect(ipaddr)
+                connected_time = time.time()
+                # SSL handshake
+                ssl_sock.do_handshake()
+                handshaked_time = time.time()
+                # record TCP connection time
+                self.tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
+                # record SSL connection time
+                self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
+                ssl_sock.ssl_time = connected_time - start_time
+                # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
+                ssl_sock.sock = sock
+                # verify SSL certificate.
+                if validate and address[0].endswith('.appspot.com'):
+                    cert = ssl_sock.getpeercert()
+                    orgname = next((v for ((k, v),) in cert['subject'] if k == 'organizationName'))
+                    if not orgname.lower().startswith('google '):
+                        raise ssl.SSLError("%r certificate organizationName(%r) not startswith 'Google'" % (address[0], orgname))
+                # put ssl socket object to output queobj
+                queobj.put(ssl_sock)
+            except (socket.error, ssl.SSLError, OSError) as e:
+                # any socket.error, put Excpetions to output queobj.
+                queobj.put(e)
+                # reset a large and random timeout to the ipaddr
+                self.ssl_connection_time[ipaddr] = self.max_timeout + random.random()
+                # close ssl socket
+                if ssl_sock:
+                    ssl_sock.close()
+                # close tcp socket
+                if sock:
+                    sock.close()
+        def create_openssl_connection(ipaddr, timeout, queobj):
+            sock = None
+            ssl_sock = None
+            try:
+                # create a ipv4/ipv6 socket object
+                sock = socket.socket(socket.AF_INET if ':' not in ipaddr[0] else socket.AF_INET6)
+                # set reuseaddr option to avoid 10048 socket error
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # resize socket recv buffer 8K->32K to improve browser releated application performance
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32*1024)
+                # disable negal algorithm to send http request quickly.
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, True)
+                # set a short timeout to trigger timeout retry more quickly.
+                sock.settimeout(timeout or self.max_timeout)
+                # pick up the certificate
+                server_hostname = b'www.google.com' if address[0].endswith('.appspot.com') else None
+                ssl_sock = SSLConnection(self.openssl_context, sock)
+                ssl_sock.set_connect_state()
+                if server_hostname:
+                    ssl_sock.set_tlsext_host_name(server_hostname)
+                # start connection time record
+                start_time = time.time()
+                # TCP connect
+                ssl_sock.connect(ipaddr)
+                connected_time = time.time()
+                # SSL handshake
+                ssl_sock.do_handshake()
+                handshaked_time = time.time()
+                # record TCP connection time
+                self.tcp_connection_time[ipaddr] = ssl_sock.tcp_time = connected_time - start_time
+                # record SSL connection time
+                self.ssl_connection_time[ipaddr] = ssl_sock.ssl_time = handshaked_time - start_time
+                # sometimes, we want to use raw tcp socket directly(select/epoll), so setattr it to ssl socket.
+                ssl_sock.sock = sock
+                # verify SSL certificate.
+                if validate and address[0].endswith('.appspot.com'):
+                    cert = ssl_sock.get_peer_certificate()
+                    commonname = next((v for k, v in cert.get_subject().get_components() if k == 'CN'))
+                    if '.google' not in commonname and not commonname.endswith('.appspot.com'):
+                        raise socket.error("Host name '%s' doesn't match certificate host '%s'" % (address[0], commonname))
+                # put ssl socket object to output queobj
+                queobj.put(ssl_sock)
+            except (socket.error, OpenSSL.SSL.Error, OSError) as e:
+                # any socket.error, put Excpetions to output queobj.
+                queobj.put(e)
+                # reset a large and random timeout to the ipaddr
+                self.ssl_connection_time[ipaddr] = self.max_timeout + random.random()
+                # close ssl socket
+                if ssl_sock:
+                    ssl_sock.close()
+                # close tcp socket
+                if sock:
+                    sock.close()
+        def close_ssl_connection(count, queobj, first_tcp_time, first_ssl_time):
+            for i in range(count):
+                sock = queobj.get()
+                ssl_time_threshold = min(1, 1.5 * first_ssl_time)
+                if sock and not isinstance(sock, Exception):
+                    if connection_cache_key and sock.ssl_time < ssl_time_threshold:
+                        self.ssl_connection_cache[connection_cache_key].put((time.time(), sock))
+                    else:
+                        sock.close()
+        try:
+            while connection_cache_key:
+                ctime, sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
+                if time.time() - ctime < 30:
+                    return sock
+        except Queue.Empty:
+            pass
+        host, port = address
+        result = None
+        # create_connection = create_ssl_connection if not validate else _create_openssl_connection
+        create_connection = create_ssl_connection
+        addresses = [(x, port) for x in self.__gethostbyname2(host)]
+        for i in range(self.max_retry):
+            window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
+            addresses.sort(key=self.ssl_connection_time.__getitem__)
+            addrs = addresses[:window] + random.sample(addresses, min(len(addresses), window, self.max_window-window))
+            queobj = Queue.Queue()
+            for addr in addrs:
+                thread.start_new_thread(create_connection, (addr, timeout, queobj))
+            for i in range(len(addrs)):
+                result = queobj.get()
+                if not isinstance(result, Exception):
+                    thread.start_new_thread(close_ssl_connection, (len(addrs)-i-1, queobj, result.tcp_time, result.ssl_time))
+                    return result
+                else:
+                    if i == 0:
+                        # only output first error
+                        logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
 
     def __create_http_request(self, method, url, headers, body, timeout, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
