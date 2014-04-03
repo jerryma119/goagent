@@ -1538,13 +1538,14 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
 
-    def do_METHOD_FORWARD(self, hostname, port, timeout, do_ssl_handshake=False):
+    def do_METHOD_FORWARD(self, hostname, port, timeout, kwargs={}):
         """forward socket"""
+        do_ssl_handshake = kwargs.pop('do_ssl_handshake', False)
         local = self.connection
         if do_ssl_handshake:
-            remote = self.create_ssl_connection(hostname, port, timeout)
+            remote = self.create_ssl_connection(hostname, port, timeout, **kwargs)
         else:
-            remote = self.create_tcp_connection(hostname, port, timeout)
+            remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
         if remote and not isinstance(remote, Exception):
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
         logging.info('%s "FORWARD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
@@ -1580,7 +1581,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if remote:
                 remote.close()
 
-    def do_METHOD_URLFETCH(self, fetchserver, **kwargs):
+    def do_METHOD_URLFETCH(self, fetchserver, kwargs={}):
         """urlfetch from fetchserver"""
         method = self.command
         url = self.path
