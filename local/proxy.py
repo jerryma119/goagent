@@ -2987,7 +2987,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 
 class WithGAEFilter(SimpleProxyHandlerFilter):
-    """force https filter"""
+    """with gae filter"""
     def filter(self, handler):
         if (handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_WITHGAE) or \
            (handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_WITHGAE):
@@ -3004,14 +3004,23 @@ class ForceHttpsFilter(SimpleProxyHandlerFilter):
 
 
 class FakeHttpsFilter(SimpleProxyHandlerFilter):
-    """force https filter"""
+    """fake https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_FAKEHTTPS:
             return [handler.do_METHOD_STRIPSSL]
 
 
-class DirectRegionFilter(SimpleProxyHandlerFilter):
+class HostsFilter(SimpleProxyHandlerFilter):
     """force https filter"""
+    def filter(self, handler):
+        if handler.command == 'CONNECT':
+            hostname, _, port = handler.path.partition(':')
+        else:
+            hostname = urlparse.urlsplit(handler.path).netloc.rsplit(':', 1)[0].strip('[]')
+
+
+class DirectRegionFilter(SimpleProxyHandlerFilter):
+    """direct region filter"""
     geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
 
     def is_direct_regions(self, handler, hostname):
@@ -3086,7 +3095,7 @@ class GAEProxyHandler2(AdvancedProxyHandler):
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
         connection_cache_key = '%s:%d' % (common.HOSTS_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        response = self._create_http_request(request_method, fetchserver, request_headers, body, self.max_timeout, crlf=need_crlf, validate=need_validate, connection_cache_key=connection_cache_key)
+        response = self.create_http_request(request_method, fetchserver, request_headers, body, self.max_timeout, crlf=need_crlf, validate=need_validate, connection_cache_key=connection_cache_key)
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
         if response.status != 200:
