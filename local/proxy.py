@@ -3014,9 +3014,13 @@ class HostsFilter(SimpleProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            hostname, _, port = handler.path.partition(':')
+            host, _, port = handler.path.partition(':')
+            if handler.path in common.CONNECT_HOSTS_MAP or handler.path.endswith(common.CONNECT_POSTFIX_ENDSWITH) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
+                return [handler.do_METHOD_FORWARD, host, int(port), handler.max_timeout]
         else:
-            hostname = urlparse.urlsplit(handler.path).netloc.rsplit(':', 1)[0].strip('[]')
+            host = urlparse.urlsplit(handler.path).netloc.rsplit(':', 1)[0].strip('[]')
+            if any(x(handler.path) for x in common.METHOD_REMATCH_MAP) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
+                return [handler.do_METHOD_URLFETCH, None]
 
 
 class DirectRegionFilter(SimpleProxyHandlerFilter):
@@ -3051,7 +3055,7 @@ class GAEFetchFilter(SimpleProxyHandlerFilter):
 
 class GAEProxyHandler2(AdvancedProxyHandler):
     """GAE Proxy Handler 2"""
-    handler_filters = [ForceHttpsFilter(), SimpleProxyHandlerFilter()]
+    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), DirectRegionFilter(), SimpleProxyHandlerFilter()]
 
     def _create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         # deflate = lambda x:zlib.compress(x)[2:-4]
