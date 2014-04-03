@@ -2985,12 +2985,28 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.__realconnection = None
 
 
+class WithGAEFilter(SimpleProxyHandlerFilter):
+    """force https filter"""
+    def filter(self, handler):
+        if (handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_WITHGAE) or \
+           (handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_WITHGAE):
+            fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+            return [handler.do_METHOD_URLFETCH, fetchserver]
+
+
 class ForceHttpsFilter(SimpleProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
             logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
             return [handler.do_METHOD_MOCK, 301, {'Location': handler.path.replace('http://', 'https://', 1)}, '']
+
+
+class FakeHttpsFilter(SimpleProxyHandlerFilter):
+    """force https filter"""
+    def filter(self, handler):
+        if handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_FAKEHTTPS:
+            return [handler.do_METHOD_STRIPSSL]
 
 
 class DirectRegionFilter(SimpleProxyHandlerFilter):
