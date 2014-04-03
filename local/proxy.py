@@ -1621,6 +1621,9 @@ class ProxyChainMixin:
     """proxy chain mixin"""
     proxy = ''
 
+    def gethostbyname2(self, hostname):
+        return [hostname]
+
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
         _, proxyuser, proxypass, proxyaddress = ProxyUtil.parse_proxy(self.proxy)
         proxyhost, _, proxyport = proxyaddress.rpartition(':')
@@ -2988,6 +2991,26 @@ class ForceHttpsFilter(SimpleProxyHandlerFilter):
         if handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
             logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
             return [handler.do_METHOD_MOCK, 301, {'Location': handler.path.replace('http://', 'https://', 1)}, '']
+
+
+class DirectRegionFilter(SimpleProxyHandlerFilter):
+    """force https filter"""
+    geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
+
+    def is_direct_regions(self, handler, hostname):
+        iplist = handler.gethostbyname2()
+        country_code = self.geoip.country_code_by_addr(iplist[0])
+        return country_code in common.GAE_REGIONS
+
+    def filter(self, handler):
+        if handler.command == 'CONNECT':
+            hostname, _, port = handler.path.partition(':')
+            if self.is_direct_regions(handler, hostname):
+                return [handler.do_METHOD_FORWARD, hostname, int(port), handler.max_timeout]
+        else:
+            hostname = urlparse.urlsplit(handler.path).netloc.rsplit(':', 1)[0].strip('[]')
+            if self.is_direct_regions(handler, hostname):
+                return [handler.do_METHOD_URLFETCH, None]
 
 
 class GAEFetchFilter(SimpleProxyHandlerFilter):
