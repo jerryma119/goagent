@@ -1907,6 +1907,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             fakeheaders = dict((k.title(), v) for k, v in headers.items())
             fakeheaders.pop('Content-Length', None)
             fakeheaders.pop('Cookie', None)
+            fakeheaders.pop('Host', None)
             if 'User-Agent' not in fakeheaders:
                 fakeheaders['User-Agent'] = 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1878.0 Safari/537.36'
             if 'Accept-Language' not in fakeheaders:
@@ -2981,10 +2982,27 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.__realconnection = None
 
 
+class ForceHttpsFilter(SimpleProxyHandlerFilter):
+    """force https filter"""
+    def filter(self, handler):
+        if handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
+            logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
+            return [handler.do_METHOD_MOCK, 301, {'Location': handler.path.replace('http://', 'https://', 1)}, '']
+
+
+class GAEFetchFilter(SimpleProxyHandlerFilter):
+    """force https filter"""
+    def filter(self, handler):
+        if handler.command == 'CONNECT':
+            return [handler.do_METHOD_STRIPSSL]
+        else:
+            fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+            return [handler.do_METHOD_URLFETCH, fetchserver]
+
+
 class GAEProxyHandler2(AdvancedProxyHandler):
     """GAE Proxy Handler 2"""
-    def do_METHOD(self):
-        pass
+    handler_filters = [ForceHttpsFilter(), SimpleProxyHandlerFilter()]
 
     def _create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -3386,7 +3404,7 @@ def main():
         thread.start_new_thread(server.serve_forever, tuple())
 
     if False:
-        server = LocalProxyServer(('', 9001), AdvancedProxyHandler)
+        server = LocalProxyServer(('', 9001), GAEProxyHandler2)
         thread.start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
