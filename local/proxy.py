@@ -2286,6 +2286,18 @@ class XORCipher(object):
         return self.__key_xor(data)
 
 
+class XORFileObject(object):
+    """fileobj for rc4"""
+    def __init__(self, stream, key):
+        self.__stream = stream
+        self.__cipher = XORCipher(key) if key else lambda x:x
+    def __getattr__(self, attr):
+        if attr not in ('__stream', '__cipher'):
+            return getattr(self.__stream, attr)
+    def read(self, size=-1):
+        return self.__cipher.encrypt(self.__stream.read(size))
+
+
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # deflate = lambda x:zlib.compress(x)[2:-4]
     rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
@@ -3313,13 +3325,30 @@ class PHPFetchFilter(SimpleProxyHandlerFilter):
                 kwargs['password'] = common.PHP_PASSWORD
             if common.PHP_VALIDATE:
                 kwargs['validate'] = 1
-            fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.URLFETCH, fetchserver, kwargs]
+            return [handler.URLFETCH, common.PHP_FETCHSERVER, kwargs]
 
 
 class PHPProxyHandler2(AdvancedProxyHandler):
     """PHP Proxy Handler 2"""
+    first_run_lock = threading.Lock()
     handler_filters = [FakeHttpsFilter(), ForceHttpsFilter(), PHPFetchFilter()]
+
+    def first_run(self):
+        if not common.PROXY_ENABLE:
+            common.resolve_iplist()
+            fetchhost = re.sub(r':\d+$', '', urlparse.urlsplit(common.PHP_FETCHSERVER).netloc)
+            logging.info('resolve common.PHP_FETCHSERVER domain=%r to iplist', fetchhost)
+            if common.PHP_USEHOSTS and fetchhost in common.HOSTS_MAP:
+                hostname = common.HOSTS_MAP[fetchhost]
+                fetchhost_iplist = sum([socket.gethostbyname_ex(x)[-1] for x in common.IPLIST_MAP.get(hostname) or hostname.split('|')], [])
+            else:
+                fetchhost_iplist = http_util.dns_resolve(fetchhost)
+            if len(fetchhost_iplist) == 0:
+                logging.error('resolve %r domain return empty! please use ip list to replace domain list!', fetchhost)
+                sys.exit(-1)
+            self.dns_cache[fetchhost] = list(set(fetchhost_iplist))
+            logging.info('resolve common.PHP_FETCHSERVER domain to iplist=%r', fetchhost_iplist)
+        return True
 
     def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         if body:
@@ -3335,19 +3364,30 @@ class PHPProxyHandler2(AdvancedProxyHandler):
         app_body = b''.join((struct.pack('!h', len(metadata)), metadata, body))
         app_headers = {'Content-Length': len(app_body), 'Content-Type': 'application/octet-stream'}
         fetchserver += '?%s' % random.random()
-        crlf = 0 if fetchserver.startswith('https') else common.PHP_CRLF
+        crlf = 0
         connection_cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
         response = self.create_http_request('POST', fetchserver, app_headers, app_body, self.max_timeout, crlf=crlf, connection_cache_key=connection_cache_key)
         if not response:
             raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
-        response.app_status = response.status
-        if response.status != 200:
-            if response.status in (400, 405):
-                # filter by some firewall
-                common.PHP_CRLF = 0
+        if response.status >= 400:
             return response
+        response.app_status = response.status
+        need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
+        transfer_encoding = response.getheader('Transfer-Encoding', '')
+        if need_decrypt:
+            response.fp = XORFileObject(response.fp, kwargs['password'][0])
+        data = ''
+        while not data.endswith('\r\n\r\n'):
+            byte = response.read(1)
+            if not byte:
+                raise httplib.IncompleteRead(data)
+            data += byte
+        rawline, _, data = data.partition('\r\n')
+        response.status = int(rawline.split()[1])
+        response.msg = httplib.HTTPMessage(io.BytesIO(data))
+        if transfer_encoding:
+            response.msg['Transfer-Encoding'] = transfer_encoding
         return response
-
 
 def get_uptime():
     if os.name == 'nt':
@@ -3566,7 +3606,7 @@ def main():
         thread.start_new_thread(server.serve_forever, tuple())
 
     if False:
-        server = LocalProxyServer(('', 9001), GAEProxyHandler2)
+        server = LocalProxyServer(('', 9001), PHPProxyHandler2)
         thread.start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
