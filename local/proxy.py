@@ -1399,9 +1399,9 @@ class SimpleProxyHandlerFilter(object):
     def filter(self, handler):
         if handler.command == 'CONNECT':
             hostname, _, port = handler.path.partition(':')
-            return [handler.do_METHOD_FORWARD, hostname, int(port), 20]
+            return [handler.FORWARD, hostname, int(port), 20]
         else:
-            return [handler.do_METHOD_URLFETCH, None]
+            return [handler.URLFETCH, None]
 
 
 class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -1487,7 +1487,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         raise NotImplementedError
 
-    def do_METHOD_MOCK(self, status, headers, content):
+    def MOCK(self, status, headers, content):
         """mock response"""
         logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
         if 'Content-Length' not in headers:
@@ -1498,7 +1498,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.wfile.write('\r\n')
         self.wfile.write(content)
 
-    def do_METHOD_STRIPSSL(self):
+    def STRIPSSL(self):
         """strip ssl"""
         host, _, port = self.path.rpartition(':')
         port = int(port)
@@ -1538,7 +1538,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if e.args[0] not in (errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE):
                 raise
 
-    def do_METHOD_FORWARD(self, hostname, port, timeout, kwargs={}):
+    def FORWARD(self, hostname, port, timeout, kwargs={}):
         """forward socket"""
         do_ssl_handshake = kwargs.pop('do_ssl_handshake', False)
         local = self.connection
@@ -1581,7 +1581,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if remote:
                 remote.close()
 
-    def do_METHOD_URLFETCH(self, fetchserver, kwargs={}):
+    def URLFETCH(self, fetchserver, kwargs={}):
         """urlfetch from fetchserver"""
         method = self.command
         url = self.path
@@ -2992,7 +2992,7 @@ class WithGAEFilter(SimpleProxyHandlerFilter):
         if (handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_WITHGAE) or \
            (handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_WITHGAE):
             fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.do_METHOD_URLFETCH, fetchserver]
+            return [handler.URLFETCH, fetchserver]
 
 
 class ForceHttpsFilter(SimpleProxyHandlerFilter):
@@ -3000,14 +3000,14 @@ class ForceHttpsFilter(SimpleProxyHandlerFilter):
     def filter(self, handler):
         if handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
             logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
-            return [handler.do_METHOD_MOCK, 301, {'Location': handler.path.replace('http://', 'https://', 1)}, '']
+            return [handler.MOCK, 301, {'Location': handler.path.replace('http://', 'https://', 1)}, '']
 
 
 class FakeHttpsFilter(SimpleProxyHandlerFilter):
     """fake https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_FAKEHTTPS:
-            return [handler.do_METHOD_STRIPSSL]
+            return [handler.STRIPSSL]
 
 
 class HostsFilter(SimpleProxyHandlerFilter):
@@ -3016,11 +3016,11 @@ class HostsFilter(SimpleProxyHandlerFilter):
         if handler.command == 'CONNECT':
             host, _, port = handler.path.partition(':')
             if handler.path in common.CONNECT_HOSTS_MAP or handler.path.endswith(common.CONNECT_POSTFIX_ENDSWITH) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
-                return [handler.do_METHOD_FORWARD, host, int(port), handler.max_timeout]
+                return [handler.FORWARD, host, int(port), handler.max_timeout]
         else:
             host = urlparse.urlsplit(handler.path).netloc.rsplit(':', 1)[0].strip('[]')
             if any(x(handler.path) for x in common.METHOD_REMATCH_MAP) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
-                return [handler.do_METHOD_URLFETCH, None]
+                return [handler.URLFETCH, None]
 
 
 class DirectRegionFilter(SimpleProxyHandlerFilter):
@@ -3036,21 +3036,21 @@ class DirectRegionFilter(SimpleProxyHandlerFilter):
         if handler.command == 'CONNECT':
             hostname, _, port = handler.path.partition(':')
             if self.is_direct_regions(handler, hostname):
-                return [handler.do_METHOD_FORWARD, hostname, int(port), handler.max_timeout]
+                return [handler.FORWARD, hostname, int(port), handler.max_timeout]
         else:
             hostname = urlparse.urlsplit(handler.path).netloc.rsplit(':', 1)[0].strip('[]')
             if self.is_direct_regions(handler, hostname):
-                return [handler.do_METHOD_URLFETCH, None]
+                return [handler.URLFETCH, None]
 
 
 class GAEFetchFilter(SimpleProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.do_METHOD_STRIPSSL]
+            return [handler.STRIPSSL]
         else:
             fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.do_METHOD_URLFETCH, fetchserver]
+            return [handler.URLFETCH, fetchserver]
 
 
 class GAEProxyHandler2(AdvancedProxyHandler):
@@ -3311,7 +3311,7 @@ class PacFileFilter(SimpleProxyHandlerFilter):
             with open(pacfile, 'rb') as fp:
                 content = fp.read()
                 headers = {'Content-Type': 'text/plain', 'Connection': 'close'}
-                return [handler.do_METHOD_MOCK, 200, headers, content]
+                return [handler.MOCK, 200, headers, content]
 
 
 class StaticFileFilter(SimpleProxyHandlerFilter):
@@ -3323,7 +3323,7 @@ class StaticFileFilter(SimpleProxyHandlerFilter):
                 with open(filename, 'rb') as fp:
                     content = fp.read()
                     headers = {'Content-Type': 'application/octet-stream', 'Connection': 'close'}
-                    return [handler.do_METHOD_MOCK, 200, headers, content]
+                    return [handler.MOCK, 200, headers, content]
 
 
 class BlackholeFilter(SimpleProxyHandlerFilter):
@@ -3338,9 +3338,9 @@ class BlackholeFilter(SimpleProxyHandlerFilter):
             if urlparts.path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
                 headers['Content-Type'] = 'image/gif'
                 content = self.one_pixel_gif
-            return [handler.do_METHOD_MOCK, 200, headers, content]
+            return [handler.MOCK, 200, headers, content]
         else:
-            return [handler.do_METHOD_MOCK, 404, {'Connection': 'close'}, '']
+            return [handler.MOCK, 404, {'Connection': 'close'}, '']
 
 
 class PACProxyHandler(SimpleProxyHandler):
