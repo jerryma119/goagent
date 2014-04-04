@@ -1646,6 +1646,43 @@ class ProxyChainMixin:
         return ssl_sock
 
 
+class GreenForwardMixin:
+    """green forward mixin"""
+
+    @staticmethod
+    def io_copy(dest, source):
+        try:
+            dest.settimeout(timeout)
+            source.settimeout(timeout)
+            while 1:
+                data = source.recv(bufsize)
+                if not data:
+                    break
+                dest.sendall(data)
+        except NetWorkIOError as e:
+            if e.args[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
+                raise
+        finally:
+            if local:
+                local.close()
+            if remote:
+                remote.close()
+
+    def FORWARD(self, hostname, port, timeout, kwargs={}):
+        """forward socket"""
+        do_ssl_handshake = kwargs.pop('do_ssl_handshake', False)
+        local = self.connection
+        if do_ssl_handshake:
+            remote = self.create_ssl_connection(hostname, port, timeout, **kwargs)
+        else:
+            remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
+        if remote and not isinstance(remote, Exception):
+            self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
+        logging.info('%s "GREEN FORWARD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
+        thread.start_new_thread(GreenForwardMixin.io_copy, (remote.dup(), local.dup()))
+        GreenForwardMixin.io_copy(local, remote)
+
+
 class AdvancedProxyHandler(SimpleProxyHandler):
     """Advanced Proxy Handler"""
     dns_cache = LRUCache(64*1024)
