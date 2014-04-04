@@ -3086,15 +3086,20 @@ class GAEFetchFilter(SimpleProxyHandlerFilter):
         if handler.command == 'CONNECT':
             return [handler.STRIPSSL]
         else:
+            kwargs = {}
+            if common.GAE_PASSWORD:
+                kwargs['password'] = common.GAE_PASSWORD
+            if common.GAE_VALIDATE:
+                kwargs['validate'] = 1
             fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.URLFETCH, fetchserver]
+            return [handler.URLFETCH, fetchserver, kwargs]
 
 
 class GAEProxyHandler2(AdvancedProxyHandler):
     """GAE Proxy Handler 2"""
     handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), DirectRegionFilter(), SimpleProxyHandlerFilter()]
 
-    def _create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
+    def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         # deflate = lambda x:zlib.compress(x)[2:-4]
         rc4crypt = lambda s, k: RC4Cipher(k).encrypt(s) if k else s
         if body:
@@ -3295,6 +3300,53 @@ class PHPProxyHandler(GAEProxyHandler):
                 response.close()
             if e.args[0] not in (errno.ECONNABORTED, errno.EPIPE):
                 raise
+
+
+class PHPFetchFilter(SimpleProxyHandlerFilter):
+    """force https filter"""
+    def filter(self, handler):
+        if handler.command == 'CONNECT':
+            return [handler.STRIPSSL]
+        else:
+            kwargs = {}
+            if common.PHP_PASSWORD:
+                kwargs['password'] = common.PHP_PASSWORD
+            if common.PHP_VALIDATE:
+                kwargs['validate'] = 1
+            fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+            return [handler.URLFETCH, fetchserver, kwargs]
+
+
+class PHPProxyHandler2(AdvancedProxyHandler):
+    """PHP Proxy Handler 2"""
+    handler_filters = [FakeHttpsFilter(), ForceHttpsFilter(), PHPFetchFilter()]
+
+    def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
+        if body:
+            if len(body) < 10 * 1024 * 1024 and 'Content-Encoding' not in headers:
+                zbody = zlib.compress(body)[2:-4]
+                if len(zbody) < len(body):
+                    body = zbody
+                    headers['Content-Encoding'] = 'deflate'
+            headers['Content-Length'] = str(len(body))
+        skip_headers = http_util.skip_headers
+        metadata = 'G-Method:%s\nG-Url:%s\n%s%s' % (method, url, ''.join('G-%s:%s\n' % (k, v) for k, v in kwargs.items() if v), ''.join('%s:%s\n' % (k, v) for k, v in headers.items() if k not in skip_headers))
+        metadata = zlib.compress(metadata)[2:-4]
+        app_body = b''.join((struct.pack('!h', len(metadata)), metadata, body))
+        app_headers = {'Content-Length': len(app_body), 'Content-Type': 'application/octet-stream'}
+        fetchserver += '?%s' % random.random()
+        crlf = 0 if fetchserver.startswith('https') else common.PHP_CRLF
+        connection_cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
+        response = self.create_http_request('POST', fetchserver, app_headers, app_body, self.max_timeout, crlf=crlf, connection_cache_key=connection_cache_key)
+        if not response:
+            raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
+        response.app_status = response.status
+        if response.status != 200:
+            if response.status in (400, 405):
+                # filter by some firewall
+                common.PHP_CRLF = 0
+            return response
+        return response
 
 
 def get_uptime():
