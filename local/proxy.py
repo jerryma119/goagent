@@ -1612,6 +1612,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response.close()
 
     def do_METHOD(self):
+        self.host = re.sub(r':\d+$', '', self.headers.get('Host') or urlparse.urlsplit(self.path).netloc if self.command != 'CONNECT' else self.path).strip('[]')
         for handler_filter in self.handler_filters:
             action = handler_filter.filter(self)
             if action:
