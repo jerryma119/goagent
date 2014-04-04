@@ -3294,38 +3294,58 @@ def get_uptime():
         return None
 
 
-class PACProxyHandler(SimpleProxyHandler):
+class PacFileFilter(SimpleProxyHandlerFilter):
+    """pac file filter"""
 
-    pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
-
-    def do_METHOD(self):
-        if self.command == 'CONNECT':
-            return self.do_METHOD_STRIPSSL()
-        status = 404
-        headers = {'Content-Type': 'text/plain', 'Connection': 'close'}
-        content = '404 Not Found'
-        if self.path[0] != '/':
-            status = 200
-            headers = {'Cache-Control': 'max-age=86400', 'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT', 'Connection': 'close'}
-            content = ''
-            if urlparse.urlsplit(self.path).path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
-                headers['Content-Type'] = 'image/gif'
-                content = 'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
-        filename = os.path.normpath('./' + urlparse.urlsplit(self.path).path)
-        if os.path.isfile(filename):
-            status = 200
-            headers['Content-Type'] = 'text/plain' if filename.endswith('.pac') else 'application/octet-stream'
-            if self.path.endswith('.pac?flush'):
-                thread.start_new_thread(PacUtil.update_pacfile, (self.pacfile,))
-            elif time.time() - os.path.getmtime(self.pacfile) > common.PAC_EXPIRED:
+    def filter(self, handler):
+        pacfile = os.path.join(os.path.dirname(os.path.abspath(__file__)), common.PAC_FILE)
+        urlparts = urlparse.urlsplit(handler.path)
+        if handler.command == 'GET' and urlparts.path.lstrip('/') == common.PAC_FILE:
+            if urlparts.query == 'flush':
+                thread.start_new_thread(PacUtil.update_pacfile, (pacfile,))
+            if time.time() - os.path.getmtime(pacfile) > common.PAC_EXPIRED:
                 # check system uptime > 30 minutes
                 uptime = get_uptime()
                 if uptime and uptime > 1800:
-                    thread.start_new_thread(lambda: os.utime(self.pacfile, (time.time(), time.time())) or PacUtil.update_pacfile(self.pacfile), tuple())
-            with open(filename, 'rb') as fp:
+                    thread.start_new_thread(lambda: os.utime(pacfile, (time.time(), time.time())) or PacUtil.update_pacfile(pacfile), tuple())
+            with open(pacfile, 'rb') as fp:
                 content = fp.read()
-        logging.info('%s "%s %s HTTP/1.1" %d %d', self.address_string(), self.command, self.path, status, len(content))
-        return self.do_METHOD_MOCK(status, headers, content)
+                headers = {'Content-Type': 'text/plain', 'Connection': 'close'}
+                return [handler.do_METHOD_MOCK, 200, headers, content]
+
+
+class StaticFileFilter(SimpleProxyHandlerFilter):
+    """static file filter"""
+    def filter(self, handler):
+        if handler.command == 'GET' and handler.path.startswith('/'):
+            filename = '.' + handler.path
+            if os.path.isfile(filename):
+                with open(filename, 'rb') as fp:
+                    content = fp.read()
+                    headers = {'Content-Type': 'application/octet-stream', 'Connection': 'close'}
+                    return [handler.do_METHOD_MOCK, 200, headers, content]
+
+
+class BlackholeFilter(SimpleProxyHandlerFilter):
+    """blackhole filter"""
+    one_pixel_gif = 'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+
+    def filter(self, handler):
+        urlparts = urlparse.urlsplit(handler.path)
+        if handler.path.startswith(('http', 'https')):
+            headers = {'Cache-Control': 'max-age=86400', 'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT', 'Connection': 'close'}
+            content = ''
+            if urlparts.path.endswith(('.jpg', '.gif', '.jpeg', '.bmp')):
+                headers['Content-Type'] = 'image/gif'
+                content = self.one_pixel_gif
+            return [handler.do_METHOD_MOCK, 200, headers, content]
+        else:
+            return [handler.do_METHOD_MOCK, 404, {'Connection': 'close'}, '']
+
+
+class PACProxyHandler(SimpleProxyHandler):
+    """pac proxy handler"""
+    handler_filters = [PacFileFilter(), StaticFileFilter(), BlackholeFilter()]
 
 
 def get_process_list():
