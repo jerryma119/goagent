@@ -2258,18 +2258,6 @@ except ImportError:
             return ''.join(out)
 
 
-class RC4FileObject(object):
-    """fileobj for rc4"""
-    def __init__(self, stream, key):
-        self.__stream = stream
-        self.__cipher = RC4Cipher(key) if key else lambda x:x
-    def __getattr__(self, attr):
-        if attr not in ('__stream', '__cipher'):
-            return getattr(self.__stream, attr)
-    def read(self, size=-1):
-        return self.__cipher.encrypt(self.__stream.read(size))
-
-
 class XORCipher(object):
     """XOR Cipher Class"""
     def __init__(self, key):
@@ -2287,11 +2275,11 @@ class XORCipher(object):
         return self.__key_xor(data)
 
 
-class XORFileObject(object):
+class CipherFileObject(object):
     """fileobj for rc4"""
-    def __init__(self, stream, key):
+    def __init__(self, stream, cipher):
         self.__stream = stream
-        self.__cipher = XORCipher(key) if key else lambda x:x
+        self.__cipher = cipher
     def __getattr__(self, attr):
         if attr not in ('__stream', '__cipher'):
             return getattr(self.__stream, attr)
@@ -2364,7 +2352,7 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     else:
         response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(rc4crypt(data, kwargs.get('password')), -zlib.MAX_WBITS)))
         if kwargs.get('password') and response.fp:
-            response.fp = RC4FileObject(response.fp, kwargs['password'])
+            response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
     return response
 
 
@@ -3177,7 +3165,7 @@ class GAEProxyHandler2(AdvancedProxyHandler):
         else:
             response.msg = httplib.HTTPMessage(io.BytesIO(zlib.decompress(rc4crypt(data, kwargs.get('password')), -zlib.MAX_WBITS)))
             if kwargs.get('password') and response.fp:
-                response.fp = RC4FileObject(response.fp, kwargs['password'])
+                response.fp = CipherFileObject(response.fp, RC4Cipher(kwargs['password']))
         return response
 
 
@@ -3376,7 +3364,7 @@ class PHPProxyHandler2(AdvancedProxyHandler):
         need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
         transfer_encoding = response.getheader('Transfer-Encoding', '')
         if need_decrypt:
-            response.fp = XORFileObject(response.fp, kwargs['password'][0])
+            response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
         data = ''
         while not data.endswith('\r\n\r\n'):
             byte = response.read(1)
