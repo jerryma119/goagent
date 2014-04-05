@@ -1398,8 +1398,7 @@ class SimpleProxyHandlerFilter(object):
     """simple proxy handler filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            hostname, _, port = handler.path.partition(':')
-            return [handler.FORWARD, hostname, int(port), 20]
+            return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
         else:
             return [handler.URLFETCH, None]
 
@@ -1618,7 +1617,14 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         response.close()
 
     def do_METHOD(self):
-        self.host = re.sub(r':\d+$', '', self.headers.get('Host') or urlparse.urlsplit(self.path).netloc if self.command != 'CONNECT' else self.path).strip('[]')
+        netloc = self.headers.get('Host') or urlparse.urlsplit(self.path).netloc if self.command != 'CONNECT' else self.path
+        m = re.match(r'^(.+):(\d+)$', netloc)
+        if m:
+            self.host = m.group(1)
+            self.port = int(m.group(2))
+        else:
+            self.host = netloc
+            self.port = 80
         for handler_filter in self.handler_filters:
             action = handler_filter.filter(self)
             if action:
@@ -3037,8 +3043,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 class WithGAEFilter(SimpleProxyHandlerFilter):
     """with gae filter"""
     def filter(self, handler):
-        if (handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_WITHGAE) or \
-           (handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_WITHGAE):
+        if handler.host in common.HTTP_WITHGAE:
             fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
             return [handler.URLFETCH, fetchserver, 2]
 
@@ -3046,7 +3051,7 @@ class WithGAEFilter(SimpleProxyHandlerFilter):
 class ForceHttpsFilter(SimpleProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
-        if handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
+        if handler.command != 'CONNECT' and handler.host in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
             logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
             kwargs = {}
             if common.GAE_PASSWORD:
@@ -3060,15 +3065,15 @@ class ForceHttpsFilter(SimpleProxyHandlerFilter):
 class FakeHttpsFilter(SimpleProxyHandlerFilter):
     """fake https filter"""
     def filter(self, handler):
-        if handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_FAKEHTTPS:
+        if handler.command == 'CONNECT' and handler.host in common.HTTP_FAKEHTTPS:
             return [handler.STRIPSSL]
 
 
 class HostsFilter(SimpleProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
+        host, port = handler.host, handler.port
         if handler.command == 'CONNECT':
-            host, _, port = handler.path.partition(':')
             if handler.path in common.CONNECT_HOSTS_MAP or handler.path.endswith(common.CONNECT_POSTFIX_ENDSWITH) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
                 if handler.path in common.CONNECT_HOSTS_MAP:
                     hostname = common.CONNECT_HOSTS_MAP[handler.path]
@@ -3085,9 +3090,9 @@ class HostsFilter(SimpleProxyHandlerFilter):
                 hostname = hostname or host
                 if hostname in common.IPLIST_MAP:
                     handler.dns_cache[host] = common.IPLIST_MAP[hostname]
-                return [handler.FORWARD, host, int(port), handler.max_timeout, {'cache_key': hostname}]
+                cache_key = '%s:%s' % (hostname, port)
+                return [handler.FORWARD, host, port, handler.max_timeout, {'cache_key': cache_key}]
         else:
-            host = handler.host
             if any(x(handler.path) for x in common.METHOD_REMATCH_MAP) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
                 if any(x(handler.path) for x in common.METHOD_REMATCH_MAP):
                     hostname = next(common.METHOD_REMATCH_MAP[x] for x in common.METHOD_REMATCH_MAP if x(handler.path))
@@ -3118,6 +3123,7 @@ class HostsFilter(SimpleProxyHandlerFilter):
                     except Exception as e:
                         return [handler.MOCK, 403, {'Connection': 'close'}, 'read %r %r' % (filename, e)]
                 else:
+                    cache_key = '%s:%s' % (hostname, port)
                     return [handler.URLFETCH, None, 1, {'cache_key': hostname}]
 
 
@@ -3125,19 +3131,13 @@ class DirectRegionFilter(SimpleProxyHandlerFilter):
     """direct region filter"""
     geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
 
-    def is_direct_regions(self, handler, hostname):
-        iplist = handler.gethostbyname2(hostname)
-        country_code = self.geoip.country_code_by_addr(iplist[0])
-        return country_code in common.GAE_REGIONS
-
     def filter(self, handler):
-        if handler.command == 'CONNECT':
-            hostname, _, port = handler.path.partition(':')
-            if self.is_direct_regions(handler, hostname):
-                return [handler.FORWARD, hostname, int(port), handler.max_timeout]
-        else:
-            hostname = urlparse.urlsplit(handler.path).netloc.rsplit(':', 1)[0].strip('[]')
-            if self.is_direct_regions(handler, hostname):
+        iplist = handler.gethostbyname2(handler.host)
+        country_code = self.geoip.country_code_by_addr(iplist[0])
+        if country_code in common.GAE_REGIONS:
+            if handler.command == 'CONNECT':
+                return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
+            else:
                 return [handler.URLFETCH, None]
 
 
