@@ -3070,11 +3070,55 @@ class HostsFilter(SimpleProxyHandlerFilter):
         if handler.command == 'CONNECT':
             host, _, port = handler.path.partition(':')
             if handler.path in common.CONNECT_HOSTS_MAP or handler.path.endswith(common.CONNECT_POSTFIX_ENDSWITH) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
-                return [handler.FORWARD, host, int(port), handler.max_timeout]
+                if handler.path in common.CONNECT_HOSTS_MAP:
+                    hostname = common.CONNECT_HOSTS_MAP[handler.path]
+                elif handler.path.endswith(common.CONNECT_POSTFIX_ENDSWITH):
+                    hostname = next(common.CONNECT_POSTFIX_MAP[x] for x in common.CONNECT_POSTFIX_MAP if handler.path.endswith(x))
+                    common.CONNECT_HOSTS_MAP[handler.path] = hostname
+                elif host in common.HOSTS_MAP:
+                    hostname = common.HOSTS_MAP[host]
+                elif host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
+                    hostname = next(common.HOSTS_POSTFIX_MAP[x] for x in common.HOSTS_POSTFIX_MAP if host.endswith(x))
+                    common.HOSTS_MAP[host] = hostname
+                else:
+                    hostname = host
+                hostname = hostname or host
+                if hostname in common.IPLIST_MAP:
+                    handler.dns_cache[host] = common.IPLIST_MAP[hostname]
+                return [handler.FORWARD, host, int(port), handler.max_timeout, {'cache_key': hostname}]
         else:
-            host = urlparse.urlsplit(handler.path).netloc.rsplit(':', 1)[0].strip('[]')
+            host = handler.host
             if any(x(handler.path) for x in common.METHOD_REMATCH_MAP) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
-                return [handler.URLFETCH, None]
+                if any(x(handler.path) for x in common.METHOD_REMATCH_MAP):
+                    hostname = next(common.METHOD_REMATCH_MAP[x] for x in common.METHOD_REMATCH_MAP if x(handler.path))
+                elif host in common.HOSTS_MAP:
+                    hostname = common.HOSTS_MAP[host]
+                elif host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
+                    hostname = next(common.HOSTS_POSTFIX_MAP[x] for x in common.HOSTS_POSTFIX_MAP if host.endswith(x))
+                    common.HOSTS_MAP[host] = hostname
+                else:
+                    hostname = host
+                if common.METHOD_REMATCH_HAS_LOCALFILE and hostname.startswith('file://'):
+                    filename = hostname.lstrip('file://')
+                    if os.name == 'nt':
+                        filename = filename.lstrip('/')
+                    content_type = None
+                    try:
+                        import mimetypes
+                        content_type = mimetypes.types_map.get(os.path.splitext(filename)[1])
+                    except Exception as e:
+                        logging.error('import mimetypes failed: %r', e)
+                    try:
+                        with open(filename, 'rb') as fp:
+                            data = fp.read()
+                            headers = {'Connection': 'close', 'Content-Length': str(len(data))}
+                            if content_type:
+                                headers['Content-Type'] = content_type
+                            return [handler.MOCK, 200, headers, data]
+                    except Exception as e:
+                        return [handler.MOCK, 403, {'Connection': 'close'}, 'read %r %r' % (filename, e)]
+                else:
+                    return [handler.URLFETCH, None, 1, {'cache_key': hostname}]
 
 
 class DirectRegionFilter(SimpleProxyHandlerFilter):
@@ -3114,7 +3158,7 @@ class GAEFetchFilter(SimpleProxyHandlerFilter):
 
 class GAEProxyHandler2(AdvancedProxyHandler):
     """GAE Proxy Handler 2"""
-    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), DirectRegionFilter(), SimpleProxyHandlerFilter()]
+    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), SimpleProxyHandlerFilter()]
 
     def first_run(self):
         """GAEProxyHandler2 setup, init domain/iplist map"""
