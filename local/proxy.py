@@ -3169,12 +3169,31 @@ class DirectRegionFilter(StopProxyHandlerFilter):
 
     def filter(self, handler):
         iplist = handler.gethostbyname2(handler.host)
+        # http://dev.maxmind.com/geoip/legacy/codes/iso3166/
         country_code = self.geoip.country_code_by_addr(iplist[0])
         if country_code in common.GAE_REGIONS:
             if handler.command == 'CONNECT':
                 return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
             else:
                 return [handler.URLFETCH, None]
+
+
+class AutoRangeFilter(ContinueProxyHandlerFilter):
+    """force https filter"""
+    def filter(self, handler):
+        need_autorange = any(x(handler.host) for x in common.AUTORANGE_HOSTS_MATCH) or handler.path.endswith(common.AUTORANGE_ENDSWITH)
+        if handler.path.endswith(common.AUTORANGE_NOENDSWITH) or 'range=' in urlparse.urlsplit(handler.path).query or handler.command == 'HEAD':
+            need_autorange = False
+        if handler.command != 'HEAD' and handler.headers.get('Range'):
+            m = re.search(r'bytes=(\d+)-', handler.headers['Range'])
+            start = int(m.group(1) if m else 0)
+            handler.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
+            logging.info('autorange range=%r match url=%r', handler.headers['Range'], handler.path)
+        elif need_autorange:
+            logging.info('Found [autorange]endswith match url=%r', handler.path)
+            m = re.search(r'bytes=(\d+)-', handler.headers.get('Range', ''))
+            start = int(m.group(1) if m else 0)
+            handler.headers['Range'] = 'bytes=%d-%d' % (start, start+common.AUTORANGE_MAXSIZE-1)
 
 
 class GAEFetchFilter(StopProxyHandlerFilter):
@@ -3194,7 +3213,7 @@ class GAEFetchFilter(StopProxyHandlerFilter):
 
 class GAEProxyHandler2(AdvancedProxyHandler):
     """GAE Proxy Handler 2"""
-    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), GAEFetchFilter()]
+    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), AutoRangeFilter(), GAEFetchFilter()]
 
     def first_run(self):
         """GAEProxyHandler2 setup, init domain/iplist map"""
