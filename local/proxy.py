@@ -1590,6 +1590,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def URLFETCH(self, fetchserver, max_retry=2, kwargs={}):
         """urlfetch from fetchserver"""
+        #XXX: dirty fix
+        self.close_connection = 1
         method = self.command
         if self.path.startswith(('http://', 'https://', 'ftp://')):
             url = self.path
@@ -3175,7 +3177,7 @@ class GAEFetchFilter(SimpleProxyHandlerFilter):
 
 class GAEProxyHandler2(AdvancedProxyHandler):
     """GAE Proxy Handler 2"""
-    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), SimpleProxyHandlerFilter()]
+    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), GAEFetchFilter()]
 
     def first_run(self):
         """GAEProxyHandler2 setup, init domain/iplist map"""
