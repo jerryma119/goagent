@@ -1394,7 +1394,22 @@ class HTTPUtil(object):
                     continue
 
 
-class SimpleProxyHandlerFilter(object):
+class BaseProxyHandlerFilter(object):
+    """base proxy handler filter"""
+    def filter(self, handler):
+        raise NotImplementedError
+
+class StopProxyHandlerFilter(BaseProxyHandlerFilter):
+    """stop proxy handler filter"""
+    pass
+
+
+class ContinueProxyHandlerFilter(BaseProxyHandlerFilter):
+    """continue proxy handler filter"""
+    pass
+
+
+class SimpleProxyHandlerFilter(StopProxyHandlerFilter):
     """simple proxy handler filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
@@ -1641,7 +1656,9 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         for handler_filter in self.handler_filters:
             action = handler_filter.filter(self)
             if action:
-                return action.pop(0)(*action)
+                action.pop(0)(*action)
+                if isinstance(handler_filter, StopProxyHandlerFilter):
+                    return
 
 
 class ProxyChainMixin:
@@ -3059,7 +3076,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     self.__realconnection = None
 
 
-class WithGAEFilter(SimpleProxyHandlerFilter):
+class WithGAEFilter(StopProxyHandlerFilter):
     """with gae filter"""
     def filter(self, handler):
         if handler.host in common.HTTP_WITHGAE:
@@ -3067,7 +3084,7 @@ class WithGAEFilter(SimpleProxyHandlerFilter):
             return [handler.URLFETCH, fetchserver, 2]
 
 
-class ForceHttpsFilter(SimpleProxyHandlerFilter):
+class ForceHttpsFilter(StopProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command != 'CONNECT' and handler.host in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
@@ -3081,14 +3098,14 @@ class ForceHttpsFilter(SimpleProxyHandlerFilter):
             return [handler.URLFETCH, fetchserver, 2, kwargs]
 
 
-class FakeHttpsFilter(SimpleProxyHandlerFilter):
+class FakeHttpsFilter(StopProxyHandlerFilter):
     """fake https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT' and handler.host in common.HTTP_FAKEHTTPS:
             return [handler.STRIPSSL]
 
 
-class HostsFilter(SimpleProxyHandlerFilter):
+class HostsFilter(StopProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         host, port = handler.host, handler.port
@@ -3146,7 +3163,7 @@ class HostsFilter(SimpleProxyHandlerFilter):
                     return [handler.URLFETCH, None, 1, {'cache_key': hostname}]
 
 
-class DirectRegionFilter(SimpleProxyHandlerFilter):
+class DirectRegionFilter(StopProxyHandlerFilter):
     """direct region filter"""
     geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
 
@@ -3160,7 +3177,7 @@ class DirectRegionFilter(SimpleProxyHandlerFilter):
                 return [handler.URLFETCH, None]
 
 
-class GAEFetchFilter(SimpleProxyHandlerFilter):
+class GAEFetchFilter(StopProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
@@ -3398,7 +3415,7 @@ class PHPProxyHandler(GAEProxyHandler):
                 raise
 
 
-class PHPFetchFilter(SimpleProxyHandlerFilter):
+class PHPFetchFilter(StopProxyHandlerFilter):
     """force https filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
@@ -3507,7 +3524,7 @@ def get_uptime():
         return None
 
 
-class PacFileFilter(SimpleProxyHandlerFilter):
+class PacFileFilter(StopProxyHandlerFilter):
     """pac file filter"""
 
     def filter(self, handler):
@@ -3527,7 +3544,7 @@ class PacFileFilter(SimpleProxyHandlerFilter):
                 return [handler.MOCK, 200, headers, content]
 
 
-class StaticFileFilter(SimpleProxyHandlerFilter):
+class StaticFileFilter(StopProxyHandlerFilter):
     """static file filter"""
     def filter(self, handler):
         if handler.command == 'GET' and handler.path.startswith('/'):
@@ -3539,7 +3556,7 @@ class StaticFileFilter(SimpleProxyHandlerFilter):
                     return [handler.MOCK, 200, headers, content]
 
 
-class BlackholeFilter(SimpleProxyHandlerFilter):
+class BlackholeFilter(StopProxyHandlerFilter):
     """blackhole filter"""
     one_pixel_gif = 'GIF89a\x01\x00\x01\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
 
