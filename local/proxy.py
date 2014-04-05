@@ -1529,8 +1529,16 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         except NetWorkIOError as e:
             if e.args[0] not in (errno.ECONNABORTED, errno.ECONNRESET, errno.EPIPE):
                 raise
-        if self.path[0] == '/' and host:
-            self.path = 'https://%s%s' % (self.headers['Host'], self.path)
+        if self.path[0] == '/':
+            netloc = self.headers.get('Host') or '%s:%s' % (host, port)
+            self.path = 'https://%s%s' % (netloc, self.path)
+            m = re.match(r'^(.+):(\d+)$', netloc)
+            if m:
+                self.host = m.group(1).strip('[]')
+                self.port = int(m.group(2))
+            else:
+                self.host = netloc
+                self.port = 443
         try:
             self.do_METHOD()
         except NetWorkIOError as e:
@@ -1583,7 +1591,10 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def URLFETCH(self, fetchserver, max_retry=2, kwargs={}):
         """urlfetch from fetchserver"""
         method = self.command
-        url = self.path
+        if self.path.startswith(('http://', 'https://', 'ftp://')):
+            url = self.path
+        else:
+            url = 'http://%s%s' % (self.headers['Host'], self.path)
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.rfile.read(int(headers.get('Content-Length', 0)))
         if fetchserver:
@@ -1596,7 +1607,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     logging.warning('URLFETCH fetchserver=%r %r, retry...', fetchserver, e)
         else:
             response = self.create_http_request(method, url, headers, body, timeout=16, **kwargs)
-        logging.info('%s "URLFETCH %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
+        logging.info('%s "URLFETCH %s %s HTTP/1.1" %s -', self.address_string(), self.command, url, response.status)
         response_headers = {k.title(): v for k, v in response.getheaders()}
         if 'Set-Cookie' in response_headers:
             response_headers['Set-Cookie'] = self.normcookie(response_headers['Set-Cookie'])
@@ -1620,7 +1631,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         netloc = self.headers.get('Host') or urlparse.urlsplit(self.path).netloc if self.command != 'CONNECT' else self.path
         m = re.match(r'^(.+):(\d+)$', netloc)
         if m:
-            self.host = m.group(1)
+            self.host = m.group(1).strip('[]')
             self.port = int(m.group(2))
         else:
             self.host = netloc
@@ -1768,6 +1779,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             get_connection_time = lambda addr: self.ssl_connection_time.__getitem__(addr) or self.tcp_connection_time.__getitem__(addr)
         else:
             get_connection_time = self.tcp_connection_time.__getitem__
+        errors = []
         for i in range(3):
             window = min((self.max_window+1)//2 + min(i, 1), len(addresses))
             addresses.sort(key=get_connection_time)
@@ -1784,6 +1796,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     if i == 0:
                         # only output first error
                         logging.warning('create_connection to %s return %r, try again.', addrs, result)
+                    errors.append(result)
+            raise errors[-1]
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
         cache_key = kwargs.get('cache_key')
@@ -1920,6 +1934,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             queobj = Queue.Queue()
             for addr in addrs:
                 thread.start_new_thread(create_connection, (addr, timeout, queobj))
+            errors = []
             for i in range(len(addrs)):
                 result = queobj.get()
                 if not isinstance(result, Exception):
@@ -1929,6 +1944,8 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                     if i == 0:
                         # only output first error
                         logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
+                errors.append(result)
+            raise errors[-1]
 
     def create_http_request(self, method, url, headers, body, timeout, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, cache_key=None):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
@@ -3670,8 +3687,10 @@ def main():
         server = LocalProxyServer((common.PAC_IP, common.PAC_PORT), PACProxyHandler)
         thread.start_new_thread(server.serve_forever, tuple())
 
-    if False:
-        server = LocalProxyServer(('', 9001), PHPProxyHandler2)
+    if os.path.exists('.debug'):
+        HandlerClass = GAEProxyHandler2
+        logging.info('debug class %s', HandlerClass)
+        server = LocalProxyServer(('', 9001), HandlerClass)
         thread.start_new_thread(server.serve_forever, tuple())
 
     if common.DNS_ENABLE:
