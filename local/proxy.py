@@ -972,7 +972,7 @@ class HTTPUtil(object):
         return [host]
 
     def create_connection(self, address, timeout=None, source_address=None, **kwargs):
-        connection_cache_key = kwargs.get('cache_key')
+        cache_key = kwargs.get('cache_key')
         def _create_connection(ipaddr, timeout, queobj):
             sock = None
             try:
@@ -1006,13 +1006,13 @@ class HTTPUtil(object):
             for i in range(count):
                 sock = queobj.get()
                 if sock and not isinstance(sock, Exception):
-                    if connection_cache_key and i == 0:
-                        self.tcp_connection_cache[connection_cache_key].put((time.time(), sock))
+                    if cache_key and i == 0:
+                        self.tcp_connection_cache[cache_key].put((time.time(), sock))
                     else:
                         sock.close()
         try:
-            while connection_cache_key:
-                ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
+            while cache_key:
+                ctime, sock = self.tcp_connection_cache[cache_key].get_nowait()
                 if time.time() - ctime < 30:
                     return sock
         except Queue.Empty:
@@ -1042,7 +1042,7 @@ class HTTPUtil(object):
                         logging.warning('create_connection to %s return %r, try again.', addrs, result)
 
     def create_ssl_connection(self, address, timeout=None, source_address=None, **kwargs):
-        connection_cache_key = kwargs.get('cache_key')
+        cache_key = kwargs.get('cache_key')
         validate = kwargs.get('validate')
         def _create_ssl_connection(ipaddr, timeout, queobj):
             sock = None
@@ -1062,7 +1062,7 @@ class HTTPUtil(object):
                 if not validate:
                     ssl_sock = ssl.wrap_socket(sock, do_handshake_on_connect=False)
                 else:
-                    ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs=os.path.join(os.path.dirname(os.path.abspath(__file__)),'cacert.pem'), do_handshake_on_connect=False)
+                    ssl_sock = ssl.wrap_socket(sock, cert_reqs=ssl.CERT_REQUIRED, ca_certs=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cacert.pem'), do_handshake_on_connect=False)
                 ssl_sock.settimeout(timeout or self.max_timeout)
                 # start connection time record
                 start_time = time.time()
@@ -1156,13 +1156,13 @@ class HTTPUtil(object):
                 sock = queobj.get()
                 ssl_time_threshold = min(1, 1.5 * first_ssl_time)
                 if sock and not isinstance(sock, Exception):
-                    if connection_cache_key and sock.ssl_time < ssl_time_threshold:
-                        self.ssl_connection_cache[connection_cache_key].put((time.time(), sock))
+                    if cache_key and sock.ssl_time < ssl_time_threshold:
+                        self.ssl_connection_cache[cache_key].put((time.time(), sock))
                     else:
                         sock.close()
         try:
-            while connection_cache_key:
-                ctime, sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
+            while cache_key:
+                ctime, sock = self.ssl_connection_cache[cache_key].get_nowait()
                 if time.time() - ctime < 30:
                     return sock
         except Queue.Empty:
@@ -1348,7 +1348,7 @@ class HTTPUtil(object):
             response = None
         return response
 
-    def request(self, method, url, payload=None, headers={}, realhost='', bufsize=8192, crlf=None, validate=None, return_sock=None, connection_cache_key=None):
+    def request(self, method, url, payload=None, headers={}, realhost='', bufsize=8192, crlf=None, validate=None, return_sock=None, cache_key=None):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1370,14 +1370,14 @@ class HTTPUtil(object):
             ssl_sock = None
             try:
                 if scheme == 'https':
-                    ssl_sock = self.create_ssl_connection((realhost or host, port), self.max_timeout, validate=validate, cache_key=connection_cache_key)
+                    ssl_sock = self.create_ssl_connection((realhost or host, port), self.max_timeout, validate=validate, cache_key=cache_key)
                     if ssl_sock:
                         sock = ssl_sock.sock
                         del ssl_sock.sock
                     else:
                         raise socket.error('timed out', 'create_ssl_connection(%r,%r)' % (realhost or host, port))
                 else:
-                    sock = self.create_connection((realhost or host, port), self.max_timeout, cache_key=connection_cache_key)
+                    sock = self.create_connection((realhost or host, port), self.max_timeout, cache_key=cache_key)
                 if sock:
                     if scheme == 'https':
                         crlf = 0
@@ -1711,7 +1711,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         return iplist
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
-        connection_cache_key = kwargs.get('cache_key')
+        cache_key = kwargs.get('cache_key')
         def create_connection(ipaddr, timeout, queobj):
             sock = None
             try:
@@ -1745,13 +1745,13 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             for i in range(count):
                 sock = queobj.get()
                 if sock and not isinstance(sock, Exception):
-                    if connection_cache_key and i == 0:
-                        self.tcp_connection_cache[connection_cache_key].put((time.time(), sock))
+                    if cache_key and i == 0:
+                        self.tcp_connection_cache[cache_key].put((time.time(), sock))
                     else:
                         sock.close()
         try:
-            while connection_cache_key:
-                ctime, sock = self.tcp_connection_cache[connection_cache_key].get_nowait()
+            while cache_key:
+                ctime, sock = self.tcp_connection_cache[cache_key].get_nowait()
                 if time.time() - ctime < 30:
                     return sock
         except Queue.Empty:
@@ -1780,7 +1780,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                         logging.warning('create_connection to %s return %r, try again.', addrs, result)
 
     def create_ssl_connection(self, hostname, port, timeout, **kwargs):
-        connection_cache_key = kwargs.get('cache_key')
+        cache_key = kwargs.get('cache_key')
         validate = kwargs.get('validate')
         def create_connection(ipaddr, timeout, queobj):
             sock = None
@@ -1894,13 +1894,13 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 sock = queobj.get()
                 ssl_time_threshold = min(1, 1.5 * first_ssl_time)
                 if sock and not isinstance(sock, Exception):
-                    if connection_cache_key and sock.ssl_time < ssl_time_threshold:
-                        self.ssl_connection_cache[connection_cache_key].put((time.time(), sock))
+                    if cache_key and sock.ssl_time < ssl_time_threshold:
+                        self.ssl_connection_cache[cache_key].put((time.time(), sock))
                     else:
                         sock.close()
         try:
-            while connection_cache_key:
-                ctime, sock = self.ssl_connection_cache[connection_cache_key].get_nowait()
+            while cache_key:
+                ctime, sock = self.ssl_connection_cache[cache_key].get_nowait()
                 if time.time() - ctime < 30:
                     return sock
         except Queue.Empty:
@@ -1924,7 +1924,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                         # only output first error
                         logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
 
-    def create_http_request(self, method, url, headers, body, timeout, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, connection_cache_key=None):
+    def create_http_request(self, method, url, headers, body, timeout, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, cache_key=None):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1944,7 +1944,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         for _ in range(max_retry):
             try:
                 create_connection = self.create_ssl_connection if scheme == 'https' else self.create_tcp_connection
-                sock = create_connection(realhost or host, port, timeout, validate=validate, cache_key=connection_cache_key)
+                sock = create_connection(realhost or host, port, timeout, validate=validate, cache_key=cache_key)
                 if sock and not isinstance(sock, Exception):
                     break
             except Exception as e:
@@ -2338,8 +2338,8 @@ def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     # post data
     need_crlf = 0 if common.GAE_MODE == 'https' else 1
     need_validate = common.GAE_VALIDATE
-    connection_cache_key = '%s:%d' % (common.HOSTS_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-    response = http_util.request(request_method, fetchserver, payload, request_headers, crlf=need_crlf, validate=need_validate, connection_cache_key=connection_cache_key)
+    cache_key = '%s:%d' % (common.HOSTS_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
+    response = http_util.request(request_method, fetchserver, payload, request_headers, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
     response.app_status = response.status
     response.app_options = response.getheader('X-GOA-Options', '')
     if response.status != 200:
@@ -2739,8 +2739,8 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 http_util.dns[host] = sum((http_util.dns_resolve(x) for x in hostname.split('|')), [])
             validate = common.GAE_VALIDATE if host not in common.HTTP_FAKEHTTPS else None
-            connection_cache_key = hostname if host not in common.HTTP_FAKEHTTPS else None
-            response = http_util.request(self.command, self.path, payload, self.headers, crlf=need_crlf, validate=validate, connection_cache_key=connection_cache_key)
+            cache_key = hostname if host not in common.HTTP_FAKEHTTPS else None
+            response = http_util.request(self.command, self.path, payload, self.headers, crlf=need_crlf, validate=validate, cache_key=cache_key)
             if not response:
                 return
             logging.info('%s "FWD %s %s HTTP/1.1" %s %s', self.address_string(), self.command, self.path, response.status, response.getheader('Content-Length', '-'))
@@ -2942,10 +2942,10 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         http_util.dns[host] = common.IPLIST_MAP[hostname]
                     else:
                         http_util.dns[host] = sum((http_util.dns_resolve(x) for x in hostname.split('|')), [])
-                    #connection_cache_key = '%s:%d' % (hostname or host, port)
-                    connection_cache_key = None
+                    #cache_key = '%s:%d' % (hostname or host, port)
+                    cache_key = None
                     timeout = 4
-                    remote = http_util.create_connection((host, port), timeout, cache_key=connection_cache_key)
+                    remote = http_util.create_connection((host, port), timeout, cache_key=cache_key)
                     if remote is not None and data:
                         remote.sendall(data)
                         break
@@ -3173,8 +3173,8 @@ class GAEProxyHandler2(AdvancedProxyHandler):
         # post data
         need_crlf = 0 if common.GAE_MODE == 'https' else 1
         need_validate = common.GAE_VALIDATE
-        connection_cache_key = '%s:%d' % (common.HOSTS_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
-        response = self.create_http_request(request_method, fetchserver, request_headers, body, self.max_timeout, crlf=need_crlf, validate=need_validate, connection_cache_key=connection_cache_key)
+        cache_key = '%s:%d' % (common.HOSTS_POSTFIX_MAP['.appspot.com'], 443 if common.GAE_MODE == 'https' else 80)
+        response = self.create_http_request(request_method, fetchserver, request_headers, body, self.max_timeout, crlf=need_crlf, validate=need_validate, cache_key=cache_key)
         response.app_status = response.status
         response.app_options = response.getheader('X-GOA-Options', '')
         if response.status != 200:
@@ -3218,8 +3218,8 @@ def php_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
     app_headers = {'Content-Length': len(app_payload), 'Content-Type': 'application/octet-stream'}
     fetchserver += '?%s' % random.random()
     crlf = 0 if fetchserver.startswith('https') else common.PHP_CRLF
-    connection_cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
-    response = http_util.request('POST', fetchserver, app_payload, app_headers, crlf=crlf, connection_cache_key=connection_cache_key)
+    cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
+    response = http_util.request('POST', fetchserver, app_payload, app_headers, crlf=crlf, cache_key=cache_key)
     if not response:
         raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
     response.app_status = response.status
@@ -3386,8 +3386,8 @@ class PHPProxyHandler2(AdvancedProxyHandler):
         app_headers = {'Content-Length': len(app_body), 'Content-Type': 'application/octet-stream'}
         fetchserver += '?%s' % random.random()
         crlf = 0
-        connection_cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
-        response = self.create_http_request('POST', fetchserver, app_headers, app_body, self.max_timeout, crlf=crlf, connection_cache_key=connection_cache_key)
+        cache_key = '%s//:%s' % urlparse.urlsplit(fetchserver)[:2]
+        response = self.create_http_request('POST', fetchserver, app_headers, app_body, self.max_timeout, crlf=crlf, cache_key=cache_key)
         if not response:
             raise socket.error(errno.ECONNRESET, 'urlfetch %r return None' % url)
         if response.status >= 400:
