@@ -1581,14 +1581,20 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if remote:
                 remote.close()
 
-    def URLFETCH(self, fetchserver, kwargs={}):
+    def URLFETCH(self, fetchserver, max_retry=2, kwargs={}):
         """urlfetch from fetchserver"""
         method = self.command
         url = self.path
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.rfile.read(int(headers.get('Content-Length', 0)))
         if fetchserver:
-            response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=16, **kwargs)
+            for _ in xrange(max_retry):
+                try:
+                    response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=16, **kwargs)
+                    if response and response.status < 400:
+                        break
+                except Exception as e:
+                    logging.warning('URLFETCH fetchserver=%r %r, retry...', fetchserver, e)
         else:
             response = self.create_http_request(method, url, headers, body, timeout=16, **kwargs)
         logging.info('%s "URLFETCH %s %s HTTP/1.1" %s -', self.address_string(), self.command, self.path, response.status)
@@ -1624,7 +1630,10 @@ class ProxyChainMixin:
     proxy = ''
 
     def gethostbyname2(self, hostname):
-        return [hostname]
+        try:
+            return socket.gethostbyname_ex(hostname)[-1]
+        except socket.error:
+            return [hostname]
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
         _, proxyuser, proxypass, proxyaddress = ProxyUtil.parse_proxy(self.proxy)
@@ -1651,7 +1660,7 @@ class GreenForwardMixin:
     """green forward mixin"""
 
     @staticmethod
-    def io_copy(dest, source):
+    def io_copy(dest, source, timeout, bufsize):
         try:
             dest.settimeout(timeout)
             source.settimeout(timeout)
@@ -1664,13 +1673,14 @@ class GreenForwardMixin:
             if e.args[0] not in ('timed out', errno.ECONNABORTED, errno.ECONNRESET, errno.EBADF, errno.EPIPE, errno.ENOTCONN, errno.ETIMEDOUT):
                 raise
         finally:
-            if local:
-                local.close()
-            if remote:
-                remote.close()
+            if dest:
+                dest.close()
+            if source:
+                source.close()
 
     def FORWARD(self, hostname, port, timeout, kwargs={}):
         """forward socket"""
+        bufsize = kwargs.pop('bufsize', 8192)
         do_ssl_handshake = kwargs.pop('do_ssl_handshake', False)
         local = self.connection
         if do_ssl_handshake:
@@ -1680,8 +1690,8 @@ class GreenForwardMixin:
         if remote and not isinstance(remote, Exception):
             self.wfile.write(b'HTTP/1.1 200 OK\r\n\r\n')
         logging.info('%s "GREEN FORWARD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
-        thread.start_new_thread(GreenForwardMixin.io_copy, (remote.dup(), local.dup()))
-        GreenForwardMixin.io_copy(local, remote)
+        thread.start_new_thread(GreenForwardMixin.io_copy, (remote.dup(), local.dup(), timeout, bufsize))
+        GreenForwardMixin.io_copy(local, remote, timeout, bufsize)
 
 
 class AdvancedProxyHandler(SimpleProxyHandler):
@@ -2276,15 +2286,15 @@ class XORCipher(object):
 
 
 class CipherFileObject(object):
-    """fileobj for rc4"""
-    def __init__(self, stream, cipher):
-        self.__stream = stream
+    """fileobj wrapper for cipher"""
+    def __init__(self, fileobj, cipher):
+        self.__fileobj = fileobj
         self.__cipher = cipher
     def __getattr__(self, attr):
-        if attr not in ('__stream', '__cipher'):
-            return getattr(self.__stream, attr)
+        if attr not in ('__fileobj', '__cipher'):
+            return getattr(self.__fileobj, attr)
     def read(self, size=-1):
-        return self.__cipher.encrypt(self.__stream.read(size))
+        return self.__cipher.encrypt(self.__fileobj.read(size))
 
 
 def gae_urlfetch(method, url, headers, payload, fetchserver, **kwargs):
@@ -3030,7 +3040,7 @@ class WithGAEFilter(SimpleProxyHandlerFilter):
         if (handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_WITHGAE) or \
            (handler.command == 'CONNECT' and handler.path.partition(':')[0] in common.HTTP_WITHGAE):
             fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.URLFETCH, fetchserver]
+            return [handler.URLFETCH, fetchserver, 2]
 
 
 class ForceHttpsFilter(SimpleProxyHandlerFilter):
@@ -3038,7 +3048,13 @@ class ForceHttpsFilter(SimpleProxyHandlerFilter):
     def filter(self, handler):
         if handler.command != 'CONNECT' and handler.headers.get('Host') in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
             logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
-            return [handler.MOCK, 301, {'Location': handler.path.replace('http://', 'https://', 1)}, '']
+            kwargs = {}
+            if common.GAE_PASSWORD:
+                kwargs['password'] = common.GAE_PASSWORD
+            if common.GAE_VALIDATE:
+                kwargs['validate'] = 1
+            fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
+            return [handler.URLFETCH, fetchserver, 2, kwargs]
 
 
 class FakeHttpsFilter(SimpleProxyHandlerFilter):
@@ -3066,7 +3082,7 @@ class DirectRegionFilter(SimpleProxyHandlerFilter):
     geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
 
     def is_direct_regions(self, handler, hostname):
-        iplist = handler.gethostbyname2()
+        iplist = handler.gethostbyname2(hostname)
         country_code = self.geoip.country_code_by_addr(iplist[0])
         return country_code in common.GAE_REGIONS
 
@@ -3093,12 +3109,28 @@ class GAEFetchFilter(SimpleProxyHandlerFilter):
             if common.GAE_VALIDATE:
                 kwargs['validate'] = 1
             fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.URLFETCH, fetchserver, kwargs]
+            return [handler.URLFETCH, fetchserver, 2, kwargs]
 
 
 class GAEProxyHandler2(AdvancedProxyHandler):
     """GAE Proxy Handler 2"""
     handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), DirectRegionFilter(), SimpleProxyHandlerFilter()]
+
+    def first_run(self):
+        """GAEProxyHandler2 setup, init domain/iplist map"""
+        if not common.PROXY_ENABLE:
+            if 'google_hk' in common.IPLIST_MAP:
+                # threading._start_new_thread(expand_google_hk_iplist, (common.IPLIST_MAP['google_hk'][:], 16))
+                pass
+            logging.info('resolve common.IPLIST_MAP names=%s to iplist', list(common.IPLIST_MAP))
+            common.resolve_iplist()
+        random.shuffle(common.GAE_APPIDS)
+        for appid in common.GAE_APPIDS:
+            host = '%s.appspot.com' % appid
+            if host not in common.HOSTS_MAP:
+                common.HOSTS_MAP[host] = common.HOSTS_POSTFIX_MAP['.appspot.com']
+            if host not in http_util.dns:
+                self.dns_cache[host] = common.IPLIST_MAP[common.HOSTS_MAP[host]]
 
     def create_http_request_withserver(self, fetchserver, method, url, headers, body, timeout, **kwargs):
         # deflate = lambda x:zlib.compress(x)[2:-4]
@@ -3314,7 +3346,7 @@ class PHPFetchFilter(SimpleProxyHandlerFilter):
                 kwargs['password'] = common.PHP_PASSWORD
             if common.PHP_VALIDATE:
                 kwargs['validate'] = 1
-            return [handler.URLFETCH, common.PHP_FETCHSERVER, kwargs]
+            return [handler.URLFETCH, common.PHP_FETCHSERVER, 1, kwargs]
 
 
 class PHPProxyHandler2(AdvancedProxyHandler):
@@ -3613,7 +3645,7 @@ def main():
     try:
         server.serve_forever()
     except SystemError as e:
-        if ' (libev) select: Unknown error' in repr(e):
+        if '(libev) select: ' in repr(e):
             logging.error('PLEASE START GOAGENT BY uvent.bat')
             sys.exit(-1)
 
