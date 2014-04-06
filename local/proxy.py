@@ -1503,15 +1503,14 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def MOCK(self, status, headers, content):
         """mock response"""
-        self.close_connection = 1
         logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
         if 'Content-Length' not in headers:
             headers['Content-Length'] = len(content)
         headers['Connection'] = 'close'
-        self.wfile.write('%s %d %s' % (self.protocol_version, status, httplib.responses.get(status, 'Unknown')))
+        self.send_response(status)
         for key, value in headers.items():
-            self.wfile.write('%s: %s\r\n' % (key, value))
-        self.wfile.write('\r\n')
+            self.send_header(key, value)
+        self.end_headers()
         self.wfile.write(content)
 
     def STRIPSSL(self):
@@ -1607,8 +1606,6 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def URLFETCH(self, fetchservers, max_retry=2, kwargs={}):
         """urlfetch from fetchserver"""
-        #XXX: dirty fix
-        self.close_connection = 1
         method = self.command
         if self.path.startswith(('http://', 'https://', 'ftp://')):
             url = self.path
@@ -1644,9 +1641,13 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                         response.msg['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
                     if response.getheader('Content-Disposition') and '"' not in response.getheader('Content-Disposition'):
                         response.msg['Content-Disposition'] = self.normattachment(response.getheader('Content-Disposition'))
-                    headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, httplib.responses.get(response.status, 'Unkown'), ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))
-                    logging.debug('headers_data=%s', headers_data)
-                    self.wfile.write(headers_data)
+                    self.send_response(response.status)
+                    for key, value in response.getheaders():
+                        key = key.title()
+                        if key == 'Transfer-Encoding':
+                            continue
+                        self.send_header(key, value)
+                    self.end_headers()
                     headers_sent = True
                 content_length = int(response.getheader('Content-Length', 0))
                 content_range = response.getheader('Content-Range', '')
