@@ -1503,9 +1503,11 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def MOCK(self, status, headers, content):
         """mock response"""
+        self.close_connection = 1
         logging.info('%s "MOCK %s %s %s" %d %d', self.address_string(), self.command, self.path, self.protocol_version, status, len(content))
         if 'Content-Length' not in headers:
             headers['Content-Length'] = len(content)
+        headers['Connection'] = 'close'
         self.wfile.write('%s %d %s' % (self.protocol_version, status, httplib.responses.get(status, 'Unknown')))
         for key, value in headers.items():
             self.wfile.write('%s: %s\r\n' % (key, value))
@@ -1603,7 +1605,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             if remote:
                 remote.close()
 
-    def URLFETCH(self, fetchserver, max_retry=2, kwargs={}):
+    def URLFETCH(self, fetchservers, max_retry=2, kwargs={}):
         """urlfetch from fetchserver"""
         #XXX: dirty fix
         self.close_connection = 1
@@ -1614,35 +1616,69 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             url = 'http://%s%s' % (self.headers['Host'], self.path)
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.rfile.read(int(headers.get('Content-Length', 0)))
-        if fetchserver:
-            for _ in xrange(max_retry):
-                try:
+        response = None
+        errors = []
+        headers_sent = False
+        fetchserver = fetchservers and fetchservers[0]
+        for i in xrange(max_retry):
+            try:
+                if fetchservers:
                     response = self.create_http_request_withserver(fetchserver, method, url, headers, body, timeout=16, **kwargs)
-                    if response and response.status < 400:
-                        break
-                except Exception as e:
-                    logging.warning('URLFETCH fetchserver=%r %r, retry...', fetchserver, e)
-        else:
-            response = self.create_http_request(method, url, headers, body, timeout=16, **kwargs)
-        logging.info('%s "URLFETCH %s %s HTTP/1.1" %s -', self.address_string(), self.command, url, response.status)
-        response_headers = {k.title(): v for k, v in response.getheaders()}
-        if 'Set-Cookie' in response_headers:
-            response_headers['Set-Cookie'] = self.normcookie(response_headers['Set-Cookie'])
-        self.wfile.write('%s %s %s\r\n%s\r\n' % (self.protocol_version, response.status, httplib.responses.get(response.status, 'Unknown'), ''.join('%s: %s\r\n' % (k, v) for k, v in response_headers.items())))
-        need_chunked = 'Transfer-Encoding' in response_headers
-        while True:
-            data = response.read(8192)
-            if not data:
-                if need_chunked:
-                    self.wfile.write('0\r\n\r\n')
-                break
-            if need_chunked:
-                self.wfile.write('%x\r\n' % len(data))
-            self.wfile.write(data)
-            if need_chunked:
-                self.wfile.write('\r\n')
-            del data
-        response.close()
+                    # appid over qouta, switch to next appid
+                    if response.app_status == 503:
+                        fetchserver = random.choice(fetchservers)
+                        logging.info('Current APPID Over Quota, trying another fetchserver=%r'. fetchserver)
+                        continue
+                    if response.app_status == 500 and need_autorange:
+                        fetchserver = random.choice(fetchservers)
+                        logging.warning('500 with range in query, trying another fetchserver=%r', fetchserver)
+                        continue
+                else:
+                    response = self.create_http_request(method, url, headers, body, timeout=16, **kwargs)
+                # first response, has no retry.
+                if not headers_sent:
+                    logging.info('%s "URLFETCH %s %s HTTP/1.1" %s %s', self.address_string(), self.command, url, response.status, response.getheader('Content-Length', '-'))
+                    if response.status == 206:
+                        return RangeFetch(self.create_http_request_withserver, self.wfile, response, self.command, self.path, self.headers, payload, fetchservers, common.GAE_PASSWORD, maxsize=common.AUTORANGE_MAXSIZE, bufsize=common.AUTORANGE_BUFSIZE, waitsize=common.AUTORANGE_WAITSIZE, threads=common.AUTORANGE_THREADS).fetch()
+                    if response.getheader('Set-Cookie'):
+                        response.msg['Set-Cookie'] = self.normcookie(response.getheader('Set-Cookie'))
+                    if response.getheader('Content-Disposition') and '"' not in response.getheader('Content-Disposition'):
+                        response.msg['Content-Disposition'] = self.normattachment(response.getheader('Content-Disposition'))
+                    headers_data = 'HTTP/1.1 %s %s\r\n%s\r\n' % (response.status, httplib.responses.get(response.status, 'Unkown'), ''.join('%s: %s\r\n' % (k.title(), v) for k, v in response.getheaders() if k.title() != 'Transfer-Encoding'))
+                    logging.debug('headers_data=%s', headers_data)
+                    self.wfile.write(headers_data)
+                    headers_sent = True
+                content_length = int(response.getheader('Content-Length', 0))
+                content_range = response.getheader('Content-Range', '')
+                accept_ranges = response.getheader('Accept-Ranges', 'none')
+                need_chunked = response.getheader('Transfer-Encoding', '')
+                if content_range:
+                    start, end, length = tuple(int(x) for x in re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2, 3))
+                else:
+                    start, end, length = 0, content_length-1, content_length
+                while True:
+                    data = response.read(8192)
+                    if not data:
+                        if need_chunked:
+                            self.wfile.write('0\r\n\r\n')
+                        response.close()
+                        return
+                    start += len(data)
+                    if need_chunked:
+                        self.wfile.write('%x\r\n' % len(data))
+                    self.wfile.write(data)
+                    if need_chunked:
+                        self.wfile.write('\r\n')
+                    del data
+                    if start >= end:
+                        response.close()
+                        return
+            except Exception as e:
+                errors.append(e)
+                logging.exception('URLFETCH fetchserver=%r %r, retry...', fetchserver, e)
+        if len(errors) == max_retry:
+            content = message_html('502 URLFetch failed', 'Local URLFetch %r failed' % url, str(errors))
+            return self.MOCK(502, {'Content-Type': 'text/html'}, content)
 
     def do_METHOD(self):
         netloc = self.headers.get('Host') or urlparse.urlsplit(self.path).netloc if self.command != 'CONNECT' else self.path
@@ -3080,8 +3116,14 @@ class WithGAEFilter(StopProxyHandlerFilter):
     """with gae filter"""
     def filter(self, handler):
         if handler.host in common.HTTP_WITHGAE:
-            fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.URLFETCH, fetchserver, 2]
+            logging.debug('WithGAEFilter metched %r %r', handler.path, handler.headers)
+            kwargs = {}
+            if common.GAE_PASSWORD:
+                kwargs['password'] = common.GAE_PASSWORD
+            if common.GAE_VALIDATE:
+                kwargs['validate'] = 1
+            fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
+            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
 
 
 class ForceHttpsFilter(StopProxyHandlerFilter):
@@ -3089,13 +3131,7 @@ class ForceHttpsFilter(StopProxyHandlerFilter):
     def filter(self, handler):
         if handler.command != 'CONNECT' and handler.host in common.HTTP_FORCEHTTPS and not handler.headers.get('Referer', '').startswith('https://') and not handler.path.startswith('https://'):
             logging.debug('ForceHttpsFilter metched %r %r', handler.path, handler.headers)
-            kwargs = {}
-            if common.GAE_PASSWORD:
-                kwargs['password'] = common.GAE_PASSWORD
-            if common.GAE_VALIDATE:
-                kwargs['validate'] = 1
-            fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.URLFETCH, fetchserver, 2, kwargs]
+            return [handler.MOCK, 301, {'Location': handler.path.replace('http://', 'https://', 1)}, '']
 
 
 class FakeHttpsFilter(StopProxyHandlerFilter):
@@ -3207,8 +3243,8 @@ class GAEFetchFilter(StopProxyHandlerFilter):
                 kwargs['password'] = common.GAE_PASSWORD
             if common.GAE_VALIDATE:
                 kwargs['validate'] = 1
-            fetchserver = '%s://%s.appspot.com%s' % (common.GAE_MODE, common.GAE_APPIDS[0], common.GAE_PATH)
-            return [handler.URLFETCH, fetchserver, 2, kwargs]
+            fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
+            return [handler.URLFETCH, fetchservers, 2, kwargs]
 
 
 class GAEProxyHandler2(AdvancedProxyHandler):
@@ -3445,7 +3481,7 @@ class PHPFetchFilter(StopProxyHandlerFilter):
                 kwargs['password'] = common.PHP_PASSWORD
             if common.PHP_VALIDATE:
                 kwargs['validate'] = 1
-            return [handler.URLFETCH, common.PHP_FETCHSERVER, 1, kwargs]
+            return [handler.URLFETCH, [common.PHP_FETCHSERVER], 1, kwargs]
 
 
 class PHPProxyHandler2(AdvancedProxyHandler):
