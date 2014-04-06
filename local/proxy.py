@@ -1612,7 +1612,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             url = 'http://%s%s' % (self.headers['Host'], self.path)
         headers = {k.title(): v for k, v in self.headers.items()}
-        body = self.rfile.read(int(headers.get('Content-Length', 0)))
+        body = handler.body
         response = None
         errors = []
         headers_sent = False
@@ -1690,6 +1690,8 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         else:
             self.host = netloc
             self.port = 80
+        content_length = int(self.headers.get('Content-Length', 0))
+        self.body = self.rfile.read(content_length) if content_length else ''
         for handler_filter in self.handler_filters:
             action = handler_filter.filter(self)
             if action:
@@ -1776,10 +1778,9 @@ class RangeFetch2(object):
     waitsize = 1024*512
     expect_begin = 0
 
-    def __init__(self, handler, response, request_body, fetchservers, password, maxsize=0, bufsize=0, waitsize=0, threads=0):
+    def __init__(self, handler, response, fetchservers, password, maxsize=0, bufsize=0, waitsize=0, threads=0):
         self.handler = handler
         self.response = response
-        self.request_body = request_body
         self.payload = payload
         self.fetchservers = fetchservers
         self.password = password
@@ -1875,7 +1876,7 @@ class RangeFetch2(object):
                         fetchserver = random.choice(self.fetchservers)
                         if self._last_app_status.get(fetchserver, 200) >= 500:
                             time.sleep(5)
-                        response = self.create_http_request_withserver(fetchserver, self.command, self.url, headers, self.request_body, password=self.password)
+                        response = self.create_http_request_withserver(fetchserver, self.command, self.url, headers, self.handler.body, password=self.password)
                 except Queue.Empty:
                     continue
                 except Exception as e:
