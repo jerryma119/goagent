@@ -560,9 +560,9 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
                         rtypes = (1, 28) if sock is sock_v6 else (1,)
                         iplist = [str(x.rdata) for x in reply.rr if x.rtype in rtypes]
                         if any(x in blacklist for x in iplist):
-                            logging.warning('query qname=%r reply bad iplist=%r', qname, iplist)
+                            logging.warning('query qname=%r dnsservers=%r reply bad iplist=%r', qname, dnsservers, iplist)
                         else:
-                            logging.debug('query qname=%r reply iplist=%s', qname, iplist)
+                            logging.debug('query qname=%r dnsservers=%r reply iplist=%s', qname, dnsservers, iplist)
                             return iplist
             except socket.error as e:
                 logging.warning('handle dns query=%s socket: %r', query, e)
