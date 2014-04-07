@@ -1347,7 +1347,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
                 errors.append(result)
         raise errors[-1]
 
-    def create_http_request(self, method, url, headers, body, timeout, realhost='', max_retry=3, bufsize=8192, crlf=None, validate=None, cache_key=None):
+    def create_http_request(self, method, url, headers, body, timeout, max_retry=3, bufsize=8192, crlf=None, validate=None, cache_key=None):
         scheme, netloc, path, query, _ = urlparse.urlsplit(url)
         if netloc.rfind(':') <= netloc.rfind(']'):
             # no port number
@@ -1367,7 +1367,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         for _ in range(max_retry):
             try:
                 create_connection = self.create_ssl_connection if scheme == 'https' else self.create_tcp_connection
-                sock = create_connection(realhost or host, port, timeout, validate=validate, cache_key=cache_key)
+                sock = create_connection(host, port, timeout, validate=validate, cache_key=cache_key)
                 if sock and not isinstance(sock, Exception):
                     break
             except Exception as e:
@@ -1835,7 +1835,8 @@ class HostsFilter(BaseProxyHandlerFilter):
                     if hostname in common.IPLIST_MAP:
                         handler.dns_cache[host] = common.IPLIST_MAP[hostname]
                     cache_key = '%s:%s' % (hostname, port)
-                    return [handler.DIRECT, {'cache_key': hostname}]
+                    crlf = host.endswith(common.HTTP_CRLFSITES)
+                    return [handler.DIRECT, {'cache_key': hostname, 'crlf': crlf}]
 
 
 class DirectRegionFilter(BaseProxyHandlerFilter):
