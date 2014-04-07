@@ -720,7 +720,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def STRIPSSL(self):
         """strip ssl"""
         certfile = CertUtil.get_cert(self.host)
-        logging.info('%s "STRIPSSL %s %s:%d %s" - -', self.address_string(), self.command, self.host, self.port, self.protocol_version)
+        logging.info('%s "SSL %s %s:%d %s" - -', self.address_string(), self.command, self.host, self.port, self.protocol_version)
         self.send_response(200)
         self.end_headers()
         try:
@@ -767,7 +767,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Connection', 'close')
             self.end_headers()
-        logging.info('%s "FORWARD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
+        logging.info('%s "FWD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
         try:
             tick = 1
             bufsize = self.bufsize
@@ -864,7 +864,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     continue
                 # first response, has no retry.
                 if not headers_sent:
-                    logging.info('%s "URLFETCH %s %s %s" %s %s', self.address_string(), method, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
+                    logging.info('%s "URL %s %s %s" %s %s', self.address_string(), method, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
                     if response.status == 206:
                         return RangeFetch(self, response, fetchservers, **kwargs).fetch()
                     if response.getheader('Set-Cookie'):
