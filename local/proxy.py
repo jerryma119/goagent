@@ -1854,7 +1854,7 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
             if handler.command == 'CONNECT':
                 return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
             else:
-                return [handler.DIRECT]
+                return [handler.DIRECT, {}]
 
 
 class AutoRangeFilter(BaseProxyHandlerFilter):
@@ -1892,7 +1892,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
 
 class GAEProxyHandler(AdvancedProxyHandler):
     """GAE Proxy Handler 2"""
-    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), AutoRangeFilter(), GAEFetchFilter()]
+    handler_filters = [WithGAEFilter(), FakeHttpsFilter(), ForceHttpsFilter(), HostsFilter(), DirectRegionFilter(), AutoRangeFilter(), GAEFetchFilter()]
 
     def first_run(self):
         """GAEProxyHandler setup, init domain/iplist map"""
