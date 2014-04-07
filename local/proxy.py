@@ -1845,12 +1845,20 @@ class HostsFilter(BaseProxyHandlerFilter):
 class DirectRegionFilter(BaseProxyHandlerFilter):
     """direct region filter"""
     geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
+    region_cache = LRUCache(16*1024)
+
+    def get_country_code(self, handler, hostname):
+        """http://dev.maxmind.com/geoip/legacy/codes/iso3166/"""
+        try:
+            return self.region_cache[hostname]
+        except KeyError:
+            iplist = handler.gethostbyname2(handler.host)
+            self.region_cache[hostname] = country_code = self.geoip.country_code_by_addr(iplist[0])
+            return country_code
 
     def filter(self, handler):
         if self.geoip:
-            iplist = handler.gethostbyname2(handler.host)
-            # http://dev.maxmind.com/geoip/legacy/codes/iso3166/
-            country_code = self.geoip.country_code_by_addr(iplist[0])
+            country_code = self.get_country_code(handler, handler.host)
             if country_code in common.GAE_REGIONS:
                 if handler.command == 'CONNECT':
                     return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
