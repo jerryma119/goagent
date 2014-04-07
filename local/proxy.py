@@ -1847,14 +1847,15 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
     geoip = pygeoip.GeoIP(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'GeoIP.dat')) if pygeoip and common.GAE_REGIONS else None
 
     def filter(self, handler):
-        iplist = handler.gethostbyname2(handler.host)
-        # http://dev.maxmind.com/geoip/legacy/codes/iso3166/
-        country_code = self.geoip.country_code_by_addr(iplist[0])
-        if country_code in common.GAE_REGIONS:
-            if handler.command == 'CONNECT':
-                return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
-            else:
-                return [handler.DIRECT, {}]
+        if self.geoip:
+            iplist = handler.gethostbyname2(handler.host)
+            # http://dev.maxmind.com/geoip/legacy/codes/iso3166/
+            country_code = self.geoip.country_code_by_addr(iplist[0])
+            if country_code in common.GAE_REGIONS:
+                if handler.command == 'CONNECT':
+                    return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
+                else:
+                    return [handler.DIRECT, {}]
 
 
 class AutoRangeFilter(BaseProxyHandlerFilter):
