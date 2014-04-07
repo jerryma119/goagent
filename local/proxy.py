@@ -1117,7 +1117,7 @@ class AdvancedProxyHandler(SimpleProxyHandler):
             iplist = self.dns_cache[hostname]
         except KeyError:
             if self.dns_servers:
-                iplist = dns_remote_resolve(host, self.dns_servers, self.dns_blacklist, timeout=2)
+                iplist = dns_remote_resolve(hostname, self.dns_servers, self.dns_blacklist, timeout=2)
             else:
                 iplist = socket.gethostbyname_ex(hostname)[-1]
             self.dns_cache[hostname] = iplist
@@ -1853,7 +1853,9 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
             return self.region_cache[hostname]
         except KeyError:
             iplist = handler.gethostbyname2(handler.host)
-            self.region_cache[hostname] = country_code = self.geoip.country_code_by_addr(iplist[0])
+            ip = iplist[0]
+            country_code = self.geoip.country_code_by_addr(ip) if ':' not in ip else ''
+            self.region_cache[hostname] = country_code
             return country_code
 
     def filter(self, handler):
@@ -2395,16 +2397,13 @@ class PacUtil(object):
                     use_end = True
             line = line.replace('^', '*').strip('*')
             if use_start and use_end:
-                if '*' in line:
-                    jsCondition = ['shExpMatch(url, "*%s")' % line]
-                else:
-                    jsCondition = ['url == "%s"' % line]
+                jsCondition = ['shExpMatch(url, "*%s*")' % line]
             elif use_start:
                 if '*' in line:
                     if use_postfix:
                         jsCondition = ['shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix]
                     else:
-                        jsCondition = ['shExpMatch(url, "%s*")' % line]
+                        jsCondition = ['shExpMatch(url, "*%s*")' % line]
                 else:
                     jsCondition = ['url.indexOf("%s") >= 0' % line]
             elif use_domain and use_end:
@@ -2415,18 +2414,18 @@ class PacUtil(object):
             elif use_domain:
                 if line.split('/')[0].count('.') <= 1:
                     if use_postfix:
-                        jsCondition = ['shExpMatch(url, "http://*.%s*%s")' % (line, x) for x in use_postfix]
+                        jsCondition = ['shExpMatch(url, "*.%s*%s")' % (line, x) for x in use_postfix]
                     else:
-                        jsCondition = ['shExpMatch(url, "http://*.%s*")' % line]
+                        jsCondition = ['shExpMatch(url, "*.%s*")' % line]
                 else:
                     if '*' in line:
                         if use_postfix:
-                            jsCondition = ['shExpMatch(url, "http://%s*%s")' % (line, x) for x in use_postfix]
+                            jsCondition = ['shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix]
                         else:
-                            jsCondition = ['shExpMatch(url, "http://%s*")' % line]
+                            jsCondition = ['shExpMatch(url, "*%s*")' % line]
                     else:
                         if use_postfix:
-                            jsCondition = ['shExpMatch(url, "http://%s*%s")' % (line, x) for x in use_postfix]
+                            jsCondition = ['shExpMatch(url, "*%s*%s")' % (line, x) for x in use_postfix]
                         else:
                             jsCondition = ['url.indexOf("http://%s") == 0' % line]
             else:
