@@ -1832,6 +1832,8 @@ class HostsFilter(BaseProxyHandlerFilter):
                     except Exception as e:
                         return [handler.MOCK, 403, {'Connection': 'close'}, 'read %r %r' % (filename, e)]
                 else:
+                    if hostname in common.IPLIST_MAP:
+                        handler.dns_cache[host] = common.IPLIST_MAP[hostname]
                     cache_key = '%s:%s' % (hostname, port)
                     return [handler.DIRECT, {'cache_key': hostname}]
 
