@@ -1468,15 +1468,12 @@ class Common(object):
 
         if self.GAE_PROFILE == 'auto':
             try:
-                s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-                s.settimeout(1)
-                s.connect(('ipv6.google.com', 80))
-                s.close()
-                self.GAE_PROFILE = 'ipv6'
+                socket.create_connection(('2001:4860:4860::8888', 53), timeout=1).close()
                 logging.info('Use profile ipv6')
-            except Exception as e:
+                self.GAE_PROFILE = 'ipv6'
+            except socket.error as e:
+                logging.info('Fail try profile ipv6 %r, fallback ipv4', e)
                 self.GAE_PROFILE = 'ipv4'
-                logging.info('Use profile ipv6 %r, switch to ipv4', e)
         hosts_section, http_section = '%s/hosts' % self.GAE_PROFILE, '%s/http' % self.GAE_PROFILE
 
         if 'USERDNSDOMAIN' in os.environ and re.match(r'^\w+\.\w+$', os.environ['USERDNSDOMAIN']):
