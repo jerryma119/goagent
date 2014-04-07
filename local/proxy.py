@@ -802,7 +802,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def DIRECT(self, kwargs):
         method = self.command
-        if self.path.startswith(('http://', 'https://', 'ftp://')):
+        if self.path.lower().startswith(('http://', 'https://', 'ftp://')):
             url = self.path
         else:
             url = 'http://%s%s' % (self.headers['Host'], self.path)
@@ -838,7 +838,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def URLFETCH(self, fetchservers, max_retry=2, raw_response=False, kwargs={}):
         """urlfetch from fetchserver"""
         method = self.command
-        if self.path.startswith(('http://', 'https://', 'ftp://')):
+        if self.path.lower().startswith(('http://', 'https://', 'ftp://')):
             url = self.path
         else:
             url = '%s://%s%s' % (self.scheme, self.headers['Host'], self.path)
