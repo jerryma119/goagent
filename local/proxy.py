@@ -608,7 +608,7 @@ class SimpleProxyHandlerFilter(BaseProxyHandlerFilter):
     """simple proxy handler filter"""
     def filter(self, handler):
         if handler.command == 'CONNECT':
-            return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
+            return [handler.FORWARD, handler.host, handler.port, handler.connect_timeout]
         else:
             return [handler.DIRECT]
 
@@ -759,14 +759,23 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         """forward socket"""
         do_ssl_handshake = kwargs.pop('do_ssl_handshake', False)
         local = self.connection
-        if do_ssl_handshake:
-            remote = self.create_ssl_connection(hostname, port, timeout, **kwargs)
-        else:
-            remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
-        if remote and not isinstance(remote, Exception):
-            self.send_response(200)
-            self.send_header('Connection', 'close')
-            self.end_headers()
+        max_retry = int(kwargs.get('max_retry', 3))
+        remote = None
+        for i in xrange(max_retry):
+            try:
+                if do_ssl_handshake:
+                    remote = self.create_ssl_connection(hostname, port, timeout, **kwargs)
+                else:
+                    remote = self.create_tcp_connection(hostname, port, timeout, **kwargs)
+                if remote and not isinstance(remote, Exception):
+                    self.send_response(200)
+                    self.send_header('Connection', 'close')
+                    self.end_headers()
+                    break
+            except Exception as e:
+                logging.warning('%s "FWD %s %s:%d %s" %r', self.address_string(), self.command, hostname, port, self.protocol_version, e)
+                if i == max_retry - 1:
+                    raise
         logging.info('%s "FWD %s %s:%d %s" - -', self.address_string(), self.command, hostname, port, self.protocol_version)
         try:
             tick = 1
@@ -1821,7 +1830,7 @@ class HostsFilter(BaseProxyHandlerFilter):
                 if hostname in common.IPLIST_MAP:
                     handler.dns_cache[host] = common.IPLIST_MAP[hostname]
                 cache_key = '%s:%s' % (hostname, port)
-                return [handler.FORWARD, host, port, handler.max_timeout, {'cache_key': cache_key}]
+                return [handler.FORWARD, host, port, handler.connect_timeout, {'cache_key': cache_key}]
         else:
             if any(x(handler.path) for x in common.METHOD_REMATCH_MAP) or host in common.HOSTS_MAP or host.endswith(common.HOSTS_POSTFIX_ENDSWITH):
                 if any(x(handler.path) for x in common.METHOD_REMATCH_MAP):
@@ -1869,7 +1878,7 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
             country_code = self.get_country_code(handler.host)
             if country_code in common.GAE_REGIONS:
                 if handler.command == 'CONNECT':
-                    return [handler.FORWARD, handler.host, handler.port, handler.max_timeout]
+                    return [handler.FORWARD, handler.host, handler.port, handler.connect_timeout]
                 else:
                     return [handler.DIRECT, {}]
 
