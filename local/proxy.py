@@ -1780,6 +1780,23 @@ class FakeHttpsFilter(BaseProxyHandlerFilter):
 
 class HostsFilter(BaseProxyHandlerFilter):
     """force https filter"""
+    def filter_localfile(self, handler, filename):
+        content_type = None
+        try:
+            import mimetypes
+            content_type = mimetypes.types_map.get(os.path.splitext(filename)[1])
+        except Exception as e:
+            logging.error('import mimetypes failed: %r', e)
+        try:
+            with open(filename, 'rb') as fp:
+                data = fp.read()
+                headers = {'Connection': 'close', 'Content-Length': str(len(data))}
+                if content_type:
+                    headers['Content-Type'] = content_type
+                return [handler.MOCK, 200, headers, data]
+        except Exception as e:
+            return [handler.MOCK, 403, {'Connection': 'close'}, 'read %r %r' % (filename, e)]
+
     def filter(self, handler):
         host, port = handler.host, handler.port
         if handler.command == 'CONNECT':
@@ -1816,21 +1833,7 @@ class HostsFilter(BaseProxyHandlerFilter):
                     filename = hostname.lstrip('file://')
                     if os.name == 'nt':
                         filename = filename.lstrip('/')
-                    content_type = None
-                    try:
-                        import mimetypes
-                        content_type = mimetypes.types_map.get(os.path.splitext(filename)[1])
-                    except Exception as e:
-                        logging.error('import mimetypes failed: %r', e)
-                    try:
-                        with open(filename, 'rb') as fp:
-                            data = fp.read()
-                            headers = {'Connection': 'close', 'Content-Length': str(len(data))}
-                            if content_type:
-                                headers['Content-Type'] = content_type
-                            return [handler.MOCK, 200, headers, data]
-                    except Exception as e:
-                        return [handler.MOCK, 403, {'Connection': 'close'}, 'read %r %r' % (filename, e)]
+                    return self.filter_localfile(handler, filename)
                 else:
                     if hostname in common.IPLIST_MAP:
                         handler.dns_cache[host] = common.IPLIST_MAP[hostname]
