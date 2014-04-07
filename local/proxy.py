@@ -964,6 +964,7 @@ class RangeFetch(object):
         self.kwargs = kwargs
         self._stopped = None
         self._last_app_status = {}
+        self.expect_begin = 0
 
     def fetch(self):
         response_status = self.response.status
@@ -988,6 +989,7 @@ class RangeFetch(object):
         data_queue = Queue.PriorityQueue()
         range_queue = Queue.PriorityQueue()
         range_queue.put((start, end, self.response))
+        self.expect_begin = start
         for begin in range(end+1, length, self.maxsize):
             range_queue.put((begin, min(begin+self.maxsize-1, length-1), None))
         for i in xrange(0, self.threads):
@@ -995,7 +997,6 @@ class RangeFetch(object):
             spawn_later(float(range_delay_size)/self.waitsize, self.__fetchlet, range_queue, data_queue, range_delay_size)
         has_peek = hasattr(data_queue, 'peek')
         peek_timeout = 120
-        self.expect_begin = start
         while self.expect_begin < length - 1:
             try:
                 if has_peek:
@@ -2063,7 +2064,6 @@ class PHPProxyHandler(AdvancedProxyHandler):
             return response
         response.app_status = response.status
         need_decrypt = kwargs.get('password') and response.app_status == 200 and response.getheader('Content-Type', '') == 'image/gif' and response.fp
-        transfer_encoding = response.getheader('Transfer-Encoding', '')
         if need_decrypt:
             response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
         self.close_connection = 1
@@ -2507,7 +2507,7 @@ class BlackholeFilter(BaseProxyHandlerFilter):
         urlparts = urlparse.urlsplit(handler.path)
         if handler.command == 'CONNECT':
             return [handler.STRIPSSL]
-        elif handler.path.startswith(('http', 'https')):
+        elif handler.path.startswith(('http://', 'https://')):
             headers = {'Cache-Control': 'max-age=86400',
                        'Expires': 'Oct, 01 Aug 2100 00:00:00 GMT',
                        'Connection': 'close'}
@@ -2535,7 +2535,7 @@ def get_process_list():
     if os.name == 'nt':
         PROCESS_QUERY_INFORMATION = 0x0400
         PROCESS_VM_READ = 0x0010
-        lpidProcess= (ctypes.c_ulong * 1024)()
+        lpidProcess = (ctypes.c_ulong * 1024)()
         cb = ctypes.sizeof(lpidProcess)
         cbNeeded = ctypes.c_ulong()
         ctypes.windll.psapi.EnumProcesses(ctypes.byref(lpidProcess), cb, ctypes.byref(cbNeeded))
@@ -2628,7 +2628,7 @@ def pre_start():
         sys.exit(-1)
     if not common.DNS_ENABLE:
         for dnsservers_ref in (common.HTTP_DNS, common.DNS_SERVERS):
-            any(common.DNS_SERVERS.insert(0, x) for x in [y for y in get_dnsserver_list() if y not in common.DNS_SERVERS])
+            any(dnsservers_ref.insert(0, x) for x in [y for y in get_dnsserver_list() if y not in dnsservers_ref])
         AdvancedProxyHandler.dns_servers = common.HTTP_DNS
         AdvancedProxyHandler.dns_blacklist = common.DNS_BLACKLIST
     if not OpenSSL:
