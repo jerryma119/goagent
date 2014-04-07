@@ -838,10 +838,12 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def URLFETCH(self, fetchservers, max_retry=2, raw_response=False, kwargs={}):
         """urlfetch from fetchserver"""
         method = self.command
-        if self.path.lower().startswith(('http://', 'https://', 'ftp://')):
+        if self.path[0] == '/':
+            url = '%s://%s%s' % (self.scheme, self.headers['Host'], self.path)
+        elif self.path.lower().startswith(('http://', 'https://', 'ftp://')):
             url = self.path
         else:
-            url = '%s://%s%s' % (self.scheme, self.headers['Host'], self.path)
+            raise ValueError('URLFETCH %r is not a valid url' % self.path)
         headers = {k.title(): v for k, v in self.headers.items()}
         body = self.body
         response = None
@@ -1856,7 +1858,7 @@ class DirectRegionFilter(BaseProxyHandlerFilter):
         except KeyError:
             pass
         try:
-            country_code = self.geoip.country_code_by_addr(socket.gethostbyname(handler.host))
+            country_code = self.geoip.country_code_by_addr(socket.gethostbyname(hostname))
         except Exception:
             country_code = ''
         self.region_cache[hostname] = country_code
