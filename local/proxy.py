@@ -1104,6 +1104,8 @@ class RangeFetch(object):
 class AdvancedProxyHandler(SimpleProxyHandler):
     """Advanced Proxy Handler"""
     dns_cache = LRUCache(64*1024)
+    dns_servers = []
+    dns_blacklist = []
     tcp_connection_time = collections.defaultdict(float)
     tcp_connection_cache = collections.defaultdict(Queue.PriorityQueue)
     ssl_connection_time = collections.defaultdict(float)
@@ -1114,7 +1116,11 @@ class AdvancedProxyHandler(SimpleProxyHandler):
         try:
             iplist = self.dns_cache[hostname]
         except KeyError:
-            self.dns_cache[hostname] = iplist = socket.gethostbyname_ex(hostname)[-1]
+            if self.dns_servers:
+                iplist = dns_remote_resolve(host, self.dns_servers, self.dns_blacklist, timeout=2)
+            else:
+                iplist = socket.gethostbyname_ex(hostname)[-1]
+            self.dns_cache[hostname] = iplist
         return iplist
 
     def create_tcp_connection(self, hostname, port, timeout, **kwargs):
@@ -1531,9 +1537,6 @@ class Common(object):
                 self.PROXY_PORT = int(proxyport)
         if self.PROXY_ENABLE:
             self.GAE_MODE = 'https'
-            self.proxy = 'https://%s:%s@%s:%d' % (self.PROXY_USERNAME or '', self.PROXY_PASSWROD or '', self.PROXY_HOST, self.PROXY_PORT)
-        else:
-            self.proxy = ''
 
         self.AUTORANGE_HOSTS = self.CONFIG.get('autorange', 'hosts').split('|')
         self.AUTORANGE_HOSTS_MATCH = [re.compile(fnmatch.translate(h)).match for h in self.AUTORANGE_HOSTS]
@@ -2611,8 +2614,11 @@ def pre_start():
     if not dnslib:
         logging.error('dnslib not found, please put dnslib-0.8.3.egg to %r!', os.path.dirname(os.path.abspath(__file__)))
         sys.exit(-1)
-    if os.name == 'nt' and not common.DNS_ENABLE:
-        any(common.DNS_SERVERS.insert(0, x) for x in [y for y in get_dnsserver_list() if y not in common.DNS_SERVERS])
+    if not common.DNS_ENABLE:
+        for dnsservers_ref in (common.HTTP_DNS, common.DNS_SERVERS):
+            any(common.DNS_SERVERS.insert(0, x) for x in [y for y in get_dnsserver_list() if y not in common.DNS_SERVERS])
+        AdvancedProxyHandler.dns_servers = common.HTTP_DNS
+        AdvancedProxyHandler.dns_blacklist = common.DNS_BLACKLIST
     if not OpenSSL:
         logging.warning('python-openssl not found, please install it!')
     RangeFetch.threads = common.AUTORANGE_THREADS
