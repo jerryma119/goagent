@@ -546,7 +546,7 @@ def dns_remote_resolve(qname, dnsservers, blacklist, timeout):
         socks.append(sock_v6)
     timeout_at = time.time() + timeout
     try:
-        for _ in xrange(2):
+        for _ in xrange(5):
             try:
                 for dnsserver in dns_v4_servers:
                     sock_v4.sendto(query_data, (dnsserver, 53))
