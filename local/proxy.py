@@ -1753,6 +1753,8 @@ class WithGAEFilter(BaseProxyHandlerFilter):
     def filter(self, handler):
         if handler.host in common.HTTP_WITHGAE:
             logging.debug('WithGAEFilter metched %r %r', handler.path, handler.headers)
+            if handler.command == 'CONNECT':
+                return [handler.STRIPSSL]
             kwargs = {}
             if common.GAE_PASSWORD:
                 kwargs['password'] = common.GAE_PASSWORD
