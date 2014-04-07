@@ -835,7 +835,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         finally:
             response.close()
 
-    def URLFETCH(self, fetchservers, max_retry=2, kwargs={}):
+    def URLFETCH(self, fetchservers, max_retry=2, raw_response=False, kwargs={}):
         """urlfetch from fetchserver"""
         method = self.command
         if self.path.startswith(('http://', 'https://', 'ftp://')):
@@ -863,7 +863,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     response.close()
                     continue
                 # first response, has no retry.
-                if not headers_sent:
+                if not headers_sent and not raw_response:
                     logging.info('%s "URL %s %s %s" %s %s', self.address_string(), method, url, self.protocol_version, response.status, response.getheader('Content-Length', '-'))
                     if response.status == 206:
                         return RangeFetch(self, response, fetchservers, **kwargs).fetch()
@@ -880,7 +880,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 content_length = int(response.getheader('Content-Length', 0))
                 content_range = response.getheader('Content-Range', '')
                 accept_ranges = response.getheader('Accept-Ranges', 'none')
-                need_chunked = response.getheader('Transfer-Encoding', '')
+                need_chunked = response.getheader('Transfer-Encoding', '') and not raw_response
                 if content_range:
                     start, end = tuple(int(x) for x in re.search(r'bytes (\d+)-(\d+)/(\d+)', content_range).group(1, 2))
                 else:
@@ -899,7 +899,7 @@ class SimpleProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     if need_chunked:
                         self.wfile.write('\r\n')
                     del data
-                    if start >= end:
+                    if start >= end and not raw_response:
                         response.close()
                         return
             except NetWorkIOError as e:
@@ -1759,7 +1759,7 @@ class WithGAEFilter(BaseProxyHandlerFilter):
             if common.GAE_VALIDATE:
                 kwargs['validate'] = 1
             fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
-            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, kwargs]
+            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, False, kwargs]
 
 
 class ForceHttpsFilter(BaseProxyHandlerFilter):
@@ -1887,7 +1887,7 @@ class GAEFetchFilter(BaseProxyHandlerFilter):
             if common.GAE_VALIDATE:
                 kwargs['validate'] = 1
             fetchservers = ['%s://%s.appspot.com%s' % (common.GAE_MODE, x, common.GAE_PATH) for x in common.GAE_APPIDS]
-            return [handler.URLFETCH, fetchservers, 2, kwargs]
+            return [handler.URLFETCH, fetchservers, common.FETCHMAX_LOCAL, False, kwargs]
 
 
 class GAEProxyHandler(AdvancedProxyHandler):
@@ -1987,7 +1987,7 @@ class PHPFetchFilter(BaseProxyHandlerFilter):
                 kwargs['password'] = common.PHP_PASSWORD
             if common.PHP_VALIDATE:
                 kwargs['validate'] = 1
-            return [handler.URLFETCH, [common.PHP_FETCHSERVER], 1, kwargs]
+            return [handler.URLFETCH, [common.PHP_FETCHSERVER], 1, True, kwargs]
 
 
 class PHPProxyHandler(AdvancedProxyHandler):
@@ -1996,6 +1996,8 @@ class PHPProxyHandler(AdvancedProxyHandler):
     handler_filters = [FakeHttpsFilter(), ForceHttpsFilter(), PHPFetchFilter()]
 
     def first_run(self):
+        if common.PHP_USEHOSTS:
+            self.handler_filters.insert(-1, HostsFilter())
         if not common.PROXY_ENABLE:
             common.resolve_iplist()
             fetchhost = re.sub(r':\d+$', '', urlparse.urlsplit(common.PHP_FETCHSERVER).netloc)
@@ -2038,17 +2040,7 @@ class PHPProxyHandler(AdvancedProxyHandler):
         transfer_encoding = response.getheader('Transfer-Encoding', '')
         if need_decrypt:
             response.fp = CipherFileObject(response.fp, XORCipher(kwargs['password'][0]))
-        data = ''
-        while not data.endswith('\r\n\r\n'):
-            byte = response.read(1)
-            if not byte:
-                raise httplib.IncompleteRead(data)
-            data += byte
-        rawline, _, data = data.partition('\r\n')
-        response.status = int(rawline.split()[1])
-        response.msg = httplib.HTTPMessage(io.BytesIO(data))
-        if transfer_encoding:
-            response.msg['Transfer-Encoding'] = transfer_encoding
+        self.close_connection = 1
         return response
 
 
